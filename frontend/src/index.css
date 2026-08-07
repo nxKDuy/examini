@@ -1,0 +1,285 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════
+   UI/UX Pro Max Design System — ExamAI Platform
+   Style: Minimalist (Notion/Vercel style) | Light mode default
+   Color: Pure Black/White base + Brick Red/Orange accent
+   Typography: Merriweather (heading) + Inter (body)
+   ═══════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ── Fonts ── */
+  --font-sans: 'Be Vietnam Pro', system-ui, sans-serif;
+  --font-serif: 'Lora', Georgia, serif;
+
+  /* ── Colors: Orange/Brick Red Accent ── */
+  --color-primary-50:  #fff1f0;
+  --color-primary-100: #ffe1dc;
+  --color-primary-200: #ffc7bf;
+  --color-primary-300: #ffa294;
+  --color-primary-400: #ff7460;
+  --color-primary-500: #f04e38;   /* brand primary (Brick Red/Orange) */
+  --color-primary-600: #db3a24;
+  --color-primary-700: #b82b18;
+  --color-primary-800: #982618;
+  --color-primary-900: #7e2418;
+
+  /* ── Colors: Clean Light Base (Notion-like) ── */
+  --color-surface-950: #ffffff;   /* Pure white (Main background) */
+  --color-surface-900: #fafafa;   /* Off-white (Sidebar / subtle areas) */
+  --color-surface-800: #f5f5f5;   /* Hover background */
+  --color-surface-700: #eaeaea;   /* Borders (Thin, clean) */
+  --color-surface-600: #999999;   /* Muted text */
+  --color-surface-400: #666666;   /* Secondary text */
+  --color-surface-200: #333333;   /* Primary text (softer than pure black) */
+  --color-surface-50:  #111111;   /* Pure black (Headings / High contrast text) */
+
+  /* ── Semantic colors ── */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error:   #ef4444;
+  --color-info:    #3b82f6;
+
+  /* ── Spacing scale ── */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+
+  /* ── Border radius (Sharp & Clean) ── */
+  --radius-sm:  4px;
+  --radius-md:  6px;
+  --radius-lg:  8px;
+  --radius-xl:  12px;
+  --radius-full: 9999px;
+
+  /* ── Shadows (Very subtle, almost flat) ── */
+  --shadow-card:  0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-float: 0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+  
+  /* ── Motion: Fast & Snappy (100-200ms) ── */
+  --duration-fast:   100ms;
+  --duration-normal: 200ms;
+  --duration-slow:   300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Base reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F9F9F9;
+  background-image: radial-gradient(ellipse 70% 60% at 100% 0%, rgba(240, 78, 56, 0.10) 0%, transparent 70%);
+  color: var(--color-surface-200);
+  margin: 0;
+  min-height: 100dvh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  color: var(--color-surface-50);
+  font-weight: 700;
+  margin-top: 0;
+}
+
+/* ── Scrollbar (Light theme) ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-surface-700); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-surface-600); }
+
+/* ── Focus ring ── */
+:focus-visible {
+  outline: 2px solid var(--color-primary-400);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Clean Card component ── */
+.clean-card {
+  background: #ffffff;
+  border: 1px solid var(--color-primary-500);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(240, 78, 56, 0.06), 0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* ── Primary button ── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background-color: var(--color-primary-500);
+  border: 1px solid var(--color-primary-600);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  user-select: none;
+  min-height: 36px;
+}
+.btn-primary:hover {
+  background-color: var(--color-primary-600);
+}
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+/* ── Secondary button ── */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-surface-50);
+  background: var(--color-surface-950);
+  border: 1px solid var(--color-surface-700);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  min-height: 36px;
+}
+.btn-secondary:hover {
+  background: var(--color-surface-900);
+  border-color: #d0d0d0;
+}
+
+/* ── Ghost button ── */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-surface-400);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.btn-ghost:hover {
+  background: var(--color-surface-800);
+  color: var(--color-surface-50);
+}
+
+/* ── Input field ── */
+.input-field {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  font-family: var(--font-sans);
+  color: var(--color-surface-50);
+  background: var(--color-surface-950);
+  border: 1px solid var(--color-surface-700);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+  min-height: 38px;
+  outline: none;
+}
+.input-field::placeholder { color: var(--color-surface-600); }
+.input-field:focus {
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 0 2px rgba(240, 78, 56, 0.1);
+}
+.input-field:invalid { border-color: var(--color-error); }
+
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--radius-full);
+}
+.badge-primary { background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); }
+.badge-green   { background: #ecfdf5;  color: #065f46; border: 1px solid #a7f3d0; }
+.badge-yellow  { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.badge-gray    { background: var(--color-surface-900); color: var(--color-surface-400); border: 1px solid var(--color-surface-700); }
+
+/* ── Table ── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.data-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-surface-400);
+  border-bottom: 1px solid var(--color-surface-700);
+}
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-surface-700);
+  color: var(--color-surface-200);
+  vertical-align: middle;
+}
+.data-table tr:hover td {
+  background: var(--color-surface-900);
+}
+
+/* ── Sidebar nav item ── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-surface-400);
+  text-decoration: none;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.nav-item:hover {
+  color: var(--color-surface-50);
+  background: var(--color-surface-800);
+}
+.nav-item.active {
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+  font-weight: 600;
+}
+
+/* ── Skeleton loader ── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.skeleton {
+  background: var(--color-surface-700);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Page transition ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.page-enter {
+  animation: fadeIn var(--duration-normal) var(--ease-out) forwards;
+}

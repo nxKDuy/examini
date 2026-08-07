@@ -1,0 +1,54 @@
+package com.datn.grading.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Entity
+@Table(name = "exam_results", indexes = {
+        @Index(name = "idx_results_session", columnList = "session_id", unique = true),
+        @Index(name = "idx_results_user", columnList = "user_id")
+})
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class ExamResult {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @Column(name = "session_id", nullable = false, unique = true)
+    private UUID sessionId;
+
+    @Column(name = "exam_id", nullable = false)
+    private UUID examId;
+
+    @Column(name = "user_id", nullable = false)
+    private UUID userId;
+
+    @Column(name = "total_score")
+    private Float totalScore;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Status status;
+
+    @CreationTimestamp
+    @Column(name = "graded_at", updatable = false)
+    private LocalDateTime gradedAt;
+
+    @OneToMany(mappedBy = "examResult", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<QuestionGrade> questionGrades = new ArrayList<>();
+
+    public enum Status {
+        PENDING, GRADED
+    }
+}

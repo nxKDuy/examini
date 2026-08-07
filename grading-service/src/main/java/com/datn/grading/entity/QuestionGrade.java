@@ -1,0 +1,32 @@
+package com.datn.grading.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.UUID;
+
+@Entity
+@Table(name = "question_grades")
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class QuestionGrade {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "result_id", nullable = false)
+    private ExamResult examResult;
+
+    @Column(name = "question_id", nullable = false)
+    private UUID questionId;
+
+    @Column(nullable = false)
+    private float score;
+
+    @Column(columnDefinition = "TEXT")
+    private String feedback; // Feedback từ giáo viên hoặc AI (Gemini)
+}

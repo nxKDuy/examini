@@ -1,0 +1,85 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/**
+          filters:
+            - JwtAuthFilter
+
+        - id: question-bank-service
+          uri: lb://question-bank-service
+          predicates:
+            - Path=/subjects/**, /categories/**, /questions/**
+          filters:
+            - JwtAuthFilter
+
+        - id: exam-service
+          uri: lb://exam-service
+          predicates:
+            - Path=/exams/**
+          filters:
+            - JwtAuthFilter
+
+        - id: exam-session-service
+          uri: lb://exam-session-service
+          predicates:
+            - Path=/sessions/**
+          filters:
+            - JwtAuthFilter
+
+        - id: grading-service
+          uri: lb://grading-service
+          predicates:
+            - Path=/grades/**, /submissions/**
+          filters:
+            - JwtAuthFilter
+
+        - id: analytics-service
+          uri: lb://analytics-service
+          predicates:
+            - Path=/analytics/**
+          filters:
+            - JwtAuthFilter
+
+        - id: exam-session-ws
+          uri: lb:ws://exam-session-service
+          predicates:
+            - Path=/ws/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+jwt:
+  secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, routes
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/

@@ -1,0 +1,6 @@
+content,type,difficulty,source,option1,correct1,option2,correct2,option3,correct3,option4,correct4
+"Kết quả của 5 × 8 là bao nhiêu?",MULTIPLE_CHOICE,EASY,Toán cơ bản,35,false,40,true,45,false,50,false
+"Căn bậc hai của 144 là?",MULTIPLE_CHOICE,EASY,Toán cơ bản,11,false,12,true,13,false,14,false
+"Phương trình x² - 5x + 6 = 0 có nghiệm là?",MULTIPLE_CHOICE,MEDIUM,Đại số,x=1 và x=6,false,x=2 và x=3,true,x=1 và x=4,false,x=3 và x=4,false
+"Đây là câu hỏi đúng/sai: 1 + 1 = 3",TRUE_FALSE,EASY,Toán,Đúng,false,Sai,true,,false,,false
+"Giải thích khái niệm đạo hàm.",ESSAY,HARD,Giải tích,,false,,false,,false,,false
