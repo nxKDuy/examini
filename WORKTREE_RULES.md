@@ -26,7 +26,6 @@ inferring them from these branch names. See `contracts/README.md`.
 | MAIN / SHARED | `contracts/**`, `WORKTREE_RULES.md`, `AGENTS.md`, repository integration/architecture documentation and protected configuration below | Cross-domain contracts, repository rules, architecture decisions, genuinely shared configuration, cross-domain conflict resolution. Do not implement Question Bank or Exam Taking feature logic here. |
 | Question Bank | `question-bank-service/**`; migrations under Question Bank | Question, QuestionType, Difficulty, QuestionStatus, QuestionSource, QuestionVersion, QuestionReview, approval workflow, source provenance, import and filtering; provider APIs for other domains. Do not edit Exam Taking internals. |
 | Exam Taking | `exam-service/**`, `exam-session-service/**`, `grading-service/**`; migrations under those services | Exam, ExamQuestion, ExamSession, Answer, Submission, GradingResult, timer, submit, auto/manual grading and results. Consume Question Bank public APIs; do not change its entities, persistence or lifecycle. |
-
 | Frontend App (`frontend/app`) | `frontend/**` | Phase 1 frontend product development, application UI, shared frontend runtime/configuration, API integration and UI validation. Backend implementation is read-only; request missing contracts from their provider and MAIN. |
 
 For ongoing Phase 1 UI work, Frontend App owns all frontend files, including
@@ -49,13 +48,14 @@ MAIN coordinates changes to:
 - Root `pom.xml`, `docker-compose.yml`, `.env.example`, `.gitignore`,
   `docker/**`, root startup/build scripts and shared infrastructure configuration.
 - `api-gateway/**`, `eureka-server/**`, `auth-service/**`, `analytics-service/**`.
+- Repository-wide rules, architecture/integration docs and `contracts/**`.
+
 Frontend App coordinates frontend-only shared files such as package/config,
 router, API/auth runtime, components and global styles. Cross-domain contract,
 authorization semantics, backend or repository infrastructure changes still
 require MAIN approval. Keep frontend shared changes minimal and in dedicated
 commits, and avoid unrelated dependency upgrades.
 
-- Repository-wide rules, architecture/integration docs and `contracts/**`.
 
 Service-local POMs/config belong to that service owner; changes to shared
 dependency semantics or infrastructure still need a coordinator decision.
