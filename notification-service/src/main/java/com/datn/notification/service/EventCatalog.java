@@ -1,6 +1,8 @@
 package com.datn.notification.service;
 import com.datn.notification.dto.NotificationDto.Draft;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 
 /**
@@ -14,6 +16,21 @@ public final class EventCatalog {
     public static final List<String> EVENT_TYPES=List.of(QUESTION_REVIEWED,EXAM_MEMBER_INVITED,EXAM_PARTICIPANT_ASSIGNED,SESSION_SUBMITTED,GRADING_RESULT_RELEASED);
     private static final int TITLE_LIMIT=150;
     private EventCatalog(){}
+
+    /** Validated version-1 envelope. */
+    public record Event(UUID eventId,String eventType,Instant occurredAt,Draft draft){}
+
+    /** Strict: eventVersion must be the JSON integer 1 and occurredAt an ISO-8601 instant; nothing is coerced. */
+    public static Event envelope(JsonNode e){
+        if(e==null || !e.isObject())throw new IllegalArgumentException("Envelope must be a JSON object");
+        UUID id=uuid(e,"eventId");String type=text(e,"eventType");
+        if(!EVENT_TYPES.contains(type))throw new IllegalArgumentException("Unsupported event type");
+        if(integer(e,"eventVersion")!=1)throw new IllegalArgumentException("Unsupported event version");
+        Instant occurred;try{occurred=Instant.parse(text(e,"occurredAt"));}catch(DateTimeParseException x){throw new IllegalArgumentException("occurredAt must be an ISO-8601 instant");}
+        JsonNode payload=e.get("payload");
+        if(payload==null || !payload.isObject())throw new IllegalArgumentException("payload must be a JSON object");
+        return new Event(id,type,occurred,draft(type,payload));
+    }
 
     public static Draft draft(String type,JsonNode p){
         return switch(type){
@@ -61,9 +78,13 @@ public final class EventCatalog {
     private static String oneOf(JsonNode p,String field,String... allowed){
         String v=text(p,field);if(!Arrays.asList(allowed).contains(v))throw new IllegalArgumentException(field+" unsupported");return v;
     }
-    private static long positive(JsonNode p,String field){
+    /** JSON integer only: rejects 1.5, 1.0, "1", booleans and out-of-range values instead of coercing them. */
+    private static long integer(JsonNode p,String field){
         JsonNode v=p==null?null:p.get(field);
-        if(v==null || !v.canConvertToLong() || v.asLong()<1)throw new IllegalArgumentException(field+" must be positive");return v.asLong();
+        if(v==null || !v.isIntegralNumber() || !v.canConvertToLong())throw new IllegalArgumentException(field+" must be an integer");return v.longValue();
+    }
+    private static long positive(JsonNode p,String field){
+        long v=integer(p,field);if(v<1)throw new IllegalArgumentException(field+" must be positive");return v;
     }
     private static String title(JsonNode p){
         String t=text(p,"examTitle").replaceAll("\\p{Cntrl}"," ");

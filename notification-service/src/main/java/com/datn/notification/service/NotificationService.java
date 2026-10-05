@@ -22,20 +22,14 @@ public class NotificationService {
     /** Envelope: {eventId, eventType, eventVersion: 1, occurredAt, payload}. Malformed events are dead-lettered. */
     @RabbitListener(queues=RabbitMQConfig.QUEUE)
     public void onEvent(byte[] body){
-        Draft draft;UUID eventId;String type;
-        try{
-            JsonNode event=json.readTree(new String(body,StandardCharsets.UTF_8));
-            eventId=EventCatalog.uuid(event,"eventId");
-            type=event.path("eventType").asText();
-            if(!EventCatalog.EVENT_TYPES.contains(type))throw new IllegalArgumentException("Unsupported event type");
-            if(event.path("eventVersion").asInt()!=1)throw new IllegalArgumentException("Unsupported event version");
-            draft=EventCatalog.draft(type,event.get("payload"));
-        }catch(IllegalArgumentException|JsonProcessingException|NullPointerException invalid){
+        EventCatalog.Event event;
+        try{event=EventCatalog.envelope(json.readTree(new String(body,StandardCharsets.UTF_8)));}
+        catch(IllegalArgumentException|JsonProcessingException invalid){
             log.warn("Rejected notification event: {}",invalid.getMessage());
             throw new AmqpRejectAndDontRequeueException("Invalid notification event",invalid);
         }
         // Infrastructure failures escape: broker retries then dead-letters, never silently dropped.
-        record(eventId,type,draft);
+        record(event.eventId(),event.eventType(),event.draft());
     }
     /** Idempotent: a redelivered event (same eventId) never creates a second notification. */
     public boolean record(UUID eventId,String eventType,Draft d){

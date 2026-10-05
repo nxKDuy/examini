@@ -87,8 +87,13 @@ class NotificationIntegrationTest {
         publish(Map.of("eventId",badVersion.toString(),"eventType","exam.participant.assigned","eventVersion",2,"payload",assigned(alice,"X")),"exam.participant.assigned");
         publish(envelope(UUID.randomUUID(),"exam.participant.assigned",Map.of("examTitle","no recipient")),"exam.participant.assigned");
         rabbit.send(RabbitMQConfig.EVENTS_EXCHANGE,"session.submitted",new Message("not json".getBytes(StandardCharsets.UTF_8),new MessageProperties()));
-        int dead=0;for(int i=0;i<3;i++)if(rabbit.receive(RabbitMQConfig.DEAD_LETTER_QUEUE,10000)!=null)dead++;
-        assertEquals(3,dead);assertEquals(0,count(badVersion));
+        // Strict v1 contract: no coercion of 1.5 -> 1, and occurredAt is mandatory.
+        UUID fractional=UUID.randomUUID(),noTime=UUID.randomUUID(),fractionalQuestion=UUID.randomUUID();
+        var f=new HashMap<>(envelope(fractional,"exam.participant.assigned",assigned(alice,"Y")));f.put("eventVersion",1.5);publish(f,"exam.participant.assigned");
+        var t=new HashMap<>(envelope(noTime,"exam.participant.assigned",assigned(alice,"Z")));t.remove("occurredAt");publish(t,"exam.participant.assigned");
+        publish(envelope(fractionalQuestion,"question.reviewed",Map.of("questionId",UUID.randomUUID().toString(),"questionVersion",1.5,"ownerUserId",alice.toString(),"decision","APPROVED")),"question.reviewed");
+        int dead=0;for(int i=0;i<6;i++)if(rabbit.receive(RabbitMQConfig.DEAD_LETTER_QUEUE,10000)!=null)dead++;
+        assertEquals(6,dead);for(UUID id:List.of(badVersion,fractional,noTime,fractionalQuestion))assertEquals(0,count(id));
         mvc.perform(get("/notifications/unread-count").header("Authorization",bearer(alice))).andExpect(jsonPath("$.count").value(0));
     }
 
