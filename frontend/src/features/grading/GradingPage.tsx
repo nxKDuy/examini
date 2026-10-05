@@ -1,292 +1,172 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { gradingApi, type Submission } from './gradingApi'
-import { errorText, examApi } from '../exams/examApi'
-import {
-  CheckSquare, Search, User, Save, FileText,
-  ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Filter
-} from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CheckCircle2, ClipboardCheck, PenLine, XCircle } from 'lucide-react'
+import { gradingApi, type Submission, type SubmissionAnswer } from './gradingApi'
+import { examApi } from '../exams/examApi'
+import { ResultStatusBadge } from '../../components/status'
+import { ConfirmDialog } from '../../components/Dialog'
+import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
+import { errorText } from '../../lib/errors'
+import { QUESTION_TYPE_LABEL, formatDateTime, formatDuration, formatScore, shortId } from '../../lib/format'
 
-const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
-  SUBMITTED:    { label: 'Chờ chấm',   cls: 'badge-yellow' },
-  PENDING:      { label: 'Chờ chấm',   cls: 'badge-yellow' },
-  GRADED:       { label: 'Đã chấm',    cls: 'badge-green' },
-  NEEDS_REVIEW: { label: 'Cần xét duyệt', cls: 'badge-yellow' },
-}
+const TABS = [{ value: '', label: 'Tất cả' }, { value: 'NEEDS_REVIEW', label: 'Cần chấm tay' }, { value: 'PENDING', label: 'Chờ chấm' }, { value: 'GRADED', label: 'Đã chấm' }]
 
 export default function GradingPage() {
-  const qc = useQueryClient()
-
-  // Filters
-  const [examId, setExamId] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [search, setSearch] = useState('')
+  const [params, setParams] = useSearchParams()
+  const examId = params.get('examId') ?? ''
+  const status = params.get('status') ?? ''
   const [page, setPage] = useState(0)
-
-  // Selected
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-
-  // Local grading state
-  const [inputScore, setInputScore] = useState<string>('')
-  const [inputFeedback, setInputFeedback] = useState('')
-
-  // Queries
-  const { data: exams } = useQuery({
-    queryKey: ['exams', 'all'],
-    queryFn: () => examApi.getExams({ size: 100 })
+  const [selected, setSelected] = useState<string | null>(null)
+  const exams = useQuery({ queryKey: ['exams', 'all'], queryFn: examApi.listAll })
+  const gradable = (exams.data ?? []).filter(e => e.status !== 'DRAFT')
+  const subs = useQuery({
+    queryKey: ['submissions', examId, status, page], enabled: !!examId, placeholderData: prev => prev,
+    queryFn: () => gradingApi.getSubmissions({ examId, status: status || undefined, page }),
   })
-
-  const { data: submissionsPage, isLoading: listLoading, error: listError } = useQuery({
-    queryKey: ['submissions', examId, statusFilter, page],
-    enabled: !!examId,
-    queryFn: () => gradingApi.getSubmissions({ examId: examId || undefined, status: statusFilter || undefined, page }),
-  })
-
-  const { data: detail, isLoading: detailLoading, error: detailError } = useQuery({
-    queryKey: ['submission-detail', selectedId],
-    queryFn: () => gradingApi.getSubmissionDetail(selectedId!),
-    enabled: !!selectedId,
-  })
-
-  const gradeMut = useMutation({
-    mutationFn: ({ id, score, feedback }: { id: string; score: number; feedback: string }) =>
-      gradingApi.gradeSubmission(id, { score, feedback }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['submissions'] })
-      qc.invalidateQueries({ queryKey: ['submission-detail', selectedId] })
-    },
-  })
-
-  const submissions = submissionsPage?.content ?? []
-  const totalPages = submissionsPage?.totalPages ?? 0
-
-  const handleSelectSubmission = (s: Submission) => {
-    setSelectedId(s.id)
-    setInputScore(s.score !== null ? String(s.score) : '')
-    setInputFeedback(s.feedback ?? '')
+  const update = (key: string, value: string) => {
+    const next = new URLSearchParams(params)
+    if (value) next.set(key, value); else next.delete(key)
+    if (key === 'examId') next.delete('status')
+    setParams(next, { replace: true }); setPage(0); setSelected(null)
   }
-
-  const handleGrade = () => {
-    if (!selectedId) return
-    const score = parseFloat(inputScore)
-    if (isNaN(score)) return alert('Nhập điểm hợp lệ')
-    if (detail && (score < 0 || score > detail.totalScore)) return alert(`Điểm phải từ 0 đến ${detail?.totalScore}`)
-    gradeMut.mutate({ id: selectedId, score, feedback: inputFeedback })
-  }
-
-  const filteredSubmissions = submissions.filter(s =>
-    !search || s.studentName.toLowerCase().includes(search.toLowerCase()) || s.studentCode.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const scorePercent = detail && detail.score !== null ? Math.round((detail.score / detail.totalScore) * 100) : null
-  const scoreColor = scorePercent === null ? 'var(--color-surface-400)' : scorePercent >= 50 ? 'var(--color-success)' : 'var(--color-error)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 128px)' }}>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ background: 'var(--color-primary-50)', borderRadius: 8, padding: 8 }}>
-            <CheckSquare size={28} color="var(--color-primary-600)" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-surface-50)', letterSpacing: '-0.02em', margin: 0 }}>Chấm bài</h1>
-            <p style={{ color: 'var(--color-surface-400)', fontSize: '0.875rem', margin: 0 }}>
-              {submissionsPage?.totalElements ?? 0} bài nộp
-            </p>
-          </div>
+    <div className="stack">
+      <PageHeader title="Chấm bài" description="Câu trắc nghiệm, Đúng/Sai và trả lời ngắn được chấm tự động. Bài có câu tự luận ở trạng thái Cần chấm tay cho đến khi bạn lưu điểm cuối." />
+      <section className="card">
+        <div className="card-body" style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', paddingBottom: 16 }}>
+          <Field label="Kỳ thi" htmlFor="grading-exam" hint="Chỉ Chủ sở hữu và Quản lý của kỳ thi được chấm bài.">
+            <select id="grading-exam" className="input" value={examId} onChange={e => update('examId', e.target.value)}>
+              <option value="">Chọn kỳ thi</option>
+              {gradable.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+            </select>
+          </Field>
         </div>
+        {examId && <div className="tabs" role="tablist" aria-label="Trạng thái chấm" style={{ padding: '0 12px' }}>
+          {TABS.map(t => <button key={t.value} type="button" role="tab" className="tab" aria-selected={status === t.value} onClick={() => update('status', t.value)}>{t.label}</button>)}
+        </div>}
+      </section>
 
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <select value={examId} onChange={e => { setExamId(e.target.value); setPage(0); setSelectedId(null) }}
-            className="input-field" style={{ width: 220 }}>
-            <option value="">Tất cả đề thi</option>
-            {exams?.content.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-          </select>
-
-          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
-            className="input-field" style={{ width: 140 }}>
-            <option value="">Tất cả trạng thái</option>
-            <option value="PENDING">Chờ chấm</option>
-            <option value="GRADED">Đã chấm</option>
-            <option value="NEEDS_REVIEW">Cần xét duyệt</option>
-          </select>
+      {!examId ? (
+        <section className="card">{exams.isError ? <ErrorState error={exams.error} onRetry={() => void exams.refetch()} />
+          : <EmptyState icon={<ClipboardCheck size={30} />} title="Chọn một kỳ thi" description={exams.data && gradable.length === 0 ? 'Bạn chưa có kỳ thi đã xuất bản. Bài nộp xuất hiện sau khi kỳ thi được mở và thí sinh nộp bài.' : 'Chọn kỳ thi để xem danh sách bài nộp.'} />}</section>
+      ) : (
+        <div className="split">
+          <section className="card" aria-label="Danh sách bài nộp" style={{ overflow: 'hidden' }}>
+            <div className="card-header"><h2 style={{ fontSize: '0.9375rem' }}>{subs.data ? `${subs.data.totalElements} bài nộp` : 'Bài nộp'}</h2></div>
+            {subs.isLoading ? <LoadingState rows={4} /> : subs.isError ? <ErrorState error={subs.error} onRetry={() => void subs.refetch()} />
+              : subs.data!.content.length === 0 ? <EmptyState title="Không có bài nộp" description={status ? 'Không có bài ở trạng thái này.' : 'Bài nộp xuất hiện khi thí sinh nộp bài hoặc hết giờ.'} />
+              : subs.data!.content.map(s => <SubmissionRow key={s.id} s={s} active={selected === s.id} onSelect={() => setSelected(s.id)} />)}
+            {subs.data && <Pagination label="Phân trang bài nộp" page={page} totalPages={subs.data.totalPages} onChange={setPage} />}
+          </section>
+          <section className="card card-body sticky-pane" aria-label="Chi tiết bài nộp">
+            {selected ? <SubmissionDetail key={selected} id={selected} /> : <EmptyState title="Chọn một bài nộp" description="Xem câu trả lời, kết quả chấm tự động và lưu điểm cuối." />}
+          </section>
         </div>
-      </div>
-
-      {gradeMut.error && <p role="alert">Lưu điểm thất bại. Vui lòng thử lại.</p>}
-      {/* Split View */}
-      <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
-
-        {/* Left: Student List */}
-        <div className="clean-card" style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-          {/* Search */}
-          <div style={{ padding: '16px', borderBottom: '1px solid var(--color-surface-700)', background: 'var(--color-surface-900)' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={15} color="var(--color-surface-400)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Tìm tên / MSSV..." className="input-field" style={{ paddingLeft: 36, height: 38 }} />
-            </div>
-          </div>
-
-          {/* List */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {listError ? <p role="alert">{errorText(listError)}</p> : listLoading ? (
-              [...Array(5)].map((_, i) => <div key={i} className="skeleton" style={{ height: 68, borderRadius: 8 }} />)
-            ) : filteredSubmissions.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-surface-400)' }}>
-                <Filter size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
-                <div>Không có bài nộp nào</div>
-              </div>
-            ) : filteredSubmissions.map(s => (
-              <div key={s.id} onClick={() => handleSelectSubmission(s)}
-                style={{
-                  padding: '12px 14px', borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
-                  border: `1px solid ${selectedId === s.id ? 'var(--color-primary-400)' : 'var(--color-surface-700)'}`,
-                  background: selectedId === s.id ? 'var(--color-primary-50)' : '#fff',
-                  display: 'flex', flexDirection: 'column', gap: 6
-                }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-surface-50)' }}>{s.studentName}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-surface-400)' }}>{s.studentCode}</div>
-                  </div>
-                  <span className={`badge ${STATUS_LABEL[s.status].cls}`}>{STATUS_LABEL[s.status].label}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--color-surface-400)' }}>
-                    <Clock size={12} /> {new Date(s.submittedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(s.submittedAt).toLocaleDateString('vi-VN')}
-                  </div>
-                  {s.score !== null && (
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: scoreColor }}>{s.score}/{s.totalScore}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-surface-700)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-surface-400)' }}>Trang {page + 1}/{totalPages}</span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button className="btn-ghost" onClick={() => setPage(p => p - 1)} disabled={page === 0}><ChevronLeft size={18} /></button>
-                <button className="btn-ghost" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}><ChevronRight size={18} /></button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right: Detail */}
-        <div className="clean-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {!selectedId ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-surface-400)' }}>
-              <FileText size={48} color="var(--color-surface-700)" style={{ marginBottom: 16 }} />
-              <p>Chọn một bài nộp ở danh sách bên trái để chấm điểm.</p>
-            </div>
-          ) : detailError ? <p role="alert">{errorText(detailError)}</p> : detailLoading ? (
-            <div style={{ padding: 40, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {[...Array(4)].map((_, i) => <div key={i} className="skeleton" style={{ height: 80, borderRadius: 8 }} />)}
-            </div>
-          ) : detail ? (
-            <>
-              {/* Detail Header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-surface-700)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <User size={22} color="var(--color-primary-600)" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-surface-50)' }}>{detail.studentName}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-surface-400)' }}>{detail.studentCode} • Nộp: {new Date(detail.submittedAt).toLocaleString('vi-VN')}</div>
-                  </div>
-                </div>
-
-                {/* Score Input */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  {scorePercent !== null && (
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, color: scoreColor, lineHeight: 1 }}>
-                      {detail.score}<span style={{ fontSize: '1rem', fontWeight: 400, color: 'var(--color-surface-400)' }}>/{detail.totalScore}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-surface-200)', whiteSpace: 'nowrap' }}>Điểm thủ công:</span>
-                      <input type="number" className="input-field" value={inputScore}
-                        onChange={e => setInputScore(e.target.value)}
-                        placeholder={`0–${detail.totalScore}`}
-                        style={{ width: 80, textAlign: 'center', fontWeight: 700 }}
-                        min={0} max={detail.totalScore} step={0.5} />
-                    </div>
-                    <button className="btn-primary" onClick={handleGrade} disabled={gradeMut.isPending} style={{ padding: '8px 20px' }}>
-                      <Save size={15} style={{ marginRight: 6 }} /> {gradeMut.isPending ? 'Đang lưu...' : 'Lưu điểm'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Answer List */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-                {detail.answers.map((ans, idx) => (
-                  <div key={ans.questionId} style={{ padding: 24, border: '1px solid var(--color-surface-700)', borderRadius: 12, background: '#fff', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--color-surface-800)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                          {idx + 1}
-                        </div>
-                        <div style={{ fontSize: '1rem', color: 'var(--color-surface-50)', lineHeight: 1.6, fontWeight: 500 }}>
-                          {ans.questionContent}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 16 }}>
-                        {ans.isCorrect !== undefined && (
-                          ans.isCorrect
-                            ? <CheckCircle2 size={20} color="var(--color-success)" />
-                            : <XCircle size={20} color="var(--color-error)" />
-                        )}
-                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-surface-50)' }}>
-                          {ans.earnedPoints}/{ans.pointValue} điểm
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Đáp án */}
-                    {(ans.questionType === 'MULTIPLE_CHOICE' || ans.questionType === 'TRUE_FALSE') && (
-                      <div style={{ background: ans.isCorrect ? 'rgba(16,185,129,0.07)' : 'rgba(239,68,68,0.07)', padding: '12px 16px', borderRadius: 8, borderLeft: `3px solid ${ans.isCorrect ? 'var(--color-success)' : 'var(--color-error)'}` }}>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--color-surface-400)', marginBottom: 4 }}>Đáp án sinh viên chọn:</div>
-                        <div style={{ fontWeight: 600, color: 'var(--color-surface-50)' }}>{ans.selectedOptionContent ?? '(Không trả lời)'}</div>
-                      </div>
-                    )}
-
-                    {(ans.questionType === 'SHORT_ANSWER' || ans.questionType === 'ESSAY') && (
-                      <div style={{ background: 'var(--color-surface-900)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--color-surface-700)', fontSize: '0.95rem', color: 'var(--color-surface-50)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                        {ans.textAnswer || <span style={{ color: 'var(--color-surface-500)', fontStyle: 'italic' }}>(Không có câu trả lời)</span>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Comment area */}
-                <div style={{ padding: 24, border: '1px solid var(--color-surface-700)', borderRadius: 12, background: '#fff' }}>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-surface-200)', marginBottom: 12 }}>
-                    Nhận xét của giáo viên (Tùy chọn)
-                  </label>
-                  <textarea
-                    className="input-field" rows={4}
-                    placeholder="Nhập nhận xét để gửi cho sinh viên..."
-                    value={inputFeedback} onChange={e => setInputFeedback(e.target.value)}
-                    style={{ resize: 'vertical' }}
-                  />
-                </div>
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
+      )}
     </div>
+  )
+}
+
+function SubmissionRow({ s, active, onSelect }: { s: Submission; active: boolean; onSelect: () => void }) {
+  return (
+    <button type="button" className="list-item" aria-current={active} onClick={onSelect}>
+      <div className="spread">
+        <span className="mono small" style={{ color: 'var(--color-ink)', fontWeight: 600 }} title={s.studentId}>Thí sinh {shortId(s.studentId)}</span>
+        <ResultStatusBadge status={s.status} />
+      </div>
+      <div className="spread xsmall muted" style={{ marginTop: 4 }}>
+        <span>Nộp {formatDateTime(s.submittedAt, '-')}</span>
+        <span className="mono">{s.status === 'GRADED' ? `${formatScore(s.score)}/${formatScore(s.totalScore)}` : `-/${formatScore(s.totalScore)}`}</span>
+      </div>
+    </button>
+  )
+}
+
+function SubmissionDetail({ id }: { id: string }) {
+  const qc = useQueryClient()
+  const detail = useQuery({ queryKey: ['submission', id], queryFn: () => gradingApi.getSubmissionDetail(id) })
+  const [score, setScore] = useState('')
+  const [feedback, setFeedback] = useState('')
+  const [confirm, setConfirm] = useState(false)
+  const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
+  const d = detail.data
+  useEffect(() => {
+    if (!d) return
+    const auto = d.answers.reduce((sum, a) => sum + (a.earnedPoints ?? 0), 0)
+    setScore(String(d.score ?? auto)); setFeedback(d.feedback ?? '')
+  }, [d])
+  const grade = useMutation({
+    mutationFn: () => gradingApi.gradeSubmission(id, { score: Number(score), feedback: feedback.trim() || undefined }),
+    onSuccess: async () => {
+      setConfirm(false); setMessage({ tone: 'success', text: 'Đã lưu điểm cuối. Thí sinh có thể xem kết quả.' })
+      await Promise.all([qc.invalidateQueries({ queryKey: ['submission', id] }), qc.invalidateQueries({ queryKey: ['submissions'] })])
+    },
+    onError: e => { setConfirm(false); setMessage({ tone: 'danger', text: errorText(e) }) },
+  })
+  if (detail.isLoading) return <LoadingState rows={5} />
+  if (detail.isError || !d) return <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />
+
+  const max = d.totalScore ?? 0
+  const value = Number(score)
+  const invalid = score.trim() === '' || !Number.isFinite(value) || value < 0 || value > max
+  const auto = d.answers.reduce((sum, a) => sum + (a.earnedPoints ?? 0), 0)
+  const manual = d.answers.filter(a => a.isCorrect === null).length
+
+  function submit(e: FormEvent) { e.preventDefault(); if (!invalid) setConfirm(true) }
+
+  return (
+    <div className="stack-lg">
+      <div className="stack-sm">
+        <div className="spread"><h2>Thí sinh <span className="mono">{shortId(d.studentId)}</span></h2><ResultStatusBadge status={d.status} /></div>
+        <p className="xsmall muted">Mã người dùng {d.studentId} · Nộp {formatDateTime(d.submittedAt, '-')}{d.durationSeconds ? ` · Làm trong ${formatDuration(d.durationSeconds)}` : ''}</p>
+      </div>
+      {message && <Notice tone={message.tone} live>{message.text}</Notice>}
+      {d.status === 'NEEDS_REVIEW' && <Notice tone="warning">Có {manual} câu cần chấm tay. Điểm tự động hiện tại: {formatScore(auto)}/{formatScore(max)}.</Notice>}
+
+      <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {d.answers.map((a, i) => <AnswerCard key={a.questionId} a={a} n={i + 1} />)}
+      </ol>
+
+      <form onSubmit={submit} className="stack" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
+        <h3>Điểm cuối</h3>
+        <Field label={`Tổng điểm (0 đến ${formatScore(max)})`} htmlFor="final-score" error={score.trim() !== '' && invalid ? `Nhập điểm từ 0 đến ${formatScore(max)}.` : undefined}
+          hint={`Gợi ý: ${formatScore(auto)} điểm từ phần chấm tự động, cộng điểm bạn chấm cho phần tự luận.`}>
+          <input id="final-score" type="number" min={0} max={max} step={0.25} className="input" style={{ maxWidth: 180 }} value={score} aria-invalid={invalid}
+            onChange={e => setScore(e.target.value)} />
+        </Field>
+        <Field label="Nhận xét cho thí sinh (tùy chọn)" htmlFor="final-feedback">
+          <textarea id="final-feedback" className="input" rows={3} value={feedback} onChange={e => setFeedback(e.target.value)} />
+        </Field>
+        <div><button type="submit" className="btn btn-primary" disabled={invalid || grade.isPending}>{d.status === 'GRADED' ? 'Cập nhật điểm' : 'Lưu điểm cuối'}</button></div>
+      </form>
+      {confirm && <ConfirmDialog title="Lưu điểm cuối?" confirmLabel="Lưu điểm" busy={grade.isPending}
+        description={`Bài sẽ chuyển sang Đã chấm với ${formatScore(value)}/${formatScore(max)} điểm và thí sinh sẽ thấy kết quả.`}
+        onConfirm={() => grade.mutate()} onCancel={() => setConfirm(false)} />}
+    </div>
+  )
+}
+
+function AnswerCard({ a, n }: { a: SubmissionAnswer; n: number }) {
+  const objective = a.questionType === 'MULTIPLE_CHOICE' || a.questionType === 'TRUE_FALSE'
+  const response = objective ? a.selectedOptionContent : a.textAnswer
+  return (
+    <li className="card card-pad stack-sm" style={{ boxShadow: 'none' }}>
+      <div className="spread">
+        <span className="small" style={{ fontWeight: 600 }}>Câu {n} · {QUESTION_TYPE_LABEL[a.questionType]}</span>
+        <span className="row">
+          {a.isCorrect === true && <Badge tone="success" icon={<CheckCircle2 size={12} aria-hidden />}>Đúng</Badge>}
+          {a.isCorrect === false && <Badge tone="danger" icon={<XCircle size={12} aria-hidden />}>Sai</Badge>}
+          {a.isCorrect === null && <Badge tone="warning" icon={<PenLine size={12} aria-hidden />}>Cần chấm tay</Badge>}
+          <span className="mono small">{formatScore(a.earnedPoints)}/{formatScore(a.pointValue)}</span>
+        </span>
+      </div>
+      <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{a.questionContent}</p>
+      <div className="small" style={{ padding: '8px 10px', background: 'var(--color-subtle)', borderRadius: 8 }}>
+        <span className="xsmall muted">Bài làm của thí sinh</span>
+        <p className="prewrap">{response?.trim() ? response : <em className="muted">Không trả lời</em>}</p>
+      </div>
+    </li>
   )
 }

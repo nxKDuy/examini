@@ -1,31 +1,328 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { examApi, errorText, type Session } from './examApi'
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Send, Timer } from 'lucide-react'
+import { examApi, type SafeQuestion, type Session } from './examApi'
+import { rememberAttempt } from './attemptHints'
+import { useAuthStore } from '../../store/authStore'
+import { ConfirmDialog } from '../../components/Dialog'
+import { ErrorState, Notice, Spinner } from '../../components/ui'
+import { errorInfo, errorText } from '../../lib/errors'
+import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '../../lib/format'
+
+type SaveState = 'pending' | 'saving' | 'saved' | 'error'
+const TEXT_DEBOUNCE_MS = 800
+const RESYNC_MS = 60_000
+
 export default function StudentExamPage() {
-  const {id}=useParams();const navigate=useNavigate();const [session,setSession]=useState<Session>()
-  const [answers,setAnswers]=useState<Record<string,string>>({});const [error,setError]=useState('');const [saving,setSaving]=useState(0)
-  const [confirming,setConfirming]=useState(false);const [remaining,setRemaining]=useState(0);const deadline=useRef(0);const [busy,setBusy]=useState(false)
-  const pending=useRef(new Set<string>());const queues=useRef<Record<string,Promise<void>>>({})
-  useEffect(()=>{let live=true;examApi.session(id!).then(s=>{if(!live)return;setSession(s);setAnswers(s.answers);setRemaining(Math.max(0,Math.ceil((Date.parse(s.expiresAt)-Date.parse(s.serverNow))/1000)));deadline.current=performance.now()+Math.max(0,Date.parse(s.expiresAt)-Date.parse(s.serverNow));if(s.status!=='IN_PROGRESS')navigate(`/exam/result/${s.sessionId}`)}).catch(e=>setError(errorText(e)));return()=>{live=false}},[id,navigate])
-  useEffect(()=>{if(!session)return;const timer=setInterval(()=>{setRemaining(Math.max(0,Math.ceil((deadline.current-performance.now())/1000)));if(deadline.current<=performance.now()){void examApi.session(session.sessionId).then(s=>{if(s.status!=='IN_PROGRESS')navigate(`/exam/result/${s.sessionId}`)}).catch(e=>setError(errorText(e)))}},1000);return()=>clearInterval(timer)},[session,navigate])
-  function save(questionId:string,content:string) {
-    setAnswers(a=>({...a,[questionId]:content}));pending.current.add(questionId);setSaving(v=>v+1);setError('')
-    const previous=queues.current[questionId] || Promise.resolve()
-    const next=previous.catch(()=>{}).then(async()=>{await examApi.answer(id!,questionId,content)})
-    queues.current[questionId]=next
-    void next.then(()=>{if(queues.current[questionId]===next)pending.current.delete(questionId)}).catch(e=>setError(errorText(e))).finally(()=>setSaving(v=>v-1))
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const userId = useAuthStore(s => s.user?.id)
+  const [session, setSession] = useState<Session | null>(null)
+  const [loadError, setLoadError] = useState<unknown>(null)
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [saveState, setSaveState] = useState<Record<string, SaveState>>({})
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [actionError, setActionError] = useState('')
+  const [index, setIndex] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
+  const [online, setOnline] = useState(() => navigator.onLine)
+  const [confirming, setConfirming] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
+  const [announcement, setAnnouncement] = useState('')
+
+  const offset = useRef(0) // serverNow - clientNow at last sync
+  const latest = useRef<Record<string, string>>({})
+  const queues = useRef<Record<string, Promise<unknown>>>({})
+  const timers = useRef<Record<string, number>>({})
+  const stateRef = useRef<Record<string, SaveState>>({})
+  const announced = useRef<Set<number>>(new Set())
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const submittingRef = useRef(false)
+
+  const setQState = useCallback((qid: string, s: SaveState) => {
+    stateRef.current = { ...stateRef.current, [qid]: s }
+    setSaveState(stateRef.current)
+  }, [])
+
+  const goResult = useCallback(() => navigate(`/exam/result/${id}`, { replace: true }), [navigate, id])
+
+  const sync = useCallback(async (initial = false) => {
+    try {
+      const s = await examApi.session(id!)
+      offset.current = Date.parse(s.serverNow) - Date.now()
+      if (s.status !== 'IN_PROGRESS') { goResult(); return }
+      setSession(s)
+      if (initial) {
+        latest.current = { ...s.answers }
+        setAnswers({ ...s.answers })
+        if (userId) rememberAttempt(userId, s.examId, s.sessionId)
+      }
+    } catch (e) {
+      if (initial) setLoadError(e)
+    }
+  }, [id, goResult, userId])
+
+  const loadedFor = useRef<string | null>(null)
+  useEffect(() => {
+    // Full reset only once per session; token refresh must not overwrite unsaved local answers.
+    if (loadedFor.current === id) return
+    loadedFor.current = id ?? null
+    void sync(true)
+  }, [id, sync])
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 1000)
+    const resync = setInterval(() => void sync(), RESYNC_MS)
+    const onVisible = () => { if (document.visibilityState === 'visible') void sync() }
+    const onOnline = () => { setOnline(true); void sync() }
+    const onOffline = () => setOnline(false)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      clearInterval(tick); clearInterval(resync)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline)
+    }
+  }, [sync])
+
+  const remaining = session ? Math.max(0, Math.ceil((Date.parse(session.expiresAt) - (now + offset.current)) / 1000)) : 0
+  const expired = !!session && remaining <= 0
+
+  // Server decides when time is up; poll until it reports the session finished.
+  useEffect(() => {
+    if (!expired) return
+    void sync()
+    const poll = setInterval(() => void sync(), 3000)
+    return () => clearInterval(poll)
+  }, [expired, sync])
+
+  useEffect(() => {
+    for (const mark of [300, 60]) {
+      if (remaining > 0 && remaining <= mark && !announced.current.has(mark)) {
+        announced.current.add(mark)
+        setAnnouncement(mark === 300 ? 'Còn 5 phút làm bài.' : 'Còn 1 phút làm bài.')
+      }
+    }
+  }, [remaining])
+
+  const persist = useCallback((qid: string) => {
+    window.clearTimeout(timers.current[qid]); delete timers.current[qid]
+    const value = latest.current[qid] ?? ''
+    setQState(qid, 'saving')
+    const run = (queues.current[qid] ?? Promise.resolve()).catch(() => {}).then(() => examApi.answer(id!, qid, value))
+    queues.current[qid] = run
+    run.then(() => {
+      if (queues.current[qid] !== run) return
+      setQState(qid, (latest.current[qid] ?? '') === value ? (timers.current[qid] ? 'pending' : 'saved') : 'pending')
+      setLastSavedAt(new Date())
+    }, e => {
+      if (queues.current[qid] !== run) return
+      setQState(qid, 'error')
+      const info = errorInfo(e)
+      setActionError(info.message)
+      if (info.status === 409 || info.status === 403) void sync()
+    })
+    return run
+  }, [id, setQState, sync])
+
+  function change(qid: string, value: string, immediate: boolean) {
+    latest.current[qid] = value
+    setAnswers(a => ({ ...a, [qid]: value }))
+    setActionError('')
+    if (immediate) { void persist(qid); return }
+    setQState(qid, 'pending')
+    window.clearTimeout(timers.current[qid])
+    timers.current[qid] = window.setTimeout(() => void persist(qid), TEXT_DEBOUNCE_MS)
   }
-  async function submit(){setBusy(true);try{await Promise.all(Object.values(queues.current));if(pending.current.size)throw new Error('Unsaved');await examApi.submit(id!);navigate(`/exam/result/${id}`)}catch(e){setError(errorText(e))}finally{setBusy(false)}}
-  if(!session)return <main><p role="alert">{error || 'Đang tải bài thi…'}</p></main>
-  return <main style={{maxWidth:900,margin:'24px auto',padding:24}}><h1>{session.title}</h1>
-    <p role="timer">Thời gian còn lại: {Math.floor(remaining/60)}:{String(remaining%60).padStart(2,'0')}</p>
-    <p role="status">{saving?'Đang lưu…':pending.current.size?'Có câu chưa lưu. Hãy thử lưu lại.':'Các thay đổi đã lưu'}</p>{error && <p role="alert">{error}</p>}
-    {session.questions.map((q,i)=><section className="clean-card" key={q.questionId} style={{padding:24,marginBottom:16}}>
-      <h2>{i+1}. {q.content} ({q.points} điểm)</h2>
-      {['MULTIPLE_CHOICE','TRUE_FALSE'].includes(q.questionType) ? q.options.map(o=><label key={o.id} style={{display:'block'}}><input type="radio" name={q.questionId} value={o.id} checked={answers[q.questionId]===o.id} disabled={busy || remaining<=0} onChange={()=>save(q.questionId,o.id)} />{o.content}</label>) : <textarea aria-label={`Câu trả lời ${i+1}`} value={answers[q.questionId] || ''} disabled={busy || remaining<=0} onChange={e=>save(q.questionId,e.target.value)} />}
-      {pending.current.has(q.questionId) && !saving && <button onClick={()=>save(q.questionId,answers[q.questionId] || '')}>Thử lưu lại</button>}
-    </section>)}
-    <button className="btn-primary" disabled={busy || saving>0 || pending.current.size>0} onClick={()=>setConfirming(true)}>Nộp bài</button>
-    {confirming && <section role="dialog" aria-label="Xác nhận nộp bài"><p>Nộp bài và kết thúc lượt thi?</p><button disabled={busy || saving>0 || pending.current.size>0} onClick={()=>void submit()}>Xác nhận nộp bài</button><button disabled={busy} onClick={()=>setConfirming(false)}>Tiếp tục làm bài</button></section>}
-  </main>
+
+  const flush = useCallback(async () => {
+    Object.keys(timers.current).forEach(qid => void persist(qid))
+    await Promise.allSettled(Object.values(queues.current))
+    return Object.entries(stateRef.current).filter(([, s]) => s !== 'saved').map(([qid]) => qid)
+  }, [persist])
+
+  // Retry answers that failed while offline as soon as the connection returns.
+  useEffect(() => {
+    if (online) Object.entries(stateRef.current).filter(([, st]) => st === 'error').forEach(([qid]) => void persist(qid))
+  }, [online, persist])
+
+  // Save any typed answer that is still waiting when the page is left.
+  useEffect(() => () => { Object.keys(timers.current).forEach(qid => void persist(qid)) }, [persist])
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => { if (Object.values(stateRef.current).some(s => s !== 'saved')) e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
+
+  async function submit() {
+    if (submittingRef.current) return // ignore repeated clicks before the disabled state renders
+    submittingRef.current = true
+    setSubmitting(true); setActionError('')
+    try {
+      const unsaved = await flush()
+      if (unsaved.length) { setActionError(`Còn ${unsaved.length} câu chưa lưu được. Hãy thử lưu lại trước khi nộp.`); setConfirming(false); return }
+      await examApi.submit(id!)
+      goResult()
+    } catch (e) {
+      setActionError(errorText(e))
+      setConfirming(false)
+      void sync()
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
+
+  function goTo(i: number) {
+    const q = session?.questions[index]
+    if (q && timers.current[q.questionId]) void persist(q.questionId)
+    setIndex(i); setShowPalette(false)
+    requestAnimationFrame(() => headingRef.current?.focus())
+  }
+
+  if (loadError) return <main className="auth-shell"><div className="card" style={{ width: 'min(520px, 100%)' }}><ErrorState error={loadError} onRetry={() => { setLoadError(null); loadedFor.current = id ?? null; void sync(true) }} /></div></main>
+  if (!session) return <main className="auth-shell"><p role="status" className="row muted"><Spinner /> Đang tải bài thi…</p></main>
+
+  const questions = session.questions
+  const q = questions[index]
+  const answered = (qq: SafeQuestion) => (answers[qq.questionId] ?? '').trim() !== ''
+  const answeredCount = questions.filter(answered).length
+  const unanswered = questions.map((qq, i) => (answered(qq) ? -1 : i)).filter(i => i >= 0)
+  const states = Object.values(saveState)
+  const errors = states.filter(s => s === 'error').length
+  const busy = states.some(s => s === 'saving' || s === 'pending')
+  const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
+  const locked = expired || submitting
+
+  return (
+    <div className="take-shell">
+      <div className="sr-only" aria-live="assertive">{announcement}</div>
+      <header className="take-bar">
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontWeight: 650, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
+          <div className="xsmall muted">Lượt {session.attemptNumber} · Đã trả lời {answeredCount}/{questions.length}</div>
+        </div>
+        <SaveIndicator online={online} errors={errors} busy={busy} lastSavedAt={lastSavedAt} />
+        <span className="timer" role="timer" aria-label={`Thời gian còn lại ${formatDuration(remaining)}`} data-level={level}>
+          <Timer size={16} aria-hidden /> {formatDuration(remaining)}
+        </span>
+        <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}><Send size={16} aria-hidden /> Nộp bài</button>
+      </header>
+
+      <div className="take-body">
+        <main className="stack">
+          {expired && <Notice tone="warning" live title="Đã hết giờ">Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.</Notice>}
+          {!online && <Notice tone="warning" live title="Mất kết nối mạng">Câu trả lời mới chưa được gửi lên máy chủ. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở cho đến khi có mạng.</Notice>}
+          {actionError && <Notice tone="danger" live>{actionError}</Notice>}
+
+          <section className="card card-body stack-lg" aria-labelledby="question-heading">
+            <div className="spread">
+              <h1 id="question-heading" ref={headingRef} tabIndex={-1} style={{ fontSize: '1rem' }}>Câu {index + 1} / {questions.length}</h1>
+              <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} điểm</span>
+            </div>
+            <p className="question-text">{q.content}</p>
+            <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
+              onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
+            {saveState[q.questionId] === 'error' && (
+              <div className="row"><span className="field-error">Câu này chưa lưu được.</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => void persist(q.questionId)}>Thử lưu lại</button></div>
+            )}
+          </section>
+
+          <nav className="take-nav" aria-label="Chuyển câu">
+            <button type="button" className="btn btn-secondary" disabled={index === 0} onClick={() => goTo(index - 1)}><ChevronLeft size={16} aria-hidden /> Câu trước</button>
+            <button type="button" className="btn btn-ghost hide-desktop" aria-expanded={showPalette} onClick={() => setShowPalette(v => !v)}><LayoutGrid size={16} aria-hidden /> Các câu</button>
+            {index < questions.length - 1
+              ? <button type="button" className="btn btn-secondary" onClick={() => goTo(index + 1)}>Câu sau <ChevronRight size={16} aria-hidden /></button>
+              : <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}>Xem lại và nộp</button>}
+          </nav>
+        </main>
+
+        <aside className={`card card-body stack sticky-pane palette-pane ${showPalette ? 'open' : ''}`} aria-label="Danh sách câu hỏi" style={{ top: 76 }}>
+          <div className="spread"><h2 style={{ fontSize: '0.9375rem' }}>Câu hỏi</h2><span className="xsmall muted">{answeredCount}/{questions.length} đã trả lời</span></div>
+          <div className="palette">
+            {questions.map((qq, i) => (
+              <button key={qq.questionId} type="button" data-answered={answered(qq)} aria-current={i === index}
+                aria-label={`Câu ${i + 1}, ${answered(qq) ? 'đã trả lời' : 'chưa trả lời'}${saveState[qq.questionId] === 'error' ? ', chưa lưu được' : ''}`}
+                onClick={() => goTo(i)}>{i + 1}</button>
+            ))}
+          </div>
+          <div className="xsmall muted stack-sm" style={{ gap: 4 }}>
+            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--color-accent-soft)', border: '1px solid var(--color-accent-border)' }} /> Đã trả lời</span>
+            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid var(--color-border-strong)' }} /> Chưa trả lời</span>
+          </div>
+        </aside>
+      </div>
+
+      {confirming && (
+        <ConfirmDialog title="Nộp bài?" confirmLabel="Nộp bài" busy={submitting} cancelLabel="Tiếp tục làm bài"
+          onConfirm={() => void submit()} onCancel={() => setConfirming(false)}>
+          <div className="stack">
+            <div className="grid-stats">
+              <div className="card stat"><div className="stat-label">Đã trả lời</div><div className="stat-value">{answeredCount}</div></div>
+              <div className="card stat"><div className="stat-label">Chưa trả lời</div><div className="stat-value">{unanswered.length}</div></div>
+            </div>
+            {unanswered.length > 0 && (
+              <div className="stack-sm">
+                <span className="small">Câu chưa trả lời:</span>
+                <div className="row">{unanswered.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}>Câu {i + 1}</button>)}</div>
+              </div>
+            )}
+            {busy && <p className="small muted">Đang lưu các thay đổi cuối; hệ thống sẽ hoàn tất lưu trước khi nộp.</p>}
+            <Notice tone="warning">Sau khi nộp, bạn không thể thay đổi câu trả lời.</Notice>
+          </div>
+        </ConfirmDialog>
+      )}
+    </div>
+  )
+}
+
+function SaveIndicator({ online, errors, busy, lastSavedAt }: { online: boolean; errors: number; busy: boolean; lastSavedAt: Date | null }) {
+  let content
+  if (!online) content = <><CloudOff size={16} aria-hidden /> Mất mạng</>
+  else if (errors) content = <span style={{ color: 'var(--color-danger)' }} className="row"><AlertCircle size={16} aria-hidden /> {errors} câu chưa lưu</span>
+  else if (busy) content = <><Spinner size={14} /> Đang lưu…</>
+  else if (lastSavedAt) content = <><CheckCircle2 size={16} aria-hidden style={{ color: 'var(--color-success)' }} /> Đã lưu {formatClock(lastSavedAt)}</>
+  else content = <>Câu trả lời được lưu tự động</>
+  return <span role="status" className="row xsmall muted" style={{ gap: 6 }}>{content}</span>
+}
+
+function Answer({ question, value, disabled, onChange, onBlur }: {
+  question: SafeQuestion; value: string; disabled: boolean; onChange: (v: string, immediate: boolean) => void; onBlur: () => void
+}) {
+  const name = `answer-${question.questionId}`
+  if (question.questionType === 'MULTIPLE_CHOICE' || question.questionType === 'TRUE_FALSE') {
+    return (
+      <fieldset className="stack-sm">
+        <legend className="sr-only">Chọn một đáp án</legend>
+        {question.options.map((o, i) => (
+          <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
+            <input type="radio" name={name} value={o.id} checked={value === o.id} disabled={disabled} onChange={() => onChange(o.id, true)} className="sr-only" />
+            <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
+            <span className="prewrap" style={{ flex: 1 }}>{o.content}</span>
+          </label>
+        ))}
+        {value && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>Bỏ chọn</button></div>}
+      </fieldset>
+    )
+  }
+  if (question.questionType === 'SHORT_ANSWER') {
+    return (
+      <div className="field">
+        <label className="field-label" htmlFor={name}>Câu trả lời</label>
+        <input id={name} className="input" value={value} disabled={disabled} maxLength={20000} autoComplete="off"
+          onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
+        <span className="field-hint">Nhập chính xác câu trả lời ngắn gọn.</span>
+      </div>
+    )
+  }
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={name}>Bài làm</label>
+      <textarea id={name} className="input" rows={10} value={value} disabled={disabled} maxLength={20000}
+        onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
+      <span className="field-hint">{value.length.toLocaleString('vi-VN')}/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.</span>
+    </div>
+  )
 }
