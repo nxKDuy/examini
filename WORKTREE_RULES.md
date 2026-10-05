@@ -56,14 +56,13 @@ authorization semantics, backend or repository infrastructure changes still
 require MAIN approval. Keep frontend shared changes minimal and in dedicated
 commits, and avoid unrelated dependency upgrades.
 
-
 Service-local POMs/config belong to that service owner; changes to shared
 dependency semantics or infrastructure still need a coordinator decision.
 Unclassified paths require an ownership decision before editing.
 
-Avoid shared edits unless required. Request coordinator approval with the path,
-reason and minimal proposed change. Any approved shared edit must be isolated
-from feature work in a dedicated commit with its reason in the commit body.
+Avoid shared edits unless required. For MAIN-owned shared paths, request
+coordinator approval with the path, reason and minimal proposed change. Shared
+edits must be isolated from feature work in dedicated commits with their reason.
 No drive-by refactoring, unrelated dependency upgrades, global formatting or
 moving code across domains for aesthetic cleanup. No secrets in commits/mail.
 
