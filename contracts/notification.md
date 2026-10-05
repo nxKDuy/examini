@@ -37,6 +37,11 @@ Envelope (version 1):
 }
 ```
 
+All envelope fields are required. `eventVersion` is the JSON integer `1` and
+`occurredAt` an ISO-8601 instant (e.g. `2026-10-05T10:00:00Z`); integer payload
+fields such as `questionVersion` must be JSON integers. Nothing is coerced:
+`1.5`, `1.0` or `"1"` is dead-lettered.
+
 Producer requirements:
 
 - Publish only after the source transaction commits (transactional outbox, as
@@ -110,7 +115,8 @@ through the shared API client (Bearer token, no identity headers):
 - Mark one: `PATCH /notifications/{id}/read`; mark all: `PATCH /notifications/read-all`.
 - Relative time comes from `createdAt`. Icon by `type`. Navigation by
   `entityType`/`entityId`: QUESTION -> question detail, EXAM -> exam
-  (invitation acceptance / lobby), EXAM_SESSION -> result `/grades/session/{entityId}`.
+  (invitation acceptance / lobby), EXAM_SESSION -> SPA result page `/exam/result/{entityId}`
+  (the session ID; the page itself calls backend `GET /grades/session/{sessionId}`).
 - Deleting a notification is not supported; remove the mock's dismiss action.
 
 ## Data model and delivery channels
