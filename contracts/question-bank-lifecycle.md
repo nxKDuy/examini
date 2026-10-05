@@ -30,6 +30,20 @@ không chứa answer key. Publish Exam chụp version/content/options/points b�
 
 ## Rollout và phạm vi
 
+MAIN đã duyệt quyền Organization resource-local `bank_authorities`:
+`bankId`, `userId`, `canUse`, `canReview`. Signed systemPrivilege ADMIN mới được
+provision bank và grant/revoke. canReview không tự cấp canUse; không suy quyền
+membership toàn Organization từ grant này hoặc persona Teacher.
+
+Hợp đồng tương thích đã duyệt: `POST /questions/batch?eligible=true&includeAnswers=true`
+giữ internal service credential và server-supplied `X-Question-Owner-Id`.
+DTO thêm `eligible` (boolean), `bankType`, `publicationStatus`; giữ `id`,
+`questionVersion`, `status` thật, content/type/options/expectedAnswer.
+Exam consumer từ chối nếu eligible thiếu/false và vẫn kiểm tra key/version/points.
+Provider chịu trách nhiệm quyền và bank-aware eligibility. Candidate mặc định
+không nhận answer key. `GET /questions/random` giữ UUID[] và filters hiện có,
+thêm bankId tùy chọn. Routes frontend cuối cùng chờ provider handoff.
+
 Migration additive, giữ IDs/versions/legacy reviews/snapshots. Question Bank
 bàn giao routes/DTO/mapping; MAIN review trước khi giao frontend.
 Organization membership đầy đủ, moderation/ratings, Notification/Analytics UI và
