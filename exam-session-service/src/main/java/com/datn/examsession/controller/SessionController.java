@@ -1,69 +1,19 @@
 package com.datn.examsession.controller;
-
-import com.datn.examsession.entity.ProctoringLog;
-import com.datn.examsession.service.ProctoringService;
 import com.datn.examsession.service.SessionService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
-
-@RestController
-@RequestMapping("/sessions")
-@RequiredArgsConstructor
-@Tag(name = "Exam Session", description = "Quản lý phiên thi của thí sinh")
+import java.util.*;
+@RestController @RequestMapping("/sessions") @RequiredArgsConstructor
 public class SessionController {
-
-    private final SessionService sessionService;
-    private final ProctoringService proctoringService;
-
-    @PostMapping("/start")
-    @Operation(summary = "Bắt đầu thi")
-    public SessionService.StartSessionResponse startExam(
-            @RequestParam String examCode,
-            @RequestHeader("X-User-Id") UUID userId) {
-        return sessionService.startExam(examCode, userId);
-    }
-
-    @PostMapping("/{sessionId}/answers")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Lưu câu trả lời")
-    public void saveAnswer(
-            @PathVariable UUID sessionId,
-            @RequestParam UUID questionId,
-            @RequestBody AnswerRequest req,
-            @RequestHeader("X-User-Id") UUID userId) {
-        sessionService.saveAnswer(sessionId, userId, questionId, req.content());
-    }
-
-    @PostMapping("/{sessionId}/submit")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Nộp bài thủ công")
-    public void submitExam(
-            @PathVariable UUID sessionId,
-            @RequestHeader("X-User-Id") UUID userId) {
-        sessionService.submitExam(sessionId, userId);
-    }
-
-    @PostMapping("/{sessionId}/proctoring")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Ghi log giám thị ảo")
-    public void logProctoringEvent(
-            @PathVariable UUID sessionId,
-            @RequestParam ProctoringLog.EventType eventType,
-            @RequestParam(required = false) String description,
-            @RequestHeader("X-User-Id") UUID userId) {
-        proctoringService.logEvent(sessionId, userId, eventType, description);
-    }
-
-    @GetMapping("/{sessionId}/internal/answers")
-    @Operation(summary = "API NỘI BỘ: Lấy chi tiết bài làm để chấm điểm")
-    public SessionService.SessionDetailDto getSessionDetails(@PathVariable UUID sessionId) {
-        return sessionService.getSessionDetails(sessionId);
-    }
-
-    public record AnswerRequest(String content) {}
+    private final SessionService service;private final com.datn.examsession.client.ExamClient exams;
+    @PostMapping("/start") public SessionService.StartSessionResponse start(@RequestParam(required=false) UUID examId,@RequestParam(required=false) String examCode,@RequestHeader("Authorization") String bearer,@RequestAttribute UUID actor){if(examId==null){if(examCode==null)throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"Exam identity required");examId=exams.byCode(examCode,bearer).id();}return service.startExam(examId,actor);}
+    @GetMapping("/{id}") public SessionService.StartSessionResponse get(@PathVariable UUID id,@RequestAttribute UUID actor){return service.get(id,actor);}
+    @PostMapping("/{id}/answers") public void answer(@PathVariable UUID id,@RequestParam UUID questionId,@RequestAttribute UUID actor,@RequestBody Answer req){service.saveAnswer(id,actor,questionId,req.content());}
+    @PostMapping("/{id}/submit") public void submit(@PathVariable UUID id,@RequestAttribute UUID actor){service.submitExam(id,actor);}
+    @GetMapping("/exam/{id}/monitor") public List<SessionService.Monitor> monitor(@PathVariable UUID id,@RequestAttribute UUID actor){return service.monitor(id,actor);}
+    @GetMapping("/{id}/internal/answers") public SessionService.SessionDetailDto internal(@PathVariable UUID id){return service.getSessionDetails(id);}
+    @GetMapping("/{id}/internal/owner") public UUID owner(@PathVariable UUID id){return service.owner(id);}
+    @GetMapping("/exam/{id}/internal/eligibility") public Eligibility eligibility(@PathVariable UUID id,@RequestParam UUID user){return new Eligibility(service.attempts(id,user),service.resumable(id,user));}
+    public record Eligibility(long attempts,boolean resumable){}
+    public record Answer(String content){}
 }

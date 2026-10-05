@@ -73,11 +73,11 @@ public class Exam {
 
     @Column(name = "block_tab_switch", nullable = false)
     @Builder.Default
-    private boolean blockTabSwitch = true;
+    private boolean blockTabSwitch = false;
 
     @Column(name = "require_fullscreen", nullable = false)
     @Builder.Default
-    private boolean requireFullscreen = true;
+    private boolean requireFullscreen = false;
 
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
@@ -90,10 +90,57 @@ public class Exam {
     @CollectionTable(name = "exam_questions", joinColumns = @JoinColumn(name = "exam_id"))
     @Column(name = "question_id")
     @Builder.Default
+    @OrderColumn(name="position")
     private List<UUID> questionIds = new ArrayList<>();
 
+    @ElementCollection
+    @CollectionTable(name = "exam_invitations", joinColumns = @JoinColumn(name = "exam_id"))
+    @MapKeyColumn(name = "user_id") @Enumerated(EnumType.STRING) @Column(name = "role", nullable = false)
+    @Builder.Default private java.util.Map<UUID, MemberRole> invitations = new java.util.HashMap<>();
+
+    public UUID getOwnerUserId() { return createdBy; }
+
+    @ElementCollection
+    @CollectionTable(name = "exam_members", joinColumns = @JoinColumn(name = "exam_id"))
+    @MapKeyColumn(name = "user_id")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false)
+    @Builder.Default
+    private java.util.Map<UUID, MemberRole> members = new java.util.HashMap<>();
+
+    @ElementCollection
+    @CollectionTable(name = "exam_participants", joinColumns = @JoinColumn(name = "exam_id"))
+    @MapKeyColumn(name = "user_id")
+    @Column(name = "source", nullable = false)
+    @Builder.Default
+    private java.util.Map<UUID, String> participants = new java.util.HashMap<>();
+
+    @ElementCollection
+    @CollectionTable(name = "exam_question_points", joinColumns = @JoinColumn(name = "exam_id"))
+    @MapKeyColumn(name = "question_id")
+    @Column(name = "points", nullable = false, precision = 12, scale = 4)
+    @Builder.Default
+    private java.util.Map<UUID, java.math.BigDecimal> points = new java.util.HashMap<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "access_mode", nullable = false)
+    @Builder.Default private AccessMode accessMode = AccessMode.ASSIGNED;
+    @Column(name = "max_participants", nullable = false)
+    @Builder.Default private int maxParticipants = 100;
+    @Column(name = "max_concurrent_sessions", nullable = false)
+    @Builder.Default private int maxConcurrentSessions = 50;
+    @Column(name = "attempt_limit", nullable = false)
+    @Builder.Default private int attemptLimit = 1;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "snapshots", columnDefinition = "jsonb", nullable = false)
+    @Builder.Default private java.util.List<com.datn.exam.dto.Snapshot> snapshots = new java.util.ArrayList<>();
+
+    public enum MemberRole { MANAGER, PROCTOR }
+    public enum AccessMode { ASSIGNED, JOIN_CODE, PUBLIC }
+
     public enum Status {
-        DRAFT, PUBLISHED, COMPLETED
+        DRAFT, PUBLISHED, OPEN, CLOSED, COMPLETED
     }
 
     public enum ExamType {

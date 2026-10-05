@@ -1,15 +1,19 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { examApi, type Exam } from './examApi'
+import { examApi, errorText, type Exam } from './examApi'
 import { useNavigate } from 'react-router-dom'
+import ExamManagement from './ExamManagement'
 import { FileText, Plus, Users, Clock, Target, Trash2 } from 'lucide-react'
 
 export default function ExamListPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const [page, setPage] = useState(0)
+  const [page,setPage] = useState(0)
+  const [actionError,setActionError]=useState('')
+  const [selected,setSelected]=useState<Exam | null>(null)
+  const invites=useQuery({queryKey:['invitations'],queryFn:examApi.invitations})
   
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['exams', page],
     queryFn: () => examApi.getExams({ page })
   })
@@ -42,6 +46,9 @@ export default function ExamListPage() {
         </button>
       </div>
 
+      {(error || invites.error || deleteMut.error || actionError) && <p role="alert">{actionError || errorText(error || invites.error || deleteMut.error)}</p>}
+      {invites.data?.map(e=><p key={e.id}>Lời mời: {e.title} <button onClick={()=>examApi.accept(e.id).then(()=>{qc.invalidateQueries({queryKey:['exams']});qc.invalidateQueries({queryKey:['invitations']})}).catch(e=>setActionError(errorText(e)))}>Chấp nhận</button></p>)}
+      {selected && <ExamManagement exam={selected} onClose={()=>setSelected(null)} />}
       {/* Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24 }}>
         
@@ -80,11 +87,12 @@ export default function ExamListPage() {
             
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <span className={`badge ${exam.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}`}>
-                {exam.status === 'PUBLISHED' ? 'Đã xuất bản' : 'Bản nháp'}
+                {exam.status}
               </span>
               <span className="badge badge-primary">{exam.type === 'PRACTICE' ? 'Luyện tập' : 'Thi thật'}</span>
             </div>
             
+            <button className="btn-secondary" onClick={()=>setSelected(exam)}>Quản lý / Theo dõi</button>
             <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 8px 0', color: 'var(--color-surface-50)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {exam.title}
             </h3>
@@ -98,10 +106,10 @@ export default function ExamListPage() {
             <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--color-surface-700)', paddingTop: 16 }}>
               <div style={{ display: 'flex', gap: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-surface-400)', fontSize: '0.85rem' }}>
-                   <Users size={14} /> {exam.studentCount ?? 0}
+                   <Users size={14} /> {exam.maxParticipants} tối đa
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-surface-400)', fontSize: '0.85rem' }}>
-                   <Target size={14} /> {exam.avgScore ?? 0}/{exam.totalScore}
+                   <Target size={14} /> {exam.totalScore} điểm
                 </div>
               </div>
               <button 
@@ -114,6 +122,7 @@ export default function ExamListPage() {
           </div>
         ))}
       </div>
+      {data && data.totalPages>1 && <nav aria-label="Trang đề thi"><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>Trang trước</button><span>{page+1}/{data.totalPages}</span><button disabled={page+1>=data.totalPages} onClick={()=>setPage(p=>p+1)}>Trang sau</button></nav>}
     </div>
   )
 }

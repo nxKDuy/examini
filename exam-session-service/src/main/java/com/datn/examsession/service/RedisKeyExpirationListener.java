@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="exam.redis-expiry-enabled",havingValue="true")
 public class RedisKeyExpirationListener extends KeyExpirationEventMessageListener {
 
     private final SessionService sessionService;

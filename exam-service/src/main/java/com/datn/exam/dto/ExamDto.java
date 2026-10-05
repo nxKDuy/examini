@@ -72,6 +72,12 @@ public class ExamDto {
             LocalDateTime createdAt,
             List<UUID> questionIds,
             // Thống kê (nullable — chỉ có khi query kèm stats)
+            List<QuestionWeightDto> questions,
+            UUID ownerUserId,
+            String accessMode,
+            int maxParticipants,
+            int maxConcurrentSessions,
+            int attemptLimit,
             Long studentCount,
             Float avgScore
     ) {
@@ -81,11 +87,13 @@ public class ExamDto {
                     e.getId(), e.getCode(), e.getTitle(), e.getDescription(),
                     e.getDurationMinutes(), e.getStartTime(), e.getEndTime(),
                     e.getStatus().name(), e.getType().name(),
-                    e.getPassingScore(), null,           // totalScore tính sau
+                    e.getPassingScore(), e.getSnapshots().isEmpty() ? e.getPoints().values().stream().reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add).floatValue() : e.getSnapshots().stream().map(Snapshot::points).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add).floatValue(),           // totalScore tính sau
                     e.isShuffleQuestions(), e.isShuffleOptions(),
                     e.isRequireCam(), e.isRequireMic(),
                     e.isBlockTabSwitch(), e.isRequireFullscreen(),
                     e.getCreatedAt(), e.getQuestionIds(),
+                    e.getQuestionIds().stream().map(id->new QuestionWeightDto(id,e.getPoints().getOrDefault(id,java.math.BigDecimal.ONE).doubleValue())).toList(),
+                    e.getOwnerUserId(),e.getAccessMode().name(),e.getMaxParticipants(),e.getMaxConcurrentSessions(),e.getAttemptLimit(),
                     null, null
             );
         }

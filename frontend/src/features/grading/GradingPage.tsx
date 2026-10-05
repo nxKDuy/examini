@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient, useQueryClient as useQC } from '@tanstack/react-query'
-import { gradingApi, type Submission, type SubmissionDetail } from './gradingApi'
-import { examApi } from '../exams/examApi'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { gradingApi, type Submission } from './gradingApi'
+import { errorText, examApi } from '../exams/examApi'
 import {
   CheckSquare, Search, User, Save, FileText,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Filter
@@ -11,7 +11,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   SUBMITTED:    { label: 'Chờ chấm',   cls: 'badge-yellow' },
   PENDING:      { label: 'Chờ chấm',   cls: 'badge-yellow' },
   GRADED:       { label: 'Đã chấm',    cls: 'badge-green' },
-  AUTO_GRADED:  { label: 'Tự động',    cls: 'badge-gray' },
+  NEEDS_REVIEW: { label: 'Cần xét duyệt', cls: 'badge-yellow' },
 }
 
 export default function GradingPage() {
@@ -36,12 +36,13 @@ export default function GradingPage() {
     queryFn: () => examApi.getExams({ size: 100 })
   })
 
-  const { data: submissionsPage, isLoading: listLoading } = useQuery({
+  const { data: submissionsPage, isLoading: listLoading, error: listError } = useQuery({
     queryKey: ['submissions', examId, statusFilter, page],
+    enabled: !!examId,
     queryFn: () => gradingApi.getSubmissions({ examId: examId || undefined, status: statusFilter || undefined, page }),
   })
 
-  const { data: detail, isLoading: detailLoading } = useQuery({
+  const { data: detail, isLoading: detailLoading, error: detailError } = useQuery({
     queryKey: ['submission-detail', selectedId],
     queryFn: () => gradingApi.getSubmissionDetail(selectedId!),
     enabled: !!selectedId,
@@ -108,13 +109,14 @@ export default function GradingPage() {
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
             className="input-field" style={{ width: 140 }}>
             <option value="">Tất cả trạng thái</option>
-            <option value="SUBMITTED">Chờ chấm</option>
+            <option value="PENDING">Chờ chấm</option>
             <option value="GRADED">Đã chấm</option>
-            <option value="AUTO_GRADED">Tự động</option>
+            <option value="NEEDS_REVIEW">Cần xét duyệt</option>
           </select>
         </div>
       </div>
 
+      {gradeMut.error && <p role="alert">Lưu điểm thất bại. Vui lòng thử lại.</p>}
       {/* Split View */}
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
 
@@ -132,7 +134,7 @@ export default function GradingPage() {
 
           {/* List */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {listLoading ? (
+            {listError ? <p role="alert">{errorText(listError)}</p> : listLoading ? (
               [...Array(5)].map((_, i) => <div key={i} className="skeleton" style={{ height: 68, borderRadius: 8 }} />)
             ) : filteredSubmissions.length === 0 ? (
               <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-surface-400)' }}>
@@ -185,7 +187,7 @@ export default function GradingPage() {
               <FileText size={48} color="var(--color-surface-700)" style={{ marginBottom: 16 }} />
               <p>Chọn một bài nộp ở danh sách bên trái để chấm điểm.</p>
             </div>
-          ) : detailLoading ? (
+          ) : detailError ? <p role="alert">{errorText(detailError)}</p> : detailLoading ? (
             <div style={{ padding: 40, display: 'flex', flexDirection: 'column', gap: 16 }}>
               {[...Array(4)].map((_, i) => <div key={i} className="skeleton" style={{ height: 80, borderRadius: 8 }} />)}
             </div>

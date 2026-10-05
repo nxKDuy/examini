@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { questionBankApi, type Question } from '../question-bank/questionApi'
+import { examApi, errorText } from './examApi'
 import { X, Search, CheckCircle2 } from 'lucide-react'
 
 interface QuestionSelectorModalProps {
@@ -26,9 +27,9 @@ export default function QuestionSelectorModal({ onClose, onSelect, alreadySelect
     enabled: !!subjectId,
   })
   
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['questions', categoryId, difficulty, page],
-    queryFn: () => questionBankApi.getQuestions({ categoryId: categoryId || undefined, difficulty: difficulty || undefined, page, size: 10 }),
+    queryFn: () => examApi.selectQuestions({ categoryId: categoryId || undefined, difficulty: difficulty || undefined, page, size: 10 }),
   })
 
   const questions = data?.content ?? []
@@ -91,7 +92,7 @@ export default function QuestionSelectorModal({ onClose, onSelect, alreadySelect
 
         {/* List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {isLoading ? (
+          {error ? <p role="alert">{errorText(error)}</p> : isLoading ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-surface-400)' }}>Đang tải...</div>
           ) : questions.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40 }}>

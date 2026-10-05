@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { FileText, Plus, Trash2, GripVertical } from 'lucide-react'
+import { FileText, Plus, Trash2, GripVertical, Rocket } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { examApi, type CreateExamPayload } from './examApi'
+import { examApi, errorText, type CreateExamPayload } from './examApi'
 import QuestionSelectorModal from './QuestionSelectorModal'
 import { type Question } from '../question-bank/questionApi'
 
@@ -12,21 +12,16 @@ interface CreateExamWizardProps {
 export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
   const qc = useQueryClient()
   const [step, setStep] = useState(1)
+  const [error, setError] = useState('')
   
   // Form State
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [type, setType] = useState<'PRACTICE' | 'OFFICIAL'>('PRACTICE')
+  const [type, setType] = useState<'PRACTICE' | 'EXAM'>('PRACTICE')
   const [durationMinutes, setDurationMinutes] = useState(45)
   const [passingScore, setPassingScore] = useState(5)
   const [shuffleQuestions, setShuffleQuestions] = useState(false)
   const [shuffleOptions, setShuffleOptions] = useState(false)
-  
-  // Proctoring State
-  const [requireCam, setRequireCam] = useState(false)
-  const [requireMic, setRequireMic] = useState(false)
-  const [blockTabSwitch, setBlockTabSwitch] = useState(true)
-  const [requireFullscreen, setRequireFullscreen] = useState(true)
   
   // Selected Questions
   const [questions, setQuestions] = useState<(Question & { weight: number })[]>([])
@@ -36,18 +31,18 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
     mutationFn: examApi.createExam,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exams'] })
-      alert('Tạo đề thi thành công!')
       onClose()
     },
-    onError: () => alert('Lỗi khi tạo đề thi')
+    onError: (e) => setError(errorText(e))
   })
 
   const handleNext = () => {
+    setError('')
     if (step === 1) {
-      if (!title.trim() || durationMinutes <= 0) return alert('Vui lòng nhập tên đề thi và thời gian hợp lệ')
+      if (!title.trim() || durationMinutes <= 0) return setError('Vui lòng nhập tên đề thi và thời gian hợp lệ')
       setStep(2)
     } else if (step === 2) {
-      if (questions.length === 0) return alert('Vui lòng chọn ít nhất 1 câu hỏi')
+      if (questions.length === 0) return setError('Vui lòng chọn ít nhất 1 câu hỏi')
       setStep(3)
     } else if (step === 3) {
       // Submit
@@ -59,10 +54,10 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
         passingScore,
         shuffleQuestions,
         shuffleOptions,
-        requireCam,
-        requireMic,
-        blockTabSwitch,
-        requireFullscreen,
+        requireCam: false,
+        requireMic: false,
+        blockTabSwitch: false,
+        requireFullscreen: false,
         questions: questions.map(q => ({ questionId: q.id, weight: q.weight }))
       }
       createMut.mutate(payload)
@@ -101,7 +96,7 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
           {[
             { s: 1, label: 'Thông tin chung' },
             { s: 2, label: 'Thêm câu hỏi' },
-            { s: 3, label: 'Cài đặt & Xuất bản' }
+            { s: 3, label: 'Cài đặt & Lưu nháp' }
           ].map((item, idx) => (
             <div key={item.s} style={{ display: 'flex', alignItems: 'center' }}>
               {/* Step node */}
@@ -146,6 +141,7 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '40px 24px', background: '#F9F9F9' }}>
         <div className="clean-card" style={{ maxWidth: 800, margin: '0 auto', padding: 40, background: '#ffffff', minHeight: '60vh' }}>
           
+          {error && <p role="alert">{error}</p>}
           {step === 1 && (
             <div className="page-enter">
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 32, color: 'var(--color-surface-50)' }}>Bước 1: Thông tin cơ bản</h2>
@@ -163,7 +159,7 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
                     <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-surface-200)' }}>Loại đề</label>
                     <select className="input-field" value={type} onChange={e => setType(e.target.value as any)}>
                       <option value="PRACTICE">Luyện tập</option>
-                      <option value="OFFICIAL">Thi chính thức</option>
+                      <option value="EXAM">Thi chính thức</option>
                     </select>
                   </div>
                   <div>
@@ -228,7 +224,7 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
 
           {step === 3 && (
             <div className="page-enter">
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 32, color: 'var(--color-surface-50)' }}>Bước 3: Cài đặt & Xuất bản</h2>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 32, color: 'var(--color-surface-50)' }}>Bước 3: Cài đặt & Lưu nháp</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
                 <div style={{ padding: 20, background: 'var(--color-surface-900)', borderRadius: 8, border: '1px solid var(--color-surface-700)' }}>
@@ -268,37 +264,6 @@ export default function CreateExamWizard({ onClose }: CreateExamWizardProps) {
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--color-surface-50)', margin: '0 0 8px 0' }}>Giám sát thi (Proctoring)</h3>
-                  
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, border: `1px solid ${blockTabSwitch ? 'var(--color-primary-400)' : 'var(--color-surface-700)'}`, background: blockTabSwitch ? 'var(--color-primary-50)' : '#fff', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }}>
-                    <input type="checkbox" checked={blockTabSwitch} onChange={e => setBlockTabSwitch(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--color-primary-500)' }} />
-                    <div>
-                      <div style={{ fontWeight: 600, color: 'var(--color-surface-50)', marginBottom: 2 }}>Chặn chuyển Tab</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-surface-400)' }}>Cảnh báo & tự nộp bài nếu rời tab</div>
-                    </div>
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, border: `1px solid ${requireFullscreen ? 'var(--color-primary-400)' : 'var(--color-surface-700)'}`, background: requireFullscreen ? 'var(--color-primary-50)' : '#fff', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }}>
-                    <input type="checkbox" checked={requireFullscreen} onChange={e => setRequireFullscreen(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--color-primary-500)' }} />
-                    <div>
-                      <div style={{ fontWeight: 600, color: 'var(--color-surface-50)', marginBottom: 2 }}>Bắt buộc Toàn màn hình</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-surface-400)' }}>Phải bật Fullscreen mới làm bài được</div>
-                    </div>
-                  </label>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: `1px solid ${requireCam ? 'var(--color-primary-400)' : 'var(--color-surface-700)'}`, background: requireCam ? 'var(--color-primary-50)' : '#fff', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }}>
-                      <input type="checkbox" checked={requireCam} onChange={e => setRequireCam(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--color-primary-500)' }} />
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-surface-50)' }}>Yêu cầu Webcam</div>
-                    </label>
-
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: `1px solid ${requireMic ? 'var(--color-primary-400)' : 'var(--color-surface-700)'}`, background: requireMic ? 'var(--color-primary-50)' : '#fff', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }}>
-                      <input type="checkbox" checked={requireMic} onChange={e => setRequireMic(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--color-primary-500)' }} />
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-surface-50)' }}>Yêu cầu Micro</div>
-                    </label>
-                  </div>
-                </div>
               </div>
             </div>
           )}

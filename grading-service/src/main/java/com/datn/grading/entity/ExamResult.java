@@ -48,7 +48,13 @@ public class ExamResult {
     @Builder.Default
     private List<QuestionGrade> questionGrades = new ArrayList<>();
 
+    private Float maxScore;
+    private String examTitle;
+    @Column(columnDefinition="TEXT") private String feedback;
+    private java.time.LocalDateTime submittedAt;
+    private Integer durationSeconds;
+    private UUID gradedBy;
     public enum Status {
-        PENDING, GRADED
+        PENDING, NEEDS_REVIEW, GRADED
     }
 }

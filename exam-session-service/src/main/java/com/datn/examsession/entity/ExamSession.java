@@ -52,6 +52,12 @@ public class ExamSession {
     @Builder.Default
     private List<ProctoringLog> proctoringLogs = new ArrayList<>();
 
+    @Column(name="expires_at",nullable=false) private java.time.Instant expiresAt;
+    @Column(name="attempt_number",nullable=false) private int attemptNumber;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name="questions",columnDefinition="jsonb",nullable=false)
+    @Builder.Default private java.util.List<com.datn.examsession.client.ExamClient.Question> questions = new java.util.ArrayList<>();
+    @Column(name="exam_title",nullable=false) private String examTitle;
     public enum Status {
         IN_PROGRESS, SUBMITTED, AUTO_SUBMITTED, CANCELLED
     }
