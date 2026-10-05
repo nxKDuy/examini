@@ -19,7 +19,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ExamAnalyticsAccess {
     private final ExamClient exams;
-    @Value("${exam.internal-token:}") private String token = "";
+    @Value("${analytics.exam-permission-token:}") private String token = "";
 
     public String require(UUID examId, UUID actor) {
         if (token.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Exam integration not configured");
@@ -30,6 +30,7 @@ public class ExamAnalyticsAccess {
         } catch (FeignException.NotFound e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Exam not found");
         } catch (FeignException e) {
+            // Includes 401 while Exam does not yet accept the permission-only token: fail closed.
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Exam authorization unavailable");
         }
     }

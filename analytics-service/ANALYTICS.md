@@ -50,7 +50,10 @@ No answer content, option IDs, correct answers or grading keys are carried.
 - An event is applied only when its `resultRevision` is greater than the stored one, so
   duplicate deliveries, broker redelivery after restart and late older revisions are no-ops.
   Question outcomes for that result are replaced in the same transaction.
+- Every delivery takes a transaction-scoped PostgreSQL advisory lock on its `sessionId`
+  before the identity check, so even concurrent *first* deliveries are serialized.
 - A changed `resultId`/`examId`/`candidateId` for a known session is rejected.
+- `occurredAt` is required; numeric versions/revisions are parsed strictly (no 1.5 → 1).
 - Contract violations (validation failures, malformed JSON) are dead-lettered immediately;
   infrastructure failures are retried 5 times with backoff, then dead-lettered.
 - The projection can be rebuilt by truncating it and replaying every result event; the
@@ -115,7 +118,9 @@ the only durable store.
 
 ## Runtime configuration
 
-`JWT_SECRET`, `EXAM_INTERNAL_TOKEN` (for the Exam permission call), RabbitMQ connection
+`JWT_SECRET`, `ANALYTICS_EXAM_PERMISSION_TOKEN` (permission-only credential for the Exam
+permission call; Analytics never receives `EXAM_INTERNAL_TOKEN`, which also unlocks grading
+keys; until Exam accepts it, every request fails closed with 503), RabbitMQ connection
 (`SPRING_RABBITMQ_*`). Compose wiring is a MAIN-owned change; see the MAIN handoff.
 
 ## Tests

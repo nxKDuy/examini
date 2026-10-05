@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -23,11 +24,16 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static com.datn.analytics.AnalyticsFixtures.*;
 import static org.hamcrest.Matchers.*;
@@ -44,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=${ANALYTICS_TEST_DATABASE_PASSWORD:}",
         "eureka.client.enabled=false", "spring.cloud.discovery.enabled=false",
         "spring.rabbitmq.listener.simple.auto-startup=false",
-        "jwt.secret=" + ExamAnalyticsIntegrationTest.SECRET, "exam.internal-token=test-internal"})
+        "jwt.secret=" + ExamAnalyticsIntegrationTest.SECRET, "analytics.exam-permission-token=test-permission"})
 @AutoConfigureMockMvc
 class ExamAnalyticsIntegrationTest {
     static final String SECRET = "test-only-jwt-key-32-bytes-or-longer-never-production";
@@ -55,6 +61,7 @@ class ExamAnalyticsIntegrationTest {
     @Autowired MessageConverter converter;
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate db;
+    @Autowired DataSource dataSource;
     @Autowired MockMvc http;
     @MockBean ExamClient exams;
 
@@ -241,6 +248,125 @@ class ExamAnalyticsIntegrationTest {
         assertEquals(0, queries.results(exam, "PENDING", 0, 2).totalElements());
     }
 
+    /**
+     * MAIN review regression: two conflicting FIRST deliveries for one session. The test holds the
+     * per-session lock, proves both deliveries are queued on it (before either identity check),
+     * then releases them. Whatever order PostgreSQL grants, exactly one identity wins and the
+     * result row and its question rows stay consistent; the loser is rejected as a contract violation.
+     */
+    @Test void concurrentConflictingFirstDeliveriesKeepOneConsistentIdentity() throws Exception {
+        UUID session = UUID.randomUUID(), otherExam = UUID.randomUUID();
+        var a = result(exam, session, UUID.randomUUID(), UUID.randomUUID(), 1, "GRADED", "10", "10",
+                List.of(item(q1, 0, "4", true, false, "4"), item(q2, 1, "6", true, false, "6")));
+        // Higher revision: before the fix it could overwrite A's scores under A's identity and
+        // write its question rows under otherExam.
+        var b = result(otherExam, session, UUID.randomUUID(), UUID.randomUUID(), 2, "GRADED", "0", "10",
+                List.of(item(q1, 0, "4", true, false, "0"), item(q2, 1, "6", true, false, "0")));
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> fa, fb;
+            try (Connection gate = dataSource.getConnection()) {
+                gate.setAutoCommit(true);
+                try (var lock = gate.prepareStatement("SELECT pg_advisory_lock(hashtextextended(CAST(? AS text), 0))")) {
+                    lock.setString(1, session.toString());
+                    lock.execute();
+                }
+                fa = pool.submit(() -> projector.apply(a));
+                fb = pool.submit(() -> projector.apply(b));
+                long deadline = System.currentTimeMillis() + 15000;
+                while (db.queryForObject("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted", Long.class) < 2) {
+                    assertTrue(System.currentTimeMillis() < deadline, "both deliveries must wait on the session lock");
+                    Thread.sleep(20);
+                }
+                assertEquals(0, db.queryForObject("SELECT count(*) FROM exam_result_projection", Integer.class));
+                try (var unlock = gate.prepareStatement("SELECT pg_advisory_unlock(hashtextextended(CAST(? AS text), 0))")) {
+                    unlock.setString(1, session.toString());
+                    unlock.execute();
+                }
+            }
+            GradingResultEvent winner = null;
+            int rejected = 0;
+            for (var pair : List.of(Map.entry(fa, a), Map.entry(fb, b))) {
+                try {
+                    assertTrue(pair.getKey().get(30, TimeUnit.SECONDS));
+                    winner = pair.getValue();
+                } catch (ExecutionException failure) {
+                    assertInstanceOf(ResultProjector.InvalidEventException.class, failure.getCause());
+                    rejected++;
+                }
+            }
+            assertNotNull(winner);
+            assertEquals(1, rejected);
+
+            var row = db.queryForMap("SELECT result_id, exam_id, candidate_id, total_score, result_revision FROM exam_result_projection");
+            assertEquals(winner.resultId(), row.get("result_id"));
+            assertEquals(winner.examId(), row.get("exam_id"));
+            assertEquals(winner.candidateId(), row.get("candidate_id"));
+            assertEquals(0, winner.totalScore().compareTo((BigDecimal) row.get("total_score")));
+            assertEquals(winner.resultRevision(), row.get("result_revision"));
+            assertEquals(2, db.queryForObject("SELECT count(*) FROM question_outcome_projection WHERE exam_id = ?", Integer.class, winner.examId()));
+            assertEquals(0, db.queryForObject("""
+                    SELECT count(*) FROM question_outcome_projection o JOIN exam_result_projection r USING (session_id)
+                    WHERE o.exam_id <> r.exam_id""", Integer.class));
+            UUID loserExam = winner == a ? otherExam : exam;
+            assertEquals(0, queries.summary(loserExam).submissions());
+            assertTrue(queries.questions(loserExam).isEmpty());
+        } finally { pool.shutdownNow(); }
+
+        // Duplicate/stale semantics are unchanged after the race.
+        var row = db.queryForMap("SELECT result_id, exam_id, candidate_id, result_revision FROM exam_result_projection");
+        var same = result((UUID) row.get("exam_id"), session, (UUID) row.get("result_id"), (UUID) row.get("candidate_id"),
+                (Long) row.get("result_revision"), "GRADED", "5", "10", List.of(item(q1, 0, "4", true, false, "4")));
+        assertFalse(projector.apply(same));
+    }
+
+    Map<String, Object> validWireEvent() throws Exception {
+        return json.readValue("""
+                {"eventId":"%s","schemaVersion":1,"occurredAt":"2026-10-05T09:00:00Z","resultId":"%s","resultRevision":1,
+                 "sessionId":"%s","examId":"%s","candidateId":"%s","attemptNumber":1,"status":"GRADED",
+                 "totalScore":4,"maxScore":4,"submittedAt":"2026-10-05T08:59:00Z","gradedAt":"2026-10-05T09:00:00Z",
+                 "questions":[{"questionId":"%s","questionVersion":3,"questionType":"MULTIPLE_CHOICE","position":0,
+                   "pointValue":4,"answered":true,"needsReview":false,"awardedPoints":4}]}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), exam, UUID.randomUUID(), q1),
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+    }
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> firstQuestion(Map<String, Object> event) {
+        return ((List<Map<String, Object>>) event.get("questions")).get(0);
+    }
+
+    GradingResultEvent convert(Map<String, Object> event) throws Exception {
+        var props = new MessageProperties();
+        props.setContentType(MessageProperties.CONTENT_TYPE_JSON);
+        props.setInferredArgumentType(GradingResultEvent.class);
+        return (GradingResultEvent) converter.fromMessage(new Message(json.writeValueAsBytes(event), props));
+    }
+
+    @Test void malformedEnvelopesAreRejectedNotCoerced() throws Exception {
+        assertDoesNotThrow(() -> convert(validWireEvent()));
+        List<java.util.function.Consumer<Map<String, Object>>> malformed = List.of(
+                e -> firstQuestion(e).put("questionVersion", 1.5),
+                e -> e.put("resultRevision", 2.5),
+                e -> e.put("schemaVersion", 1.5),
+                e -> e.put("resultRevision", null),
+                e -> firstQuestion(e).remove("answered"),
+                e -> firstQuestion(e).put("needsReview", null),
+                e -> e.put("occurredAt", "yesterday"),
+                e -> e.put("occurredAt", "2026-10-05T09:00:00"));  // no offset: not an instant
+        for (var corrupt : malformed) {
+            var event = validWireEvent();
+            corrupt.accept(event);
+            assertThrows(MessageConversionException.class, () -> convert(event), event.toString());
+        }
+        // Absent occurredAt parses to null and is rejected by contract validation (dead-lettered).
+        var missing = validWireEvent();
+        missing.remove("occurredAt");
+        var parsed = convert(missing);
+        assertThrows(AmqpRejectAndDontRequeueException.class, () -> listener.onResultRecorded(parsed));
+        assertEquals(0, queries.summary(exam).submissions());
+    }
+
     static FeignException forbidden() {
         var req = Request.create(Request.HttpMethod.GET, "/exams", Map.of(), null, StandardCharsets.UTF_8, null);
         return new FeignException.Forbidden("denied", req, null, null);
@@ -250,11 +376,11 @@ class ExamAnalyticsIntegrationTest {
         UUID owner = UUID.randomUUID(), manager = UUID.randomUUID(), proctor = UUID.randomUUID(),
                 unrelated = UUID.randomUUID(), student = UUID.randomUUID(), admin = UUID.randomUUID();
         projector.apply(graded(student, "10", "4", "6"));
-        when(exams.permission(exam, owner, true, "test-internal")).thenReturn("OWNER");
-        when(exams.permission(exam, manager, true, "test-internal")).thenReturn("MANAGER");
+        when(exams.permission(exam, owner, true, "test-permission")).thenReturn("OWNER");
+        when(exams.permission(exam, manager, true, "test-permission")).thenReturn("MANAGER");
         // Exam's manage permission denies PROCTOR, unrelated teachers and ADMIN without membership.
         for (UUID denied : List.of(proctor, unrelated, admin))
-            when(exams.permission(exam, denied, true, "test-internal")).thenThrow(forbidden());
+            when(exams.permission(exam, denied, true, "test-permission")).thenThrow(forbidden());
 
         for (UUID allowed : List.of(owner, manager)) {
             http.perform(get("/analytics/exams/{id}/summary", exam).header("Authorization", jwt(allowed, "TEACHER")))
@@ -279,7 +405,7 @@ class ExamAnalyticsIntegrationTest {
             http.perform(get("/analytics/exams/{id}/" + path, exam).header("X-User-Id", owner.toString()))
                     .andExpect(status().isUnauthorized());
             http.perform(get("/analytics/exams/{id}/" + path, exam).header("Authorization", jwt(owner, "TEACHER"))
-                    .header("X-Service-Token", "test-internal")).andExpect(status().isUnauthorized());
+                    .header("X-Service-Token", "test-permission")).andExpect(status().isUnauthorized());
         }
         verify(exams, never()).permission(any(), eq(student), anyBoolean(), any());
         verify(exams, never()).permission(any(), any(), eq(false), any());
@@ -294,7 +420,7 @@ class ExamAnalyticsIntegrationTest {
 
         UUID missing = UUID.randomUUID();
         var req = Request.create(Request.HttpMethod.GET, "/exams", Map.of(), null, StandardCharsets.UTF_8, null);
-        when(exams.permission(missing, owner, true, "test-internal")).thenThrow(new FeignException.NotFound("missing", req, null, null));
+        when(exams.permission(missing, owner, true, "test-permission")).thenThrow(new FeignException.NotFound("missing", req, null, null));
         http.perform(get("/analytics/exams/{id}/summary", missing).header("Authorization", jwt(owner, "TEACHER")))
                 .andExpect(status().isNotFound());
     }

@@ -41,5 +41,8 @@ class ResultProjectorRulesTest {
         var v2 = new GradingResultEvent(base.eventId(), 2, base.occurredAt(), base.resultId(), 1,
                 base.sessionId(), exam, base.candidateId(), 1, "GRADED", n("2"), n("2"), null, null, ok);
         assertThrows(ResultProjector.InvalidEventException.class, () -> ResultProjector.validate(v2));
+        var noOccurredAt = new GradingResultEvent(base.eventId(), 1, null, base.resultId(), 1,
+                base.sessionId(), exam, base.candidateId(), 1, "GRADED", n("2"), n("2"), null, null, ok);
+        assertThrows(ResultProjector.InvalidEventException.class, () -> ResultProjector.validate(noOccurredAt));
     }
 }

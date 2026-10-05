@@ -19,6 +19,9 @@ public class ResultProjector {
 
     public enum Outcome { CORRECT, PARTIAL, INCORRECT, UNANSWERED, PENDING_REVIEW }
 
+    /** Same key derivation is used by the regression test to gate concurrent deliveries. */
+    public static final String SESSION_LOCK_KEY = "hashtextextended(CAST(:session AS text), 0)";
+
     private static final Set<String> STATUSES = Set.of("PENDING", "NEEDS_REVIEW", "GRADED");
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -29,14 +32,17 @@ public class ResultProjector {
     @Transactional
     public boolean apply(GradingResultEvent e) {
         validate(e);
+        // Serialize every delivery for this session BEFORE the identity check. A row lock cannot
+        // protect a session row that does not exist yet (concurrent conflicting first deliveries).
+        jdbc.queryForList("SELECT pg_advisory_xact_lock(" + SESSION_LOCK_KEY + ")",
+                new MapSqlParameterSource("session", e.sessionId().toString()));
         var existing = jdbc.query("""
                 SELECT result_id, exam_id, candidate_id FROM exam_result_projection
-                WHERE session_id = :session FOR UPDATE
+                WHERE session_id = :session
                 """, new MapSqlParameterSource("session", e.sessionId()),
                 (rs, i) -> rs.getObject("result_id").equals(e.resultId()) && rs.getObject("exam_id").equals(e.examId())
                         && rs.getObject("candidate_id").equals(e.candidateId()));
         if (existing.contains(false)) throw new InvalidEventException("Identity conflict for session " + e.sessionId());
-        // ON CONFLICT also serializes two concurrent first deliveries of the same result.
         int changed = jdbc.update("""
                 INSERT INTO exam_result_projection(session_id, result_id, exam_id, candidate_id, attempt_number, status,
                     total_score, max_score, submitted_at, graded_at, result_revision, last_event_id)
@@ -48,6 +54,9 @@ public class ResultProjector {
                     graded_at = EXCLUDED.graded_at, result_revision = EXCLUDED.result_revision,
                     last_event_id = EXCLUDED.last_event_id, projected_at = now()
                 WHERE exam_result_projection.result_revision < EXCLUDED.result_revision
+                  AND exam_result_projection.result_id = EXCLUDED.result_id
+                  AND exam_result_projection.exam_id = EXCLUDED.exam_id
+                  AND exam_result_projection.candidate_id = EXCLUDED.candidate_id
                 """, new MapSqlParameterSource()
                 .addValue("session", e.sessionId()).addValue("result", e.resultId())
                 .addValue("exam", e.examId()).addValue("candidate", e.candidateId())
@@ -90,6 +99,7 @@ public class ResultProjector {
     static void validate(GradingResultEvent e) {
         require(e != null, "Missing event");
         require(e.schemaVersion() == GradingResultEvent.SCHEMA_VERSION, "Unsupported schemaVersion " + e.schemaVersion());
+        require(e.occurredAt() != null, "occurredAt required");
         require(e.eventId() != null && e.resultId() != null && e.sessionId() != null && e.examId() != null
                 && e.candidateId() != null, "Missing identity");
         require(e.resultRevision() > 0, "resultRevision must be positive");

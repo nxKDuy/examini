@@ -1,9 +1,11 @@
 package com.datn.analytics.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.autoconfigure.amqp.RabbitProperties;
 import org.springframework.boot.autoconfigure.amqp.RabbitRetryTemplateCustomizer;
@@ -38,7 +40,12 @@ public class GradingEventsConfig {
         return BindingBuilder.bind(analyticsGradingResultQueue()).to(gradingEvents()).with(ROUTING_KEY);
     }
 
-    @Bean MessageConverter gradingEventConverter(ObjectMapper json) { return new Jackson2JsonMessageConverter(json); }
+    /** Strict numbers: a version/revision such as 1.5 or a missing boolean must not be coerced. */
+    @Bean MessageConverter gradingEventConverter(ObjectMapper json) {
+        return new Jackson2JsonMessageConverter(json.copy()
+                .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES));
+    }
 
     /** Contract violations go straight to the dead-letter queue; only infrastructure failures are retried. */
     @Bean RabbitRetryTemplateCustomizer contractViolationsAreNotRetried(RabbitProperties rabbit) {
@@ -46,7 +53,7 @@ public class GradingEventsConfig {
         return (target, template) -> {
             if (target == RabbitRetryTemplateCustomizer.Target.LISTENER)
                 template.setRetryPolicy(new SimpleRetryPolicy(attempts,
-                        Map.of(AmqpRejectAndDontRequeueException.class, false), true, true));
+                        Map.of(AmqpRejectAndDontRequeueException.class, false, MessageConversionException.class, false), true, true));
         };
     }
 }

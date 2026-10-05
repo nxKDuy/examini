@@ -1,7 +1,8 @@
 jwt:
   secret: ${JWT_SECRET:}
-exam:
-  internal-token: ${EXAM_INTERNAL_TOKEN:}
+analytics:
+  # Permission-only credential (MAIN decision 5783207). Never the broad EXAM_INTERNAL_TOKEN.
+  exam-permission-token: ${ANALYTICS_EXAM_PERMISSION_TOKEN:}
 
 server:
   port: 8086
