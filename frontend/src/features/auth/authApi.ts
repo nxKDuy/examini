@@ -1,28 +1,60 @@
-import api from '../../lib/api'
-import { useAuthStore } from '../../store/authStore'
+import api, { revokeSession } from '../../lib/api'
+import { useAuthStore, validateAuthUser, type AuthUser } from '../../store/authStore'
 
 interface LoginPayload { email: string; password: string }
 interface RegisterPayload { email: string; password: string; fullName: string; accountType: 'PERSONAL'; persona: 'STUDENT' | 'TEACHER' }
+let hydration: Promise<void> | null = null
+
+async function hydrate() {
+  const { accessToken, sessionVersion } = useAuthStore.getState()
+  if (!accessToken) { useAuthStore.getState().logout(); return }
+  const me = await api.get<AuthUser>('/auth/me')
+  // Refresh may rotate tokens while hydrating. Logout/account switch must win.
+  const current = useAuthStore.getState()
+  if (current.accessToken && current.sessionVersion === sessionVersion && !current.user) {
+    current.setUser(validateAuthUser(me.data))
+  } else if (current.sessionVersion !== sessionVersion) {
+    throw new Error('Session changed')
+  }
+}
+
+async function authenticate(path: string, data: LoginPayload | RegisterPayload) {
+  useAuthStore.getState().logout()
+  const sessionVersion = useAuthStore.getState().sessionVersion
+  try {
+    const res = await api.post(path, data)
+    if (useAuthStore.getState().sessionVersion !== sessionVersion) throw new Error('Session changed')
+    if (typeof res.data.accessToken !== 'string' || typeof res.data.refreshToken !== 'string') throw new Error('Invalid tokens')
+    useAuthStore.getState().setTokens(res.data.accessToken, res.data.refreshToken)
+    await hydrate()
+    return res.data
+  } catch (error) {
+    if (useAuthStore.getState().sessionVersion === sessionVersion) useAuthStore.getState().logout()
+    throw error
+  }
+}
 
 export const authApi = {
-  login: async (data: LoginPayload) => {
-    const res = await api.post('/auth/login', data)
-    useAuthStore.getState().setTokens(res.data.accessToken, res.data.refreshToken)
-    const me = await api.get('/auth/me')
-    useAuthStore.getState().setUser(me.data)
-    return res.data
+  login: (data: LoginPayload) => authenticate('/auth/login', data),
+  register: (data: RegisterPayload) => {
+    if (data.accountType !== 'PERSONAL' || !['STUDENT', 'TEACHER'].includes(data.persona)) {
+      return Promise.reject(new Error('Only personal Student/Teacher registration is supported'))
+    }
+    return authenticate('/auth/register', { email: data.email, password: data.password, fullName: data.fullName, accountType: data.accountType, persona: data.persona })
   },
-
-  register: async (data: RegisterPayload) => {
-    const res = await api.post('/auth/register', data)
-    useAuthStore.getState().setTokens(res.data.accessToken, res.data.refreshToken)
-    const me = await api.get('/auth/me')
-    useAuthStore.getState().setUser(me.data)
-    return res.data
+  restoreSession: () => {
+    if (!hydration) {
+      const sessionVersion = useAuthStore.getState().sessionVersion
+      hydration = hydrate().catch(() => {
+        if (useAuthStore.getState().sessionVersion === sessionVersion) useAuthStore.getState().logout()
+      }).finally(() => { hydration = null })
+    }
+    return hydration
   },
-
   logout: async () => {
-    try { await api.post('/auth/logout') } catch { /* ignore */ }
+    // Clear local identity immediately; backend logout is best effort.
+    const token = useAuthStore.getState().accessToken
     useAuthStore.getState().logout()
+    try { if (token) await revokeSession(token) } catch { /* local session already cleared */ }
   },
 }

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { useAuthStore } from '../../store/authStore'
+import { hasPersona, isSystemAdmin, useAuthStore } from '../../store/authStore'
 import { LayoutDashboard, BookOpen, FileText, CheckSquare, Users, BarChart2 } from 'lucide-react'
 
 const NAV_ITEMS = {
@@ -20,13 +20,13 @@ const NAV_ITEMS = {
   ],
   STUDENT: [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Tổng quan' },
-    { to: '/exams',    icon: FileText,           label: 'Bài thi của tôi' },
+    { to: '/exam/lobby/discover', icon: FileText, label: 'Bài thi của tôi' },
   ],
 }
 
 export default function Sidebar() {
   const { user } = useAuthStore()
-  const items = NAV_ITEMS[user?.role ?? 'STUDENT']
+  const items = NAV_ITEMS[isSystemAdmin(user) ? 'ADMIN' : hasPersona(user, 'TEACHER') ? 'TEACHER' : 'STUDENT']
 
   return (
     <aside style={{

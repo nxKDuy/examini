@@ -1,7 +1,7 @@
-import { useAuthStore } from '../../store/authStore'
+import { hasPersona, isSystemAdmin, useAuthStore } from '../../store/authStore'
 import { authApi } from '../../features/auth/authApi'
 import { useNavigate } from 'react-router-dom'
-import { Search, User, LogOut, Brain } from 'lucide-react'
+import { Search, User, LogOut } from 'lucide-react'
 
 export default function TopNavbar() {
   const { user } = useAuthStore()
@@ -55,8 +55,8 @@ export default function TopNavbar() {
           <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-surface-50)' }}>
             {user?.fullName || 'Người dùng'}
           </span>
-          <span className={`badge ${user?.role === 'ADMIN' ? 'badge-primary' : user?.role === 'TEACHER' ? 'badge-green' : 'badge-gray'}`} style={{ marginTop: 2, fontSize: '0.65rem' }}>
-            {user?.role || 'STUDENT'}
+          <span className={`badge ${isSystemAdmin(user) ? 'badge-primary' : hasPersona(user, 'TEACHER') ? 'badge-green' : 'badge-gray'}`} style={{ marginTop: 2, fontSize: '0.65rem' }}>
+            {isSystemAdmin(user) ? 'ADMIN' : hasPersona(user, 'TEACHER') ? 'TEACHER' : 'STUDENT'}
           </span>
         </div>
         

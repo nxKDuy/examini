@@ -22,30 +22,30 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
 
         {/* Protected Routes Without Layout (Focus Mode) */}
-        <Route element={<ProtectedRoute roles={['STUDENT']} />}>
+        <Route element={<ProtectedRoute persona="STUDENT" />}>
           <Route path="/exam/lobby/:id" element={<ExamLobbyPage />} />
           <Route path="/exam/take/:id" element={<StudentExamPage />} />
           <Route path="/exam/result/:id" element={<ExamResultPage />} />
         </Route>
 
         {/* Teacher Focus Mode — No Sidebar/Navbar */}
-        <Route element={<ProtectedRoute roles={['ADMIN', 'TEACHER']} />}>
+        <Route element={<ProtectedRoute persona="TEACHER" />}>
           <Route path="/exams/create" element={<CreateExamPage />} />
         </Route>
 
         {/* Protected Routes With Layout */}
-        <Route element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT']}><AppLayout /></ProtectedRoute>}>
+        <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<DashboardPage />} />
         </Route>
 
-        <Route element={<ProtectedRoute roles={['ADMIN', 'TEACHER']}><AppLayout /></ProtectedRoute>}>
+        <Route element={<ProtectedRoute persona="TEACHER"><AppLayout /></ProtectedRoute>}>
           <Route path="/questions" element={<QuestionListPage />} />
           <Route path="/exams" element={<ExamListPage />} />
           <Route path="/grading" element={<GradingPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
         </Route>
 
-        <Route element={<ProtectedRoute roles={['ADMIN']}><AppLayout /></ProtectedRoute>}>
+        <Route element={<ProtectedRoute adminOnly><AppLayout /></ProtectedRoute>}>
           <Route path="/users" element={<div className="page-enter p-8 text-surface-200">Quản lý người dùng (Coming soon)</div>} />
         </Route>
 

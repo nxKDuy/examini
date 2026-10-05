@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { authApi } from './authApi'
-import { Brain, LogIn } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -16,7 +17,8 @@ export default function LoginPage() {
     setError('')
     try {
       await authApi.login(form)
-      navigate('/dashboard')
+      const from = location.state?.from
+      navigate(typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true })
     } catch (err: any) {
       setError(err.response?.data?.detail ?? 'Đăng nhập thất bại, vui lòng thử lại.')
     } finally {
