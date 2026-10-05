@@ -38,6 +38,11 @@ jwt:
   access-expiry-ms: ${JWT_ACCESS_EXPIRY_MS:900000}
   refresh-expiry-ms: ${JWT_REFRESH_EXPIRY_MS:604800000}
 
+auth:
+  bootstrap:
+    email: ${AUTH_BOOTSTRAP_EMAIL:}
+    password: ${AUTH_BOOTSTRAP_PASSWORD:}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

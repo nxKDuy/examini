@@ -75,10 +75,11 @@ curl http://localhost:8080/auth/me \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-## Tài khoản Admin mặc định
+## Khởi tạo Admin
 
-- Email: `admin@datn.local`
-- Password: `Admin@123` (**Đổi ngay sau khi deploy!**)
+Cấu hình `AUTH_BOOTSTRAP_EMAIL` và `AUTH_BOOTSTRAP_PASSWORD` trong môi trường triển khai (mật khẩu tối thiểu 16 ký tự). Không commit credentials. Bootstrap chỉ tạo/cập nhật tài khoản Admin, không nâng quyền tài khoản Student/Teacher có cùng email.
+
+Migration V4 vô hiệu hóa mật khẩu seed cũ, giữ nguyên ID và dữ liệu người dùng. Với profile `prod`, cài đặt mới phải có credentials bootstrap hoặc một Admin đã được cấu hình. Sau khi bootstrap thành công, có thể bỏ cấu hình bootstrap khỏi môi trường để tránh ghi lại mật khẩu ở mỗi lần khởi động.
 
 ## Cấu trúc thư mục
 
