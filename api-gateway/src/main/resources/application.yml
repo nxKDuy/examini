@@ -6,6 +6,8 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      default-filters:
+        - JwtAuthFilter
       discovery:
         locator:
           enabled: true
@@ -15,43 +17,31 @@ spring:
           uri: lb://auth-service
           predicates:
             - Path=/auth/**
-          filters:
-            - JwtAuthFilter
 
         - id: question-bank-service
           uri: lb://question-bank-service
           predicates:
             - Path=/subjects/**, /categories/**, /questions/**
-          filters:
-            - JwtAuthFilter
 
         - id: exam-service
           uri: lb://exam-service
           predicates:
             - Path=/exams/**
-          filters:
-            - JwtAuthFilter
 
         - id: exam-session-service
           uri: lb://exam-session-service
           predicates:
             - Path=/sessions/**
-          filters:
-            - JwtAuthFilter
 
         - id: grading-service
           uri: lb://grading-service
           predicates:
             - Path=/grades/**, /submissions/**
-          filters:
-            - JwtAuthFilter
 
         - id: analytics-service
           uri: lb://analytics-service
           predicates:
             - Path=/analytics/**
-          filters:
-            - JwtAuthFilter
 
         - id: exam-session-ws
           uri: lb:ws://exam-session-service
