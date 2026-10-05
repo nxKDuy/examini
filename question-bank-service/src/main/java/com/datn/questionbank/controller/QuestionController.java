@@ -1,92 +1,86 @@
 package com.datn.questionbank.controller;
 
-import com.datn.questionbank.dto.QuestionDto;
-import com.datn.questionbank.entity.Question;
+import com.datn.questionbank.dto.QuestionDto.*;
+import com.datn.questionbank.entity.Question.*;
+import com.datn.questionbank.security.QuestionActor;
 import com.datn.questionbank.service.QuestionService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.*;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.UUID;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.*;
 
 @RestController
 @RequestMapping("/questions")
 @RequiredArgsConstructor
-@Tag(name = "Questions", description = "Quản lý câu hỏi")
 public class QuestionController {
-
     private final QuestionService service;
 
+    private QuestionActor actor(HttpServletRequest request) {
+        Object actor = request.getAttribute(QuestionActor.class.getName());
+        if (!(actor instanceof QuestionActor)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Yêu cầu xác thực");
+        return (QuestionActor) actor;
+    }
+
     @GetMapping
-    @Operation(summary = "Danh sách câu hỏi (phân trang, filter theo category/difficulty)")
-    public Page<QuestionDto.QuestionResponse> findAll(
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) Question.DifficultyLevel difficulty,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        return service.findAll(categoryId, difficulty, pageable);
+    public Page<QuestionProjection> findAll(@RequestParam(required=false) UUID categoryId,
+            @RequestParam(required=false) DifficultyLevel difficulty, @RequestParam(required=false) QuestionType questionType,
+            @RequestParam(required=false) QuestionStatus status, @RequestParam(required=false) CreationMethod creationMethod,
+            @RequestParam(required=false) SourceType sourceType, @RequestParam(required=false) String text,
+            @PageableDefault(size=20, sort="createdAt", direction=Sort.Direction.DESC) Pageable pageable,
+            HttpServletRequest request) {
+        if (pageable.getPageSize() > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "size tối đa 100");
+        return service.findAll(categoryId, difficulty, questionType, status, creationMethod, sourceType, text, pageable, actor(request));
     }
-
     @GetMapping("/{id}")
-    @Operation(summary = "Chi tiết câu hỏi")
-    public QuestionDto.QuestionResponse findById(@PathVariable UUID id) {
-        return service.findById(id);
-    }
-
+    public QuestionProjection findById(@PathVariable UUID id, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) { return service.findById(id, includeAnswers, actor(req)); }
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Tạo câu hỏi mới")
-    public QuestionDto.QuestionResponse create(
-            @Valid @RequestBody QuestionDto.CreateRequest req,
-            @RequestHeader("X-User-Id") UUID createdBy) {
-        return service.create(req, createdBy);
-    }
-
+    public QuestionResponse create(@Valid @RequestBody CreateRequest body, HttpServletRequest req) { return service.create(body, actor(req)); }
     @PutMapping("/{id}")
-    @Operation(summary = "Cập nhật câu hỏi")
-    public QuestionDto.QuestionResponse update(
-            @PathVariable UUID id,
-            @RequestBody QuestionDto.UpdateRequest req,
-            @RequestHeader("X-User-Id") UUID userId) {
-        return service.update(id, req, userId);
+    public QuestionResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateRequest body, HttpServletRequest req) {
+        return service.update(id, body, actor(req));
     }
-
+    @PostMapping("/{id}/submit-review")
+    public QuestionResponse submit(@PathVariable UUID id, @Valid @RequestBody RevisionRequest body, HttpServletRequest req) {
+        return service.submit(id, body.questionVersion(), actor(req));
+    }
+    @PostMapping("/{id}/review")
+    public QuestionResponse review(@PathVariable UUID id, @Valid @RequestBody ReviewRequest body, HttpServletRequest req) {
+        return service.review(id, body, actor(req));
+    }
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Xóa câu hỏi")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public void archive(@PathVariable UUID id, @RequestParam long questionVersion, HttpServletRequest req) {
+        service.archive(id, questionVersion, actor(req));
     }
-
+    @GetMapping("/{id}/versions")
+    public List<VersionResponse> history(@PathVariable UUID id, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) { return service.history(id, includeAnswers, actor(req)); }
+    @GetMapping("/{id}/versions/{version}")
+    public VersionResponse version(@PathVariable UUID id, @PathVariable long version, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) {
+        return service.version(id, version, includeAnswers, actor(req));
+    }
+    @GetMapping("/{id}/reviews")
+    public List<ReviewResponse> reviews(@PathVariable UUID id, HttpServletRequest req) { return service.reviewHistory(id, actor(req)); }
     @GetMapping("/random")
-    @Operation(summary = "Lấy ngẫu nhiên danh sách ID câu hỏi (dùng cho service khác)")
-    public java.util.List<UUID> getRandomQuestionIds(
-            @RequestParam UUID categoryId,
-            @RequestParam Question.DifficultyLevel difficulty,
-            @RequestParam(defaultValue = "10") int limit) {
-        return service.getRandomQuestionIds(categoryId, difficulty, limit);
+    public List<UUID> random(@RequestParam UUID categoryId, @RequestParam DifficultyLevel difficulty,
+            @RequestParam(defaultValue="10") int limit, @RequestParam(required=false) QuestionType questionType,
+            @RequestParam(defaultValue="APPROVED") QuestionStatus status, HttpServletRequest req) {
+        if (status != QuestionStatus.APPROVED) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ chọn APPROVED cho Exam");
+        return service.getRandomQuestionIds(categoryId, difficulty, limit, questionType, actor(req));
     }
-
     @PostMapping("/batch")
-    @Operation(summary = "Lấy chi tiết danh sách câu hỏi từ list IDs (dùng cho thi)")
-    public java.util.List<QuestionDto.QuestionResponse> getByIds(@RequestBody java.util.List<UUID> ids) {
-        return service.getByIds(ids);
+    public List<QuestionProjection> batch(@RequestBody List<UUID> ids, @RequestParam(defaultValue="true") boolean eligible,
+            @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) {
+        return service.getByIds(ids, eligible, includeAnswers, actor(req));
     }
-
-    @PostMapping(value = "/import/csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import câu hỏi từ file CSV",
-            description = "Header: content,type,difficulty,source,option1,correct1,option2,correct2,...")
-    public QuestionDto.ImportResult importCsv(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam UUID categoryId,
-            @RequestHeader("X-User-Id") UUID createdBy) {
-        return service.importCsv(file, categoryId, createdBy);
+    @PostMapping(value="/import/csv", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ImportResult importCsv(@RequestParam MultipartFile file, @RequestParam UUID categoryId, HttpServletRequest req) {
+        return service.importCsv(file, categoryId, actor(req));
     }
 }

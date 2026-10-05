@@ -50,6 +50,54 @@ public class Question {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private QuestionStatus status = QuestionStatus.DRAFT;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private QuestionScope scope = QuestionScope.PERSONAL;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "creation_method", nullable = false, length = 30)
+    @Builder.Default
+    private CreationMethod creationMethod = CreationMethod.MANUAL;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false, length = 30)
+    @Builder.Default
+    private SourceType sourceType = SourceType.NONE;
+
+    @Column(name = "source_ref_id", length = 255)
+    private String sourceRefId;
+    @Column(name = "source_label", length = 500)
+    private String sourceLabel;
+    @Column(name = "source_url", length = 2000)
+    private String sourceUrl;
+    @Column(name = "source_excerpt", columnDefinition = "TEXT")
+    private String sourceExcerpt;
+    @Column(name = "expected_answer", columnDefinition = "TEXT")
+    private String expectedAnswer;
+
+    @Column(name = "question_version", nullable = false)
+    @Builder.Default
+    private long questionVersion = 1;
+
+    // Persistence concurrency counter is separate from the public content revision.
+    @Version
+    @Column(name = "lock_version", nullable = false)
+    private long lockVersion;
+
+    public enum QuestionStatus { DRAFT, PENDING_REVIEW, APPROVED, REJECTED, ARCHIVED }
+    public enum QuestionScope { PERSONAL, ORGANIZATION, SYSTEM }
+    public enum CreationMethod { MANUAL, IMPORT, AI_GENERATED, COPIED }
+    public enum SourceType { NONE, USER_DOCUMENT, EXTERNAL_WEB, ORGANIZATION_BANK, PUBLIC_BANK, SYSTEM_BANK }
+
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC")
     @Builder.Default
