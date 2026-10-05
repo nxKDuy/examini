@@ -50,7 +50,7 @@ def build(shared):
             extraction["nodes"].append({"id": "doc:" + p, "label": p, "file_type": "document", "source_file": p})
         graph = build_from_json(extraction, root=root)
         communities = cluster(graph)
-        labels = {cid: Counter(str(graph.nodes[n].get("source_file", "external")).replace(str(root) + "/", "").split("/")[0] for n in nodes).most_common(1)[0][0] for cid, nodes in communities.items()}
+        labels = {cid: Counter(str(graph.nodes[n].get("source_file") or "external").replace(str(root) + "/", "").split("/")[0] for n in nodes).most_common(1)[0][0] for cid, nodes in communities.items()}
         stamp = {"branch": branch, "path": str(root), "commit": commit, "dirty": dirty, "built_at": datetime.now(timezone.utc).isoformat(), "code_files": len(code), "documents": len(docs), "nodes": len(graph), "edges": graph.number_of_edges(), "extraction": "AST plus document inventory; no semantic LLM extraction"}
         report = generate(graph, communities, score_all(graph, communities), labels, god_nodes(graph), surprising_connections(graph, communities), {"total_files": len(code) + len(docs), "total_words": 0, "warning": "Structural snapshot only; documents are inventory nodes. Review source/contracts for business semantics."}, {"input": 0, "output": 0}, str(root), built_at_commit=commit)
         with tempfile.TemporaryDirectory(dir=shared) as tmp:
