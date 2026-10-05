@@ -18,7 +18,7 @@ createServer(async (req, res) => {
   } else if (url.pathname === '/auth/me') {
     const admin = identity === 'admin'
     data = { id: identity, email: `${identity}@example.test`, fullName: `${identity} Fixture`, role: admin ? 'ADMIN' : identity.toUpperCase(), persona: admin ? 'TEACHER' : identity.toUpperCase(), systemPrivilege: admin ? 'ADMIN' : 'NONE' }
-  } else if (['/subjects', '/categories'].includes(url.pathname)) data = []
+  } else if (['/subjects', '/categories', '/exams/my', '/exams/public', '/exams/invitations'].includes(url.pathname)) data = []
   else if (url.pathname === '/auth/logout') data = {}
   else data = { content: [], totalElements: 0, totalPages: 0, number: 0 }
   res.end(JSON.stringify(data))
