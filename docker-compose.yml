@@ -100,8 +100,6 @@ services:
       dockerfile: auth-service/Dockerfile
     container_name: datn-auth
     restart: unless-stopped
-    ports:
-      - "8181:8081"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
@@ -133,8 +131,6 @@ services:
       dockerfile: question-bank-service/Dockerfile
     container_name: datn-question-bank
     restart: unless-stopped
-    ports:
-      - "8082:8082"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/question_bank_db
@@ -160,8 +156,6 @@ services:
       dockerfile: exam-service/Dockerfile
     container_name: datn-exam
     restart: unless-stopped
-    ports:
-      - "8083:8083"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/exam_db
@@ -192,8 +186,6 @@ services:
       dockerfile: exam-session-service/Dockerfile
     container_name: datn-exam-session
     restart: unless-stopped
-    ports:
-      - "8084:8084"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/exam_session_db
@@ -228,8 +220,6 @@ services:
       dockerfile: grading-service/Dockerfile
     container_name: datn-grading
     restart: unless-stopped
-    ports:
-      - "8085:8085"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grading_db
@@ -256,8 +246,6 @@ services:
       dockerfile: analytics-service/Dockerfile
     container_name: datn-analytics
     restart: unless-stopped
-    ports:
-      - "8086:8086"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/analytics_db
