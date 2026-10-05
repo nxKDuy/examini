@@ -27,6 +27,12 @@ public class QuestionGrade {
     @Column(nullable = false)
     private float score;
 
+    @Column(columnDefinition="TEXT") private String questionContent;
+    private String questionType;
+    private Float pointValue;
+    @Column(columnDefinition="TEXT") private String answerContent;
+    @Column(columnDefinition="TEXT") private String selectedOptionContent;
+    private boolean needsReview;
     @Column(columnDefinition = "TEXT")
     private String feedback; // Feedback từ giáo viên hoặc AI (Gemini)
 }

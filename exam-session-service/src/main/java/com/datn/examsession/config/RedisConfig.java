@@ -7,6 +7,7 @@ import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="exam.redis-expiry-enabled",havingValue="true")
 public class RedisConfig {
 
     @Bean

@@ -25,9 +25,11 @@ public class ExamService {
 
     private final ExamRepository repo;
     private final QuestionBankClient questionBankClient;
+    private final ExamCore core;
+    @org.springframework.beans.factory.annotation.Value("${question-bank.internal-token:}") private String questionToken="";
 
     public Page<ExamDto.Response> getExamsByCreator(UUID createdBy, Pageable pageable) {
-        return repo.findByCreatedBy(createdBy, pageable).map(ExamDto.Response::from);
+        return repo.findVisible(createdBy, pageable).map(ExamDto.Response::from);
     }
 
     public ExamDto.Response getById(UUID id) {
@@ -47,7 +49,7 @@ public class ExamService {
         try {
             examType = req.type() != null ? Exam.ExamType.valueOf(req.type()) : Exam.ExamType.EXAM;
         } catch (IllegalArgumentException ex) {
-            examType = Exam.ExamType.EXAM;
+            throw ExamCore.error(400,"Unknown exam type");
         }
 
         // Extract questionIds from weighted list
@@ -74,28 +76,38 @@ public class ExamService {
                 .createdBy(createdBy)
                 .questionIds(new ArrayList<>(questionIds))
                 .build();
-        return ExamDto.Response.from(repo.save(e));
+        for(var q:req.questions()) {
+            if(q.weight()<=0 || !Double.isFinite(q.weight()) || e.getPoints().put(q.questionId(),java.math.BigDecimal.valueOf(q.weight()))!=null)
+                throw ExamCore.error(400,"Positive points and unique questions required");
+        }
+        repo.saveAndFlush(e);
+        core.audit(e,createdBy,"EXAM_CREATED",null);
+        return ExamDto.Response.from(e);
     }
 
     @Transactional
     public ExamDto.Response autoGenerate(ExamDto.AutoGenerateRequest req, UUID createdBy) {
+        long requested=(long)req.easyCount()+req.mediumCount()+req.hardCount();
+        if(requested<1 || requested>200)throw ExamCore.error(400,"Exam requires 1 to 200 questions");
+        if(questionToken.isBlank())throw ExamCore.error(503,"Question Bank integration not configured");
         List<UUID> questionIds = new ArrayList<>();
 
         try {
             if (req.easyCount() > 0) {
-                questionIds.addAll(questionBankClient.getRandomQuestionIds(req.categoryId(), "EASY", req.easyCount()));
+                questionIds.addAll(questionBankClient.random(req.categoryId(), "EASY", req.easyCount(),questionToken,createdBy));
             }
             if (req.mediumCount() > 0) {
-                questionIds.addAll(questionBankClient.getRandomQuestionIds(req.categoryId(), "MEDIUM", req.mediumCount()));
+                questionIds.addAll(questionBankClient.random(req.categoryId(), "MEDIUM", req.mediumCount(),questionToken,createdBy));
             }
             if (req.hardCount() > 0) {
-                questionIds.addAll(questionBankClient.getRandomQuestionIds(req.categoryId(), "HARD", req.hardCount()));
+                questionIds.addAll(questionBankClient.random(req.categoryId(), "HARD", req.hardCount(),questionToken,createdBy));
             }
         } catch (FeignException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Lỗi khi lấy câu hỏi từ Question Bank: " + ex.getMessage());
+            throw ex; // Service advice preserves business status without leaking provider payloads.
         }
 
+        if(questionIds.size()!=req.easyCount()+req.mediumCount()+req.hardCount() || new java.util.HashSet<>(questionIds).size()!=questionIds.size())
+            throw ExamCore.error(409,"Insufficient approved questions for requested composition");
         if (questionIds.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không có câu hỏi nào thỏa mãn tiêu chí");
         }
@@ -114,17 +126,10 @@ public class ExamService {
                 .createdBy(createdBy)
                 .questionIds(questionIds)
                 .build();
-        return ExamDto.Response.from(repo.save(e));
-    }
-
-    @Transactional
-    public ExamDto.Response publish(UUID id) {
-        Exam e = getOrThrow(id);
-        if (e.getQuestionIds().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đề thi chưa có câu hỏi");
-        }
-        e.setStatus(Exam.Status.PUBLISHED);
-        return ExamDto.Response.from(repo.save(e));
+        questionIds.forEach(q->e.getPoints().put(q,java.math.BigDecimal.ONE));
+        repo.saveAndFlush(e);
+        core.audit(e,createdBy,"EXAM_CREATED",null);
+        return ExamDto.Response.from(e);
     }
 
     @Transactional

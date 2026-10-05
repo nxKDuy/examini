@@ -14,6 +14,12 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(feign.FeignException.class)
+    public ProblemDetail upstream(feign.FeignException e) {
+        int status=e.status();
+        return ProblemDetail.forStatusAndDetail(status>=400 && status<500 ? HttpStatus.valueOf(status) : HttpStatus.SERVICE_UNAVAILABLE,
+            "Required service rejected this request or is unavailable");
+    }
     @ExceptionHandler(ResponseStatusException.class)
     public ProblemDetail handleResponseStatus(ResponseStatusException ex) {
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(ex.getStatusCode(), ex.getReason());

@@ -6,5 +6,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface SessionAnswerRepository extends JpaRepository<SessionAnswer, UUID> {
+    java.util.List<SessionAnswer> findBySessionId(UUID sessionId);
     Optional<SessionAnswer> findBySessionIdAndQuestionId(UUID sessionId, UUID questionId);
 }

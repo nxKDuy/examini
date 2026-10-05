@@ -7,7 +7,7 @@ export interface Submission {
   studentId: string
   studentName: string
   studentCode: string
-  status: 'SUBMITTED' | 'GRADED' | 'AUTO_GRADED'
+  status: 'PENDING' | 'NEEDS_REVIEW' | 'GRADED'
   score: number | null
   totalScore: number
   submittedAt: string

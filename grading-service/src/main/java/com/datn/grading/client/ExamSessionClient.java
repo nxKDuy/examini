@@ -1,26 +1,11 @@
 package com.datn.grading.client;
-
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-
-import java.util.List;
-import java.util.UUID;
-
-@FeignClient(name = "exam-session-service", path = "/sessions")
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
+import java.time.LocalDateTime;
+@FeignClient(name="exam-session-service",url="${exam-session.url:}",path="/sessions")
 public interface ExamSessionClient {
-
-    @GetMapping("/{sessionId}/internal/answers")
-    SessionDetailDto getSessionDetails(@PathVariable("sessionId") UUID sessionId);
-
-    record SessionDetailDto(
-            UUID examId,
-            UUID userId,
-            List<AnswerDto> answers
-    ) {}
-
-    record AnswerDto(
-            UUID questionId,
-            String answerContent
-    ) {}
+    @GetMapping("/{id}/internal/answers") SessionDetailDto get(@PathVariable UUID id,@RequestHeader("X-Service-Token")String token);
+    record SessionDetailDto(UUID sessionId,UUID examId,UUID userId,String status,String examTitle,LocalDateTime startedAt,LocalDateTime submittedAt,List<AnswerDto> answers){}
+    record AnswerDto(UUID questionId,String answerContent){}
 }
