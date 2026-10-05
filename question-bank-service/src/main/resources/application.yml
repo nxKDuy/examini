@@ -1,3 +1,9 @@
+# Empty credentials disable authentication lanes; MAIN provisions runtime secrets.
+jwt:
+  secret: ${JWT_SECRET:}
+question-bank:
+  internal-token: ${QB_INTERNAL_TOKEN:}
+
 server:
   port: 8082
 
@@ -10,6 +16,7 @@ spring:
     password: ${POSTGRES_PASSWORD:datn_secret}
     driver-class-name: org.postgresql.Driver
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: validate
     show-sql: false

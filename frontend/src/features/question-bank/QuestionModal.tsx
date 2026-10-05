@@ -1,230 +1,94 @@
-import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, CheckCircle2 } from 'lucide-react'
-import { questionBankApi, type Category, type Question } from './questionApi'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, type FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { X, Plus, Trash2 } from 'lucide-react'
+import { apiError, questionBankApi, type Category, type Question, type QuestionInput, type QuestionType, type SourceType } from './questionApi'
 
-interface OptionState {
-  id: string; // temp id for UI
-  content: string;
-  correct: boolean;
-}
-
-interface QuestionModalProps {
-  categories: Category[];
-  initialData?: Question | null;
-  onClose: () => void;
-}
-
-export default function QuestionModal({ categories, initialData, onClose }: QuestionModalProps) {
+export default function QuestionModal({ categories, initialData, onClose }: {
+  categories: Category[]; initialData?: Question | null; onClose: () => void
+}) {
   const qc = useQueryClient()
-  
-  const [categoryId, setCategoryId] = useState(initialData?.categoryId || '')
-  const [content, setContent] = useState(initialData?.content || '')
-  const [type, setType] = useState(initialData?.questionType || 'MULTIPLE_CHOICE')
-  const [difficulty, setDifficulty] = useState(initialData?.difficultyLevel || 'MEDIUM')
-  const [options, setOptions] = useState<OptionState[]>(() => {
-    if (initialData?.options && initialData.options.length > 0) {
-      return initialData.options.map((o: any) => ({ ...o, id: o.id || Math.random().toString() }))
-    }
-    return [
-      { id: '1', content: '', correct: true },
-      { id: '2', content: '', correct: false },
-      { id: '3', content: '', correct: false },
-      { id: '4', content: '', correct: false },
-    ]
+  const [categoryId, setCategoryId] = useState(initialData?.categoryId ?? '')
+  const [content, setContent] = useState(initialData?.content ?? '')
+  const [type, setType] = useState<QuestionType>(initialData?.questionType ?? 'MULTIPLE_CHOICE')
+  const [difficulty, setDifficulty] = useState<Question['difficultyLevel']>(initialData?.difficultyLevel ?? 'MEDIUM')
+  const [options, setOptions] = useState(initialData?.options.map(o => ({ content: o.content, correct: o.correct ?? false }))
+    ?? [{ content: '', correct: true }, { content: '', correct: false }])
+  const [expectedAnswer, setExpectedAnswer] = useState(initialData?.expectedAnswer ?? '')
+  const [sourceType, setSourceType] = useState<SourceType>(initialData?.sourceType ?? 'NONE')
+  const [sourceLabel, setSourceLabel] = useState(initialData?.sourceLabel ?? initialData?.source ?? '')
+  const [sourceUrl, setSourceUrl] = useState(initialData?.sourceUrl ?? '')
+  const [sourceRefId, setSourceRefId] = useState(initialData?.sourceRefId ?? '')
+  const [sourceExcerpt, setSourceExcerpt] = useState(initialData?.sourceExcerpt ?? '')
+  const [error, setError] = useState('')
+  const { data: editCategories } = useQuery({
+    queryKey: ['edit-category', initialData?.categoryId],
+    queryFn: () => questionBankApi.getCategory(initialData!.categoryId),
+    enabled: !!initialData && !categories.some(c => c.id === initialData.categoryId),
   })
-
-  const isEdit = !!initialData
-
-  const saveMut = useMutation({
-    mutationFn: (data: any) => isEdit 
-      ? questionBankApi.updateQuestion(initialData.id, data)
-      : questionBankApi.createQuestion(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['questions'] })
-      onClose()
-    },
-    onError: () => alert(`Lỗi khi ${isEdit ? 'cập nhật' : 'tạo'} câu hỏi`),
+  const available = editCategories && !categories.some(c => c.id === editCategories.id) ? [editCategories, ...categories] : categories
+  const save = useMutation({
+    mutationFn: (data: QuestionInput) => initialData ? questionBankApi.updateQuestion(initialData.id, data) : questionBankApi.createQuestion(data),
+    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['questions'] }); await qc.invalidateQueries({ queryKey: ['question'] }); await qc.invalidateQueries({ queryKey: ['versions'] }); onClose() },
+    onError: e => setError(apiError(e)),
   })
-
-  const handleAddOption = () => {
-    setOptions(prev => [...prev, { id: Math.random().toString(), content: '', correct: false }])
+  const choice = type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE'
+  function changeType(next: QuestionType) {
+    setType(next); setExpectedAnswer('')
+    setOptions(next === 'TRUE_FALSE' ? [{ content: 'Đúng', correct: true }, { content: 'Sai', correct: false }]
+      : next === 'MULTIPLE_CHOICE' ? [{ content: '', correct: true }, { content: '', correct: false }] : [])
   }
-
-  const handleRemoveOption = (id: string) => {
-    setOptions(prev => prev.filter(o => o.id !== id))
-  }
-
-  const handleOptionChange = (id: string, text: string) => {
-    setOptions(prev => prev.map(o => o.id === id ? { ...o, content: text } : o))
-  }
-
-  const handleSetCorrect = (id: string) => {
-    if (type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE') {
-      // Single correct answer for these types in simple model
-      setOptions(prev => prev.map(o => ({ ...o, correct: o.id === id })))
+  function submit(e: FormEvent) {
+    e.preventDefault(); setError('')
+    if (choice && (options.length < 2 || options.some(o => !o.content.trim()) || options.filter(o => o.correct).length !== 1)) {
+      setError('Nhập đủ lựa chọn và chọn đúng một đáp án.'); return
     }
+    if (type === 'SHORT_ANSWER' && !expectedAnswer.trim()) { setError('Cần đáp án mong đợi hoặc hướng dẫn chấm.'); return }
+    save.mutate({ categoryId, content: content.trim(), questionType: type, difficultyLevel: difficulty,
+      options: choice ? options.map((o, i) => ({ ...o, content: o.content.trim(), displayOrder: i })) : [],
+      expectedAnswer: choice ? '' : expectedAnswer.trim(), sourceType, sourceLabel, sourceRefId, sourceUrl, sourceExcerpt,
+      questionVersion: initialData?.questionVersion })
   }
-
-  useEffect(() => {
-    if (isEdit) return // Do not auto-reset options when in edit mode
-
-    if (type === 'TRUE_FALSE') {
-      setOptions([
-        { id: '1', content: 'Đúng', correct: true },
-        { id: '2', content: 'Sai', correct: false },
-      ])
-    } else if (type === 'ESSAY' || type === 'SHORT_ANSWER') {
-      setOptions([])
-    } else if (type === 'MULTIPLE_CHOICE' && options.length < 2) {
-      setOptions([
-        { id: '1', content: '', correct: true },
-        { id: '2', content: '', correct: false },
-        { id: '3', content: '', correct: false },
-        { id: '4', content: '', correct: false },
-      ])
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, isEdit])
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!categoryId || !content.trim()) return alert('Vui lòng nhập đủ thông tin')
-    
-    let submitOptions: any[] = []
-    if (type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE') {
-      const validOptions = options.filter(o => o.content.trim() !== '')
-      if (validOptions.length < 2) return alert('Câu hỏi trắc nghiệm cần ít nhất 2 lựa chọn')
-      if (!validOptions.some(o => o.correct)) return alert('Vui lòng chọn 1 đáp án đúng')
-      
-      submitOptions = validOptions.map((o, idx) => ({
-        content: o.content.trim(),
-        correct: o.correct,
-        displayOrder: idx
-      }))
-    }
-
-    saveMut.mutate({
-      categoryId,
-      content: content.trim(),
-      questionType: type,
-      difficultyLevel: difficulty,
-      options: submitOptions
-    })
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-    }}>
-      <div className="clean-card page-enter" style={{ 
-        width: '100%', maxWidth: 720, maxHeight: '90vh', 
-        display: 'flex', flexDirection: 'column',
-        background: '#ffffff', overflow: 'hidden'
-      }}>
-        {/* Header */}
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-surface-700)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--color-surface-50)', margin: 0 }}>
-            {isEdit ? 'Sửa câu hỏi' : 'Thêm câu hỏi mới'}
-          </h2>
-          <button onClick={onClose} className="btn-ghost" style={{ padding: 4 }}><X size={20} /></button>
-        </div>
-
-        {/* Form Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-          <form id="question-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--color-surface-200)' }}>Danh mục *</label>
-                <select value={categoryId} onChange={e => setCategoryId(e.target.value)} className="input-field" required>
-                  <option value="">Chọn danh mục</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--color-surface-200)' }}>Loại câu hỏi</label>
-                <select value={type} onChange={e => setType(e.target.value)} className="input-field" disabled={isEdit}>
-                  <option value="MULTIPLE_CHOICE">Trắc nghiệm</option>
-                  <option value="TRUE_FALSE">Đúng / Sai</option>
-                  <option value="SHORT_ANSWER">Trả lời ngắn</option>
-                  <option value="ESSAY">Tự luận</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--color-surface-200)' }}>Độ khó</label>
-                <select value={difficulty} onChange={e => setDifficulty(e.target.value)} className="input-field">
-                  <option value="EASY">Dễ</option>
-                  <option value="MEDIUM">Trung bình</option>
-                  <option value="HARD">Khó</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--color-surface-200)' }}>Nội dung câu hỏi *</label>
-              <textarea 
-                value={content} onChange={e => setContent(e.target.value)} 
-                className="input-field" rows={4} required
-                placeholder="Nhập nội dung câu hỏi..."
-                style={{ resize: 'vertical' }}
-              />
-            </div>
-
-            {(type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE') && (
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: 12, color: 'var(--color-surface-200)' }}>
-                  Các lựa chọn đáp án
-                </label>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {options.map((opt, idx) => (
-                    <div key={opt.id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <button type="button" onClick={() => handleSetCorrect(opt.id)}
-                        style={{ 
-                          width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                          background: opt.correct ? 'var(--color-success)' : 'transparent',
-                          border: `2px solid ${opt.correct ? 'var(--color-success)' : 'var(--color-surface-700)'}`,
-                          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          cursor: 'pointer'
-                        }}>
-                        {opt.correct && <CheckCircle2 size={14} />}
-                      </button>
-                      <div style={{ fontWeight: 600, width: 24, color: 'var(--color-surface-400)' }}>{String.fromCharCode(65 + idx)}</div>
-                      <input 
-                        type="text" value={opt.content} onChange={e => handleOptionChange(opt.id, e.target.value)}
-                        className="input-field" placeholder="Nhập đáp án..." style={{ flex: 1 }}
-                        disabled={type === 'TRUE_FALSE'}
-                      />
-                      {type === 'MULTIPLE_CHOICE' && options.length > 2 && (
-                        <button type="button" onClick={() => handleRemoveOption(opt.id)} className="btn-ghost" style={{ color: 'var(--color-error)' }}>
-                          <Trash2 size={18} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {type === 'MULTIPLE_CHOICE' && (
-                  <button type="button" onClick={handleAddOption} className="btn-secondary" style={{ marginTop: 12 }}>
-                    <Plus size={16} style={{ marginRight: 6 }} /> Thêm lựa chọn
-                  </button>
-                )}
-              </div>
-            )}
-          </form>
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-surface-700)', display: 'flex', justifyContent: 'flex-end', gap: 12, background: 'var(--color-surface-900)' }}>
-          <button type="button" onClick={onClose} className="btn-secondary" disabled={saveMut.isPending}>Hủy</button>
-          <button type="submit" form="question-form" className="btn-primary" disabled={saveMut.isPending}>
-            {saveMut.isPending ? 'Đang lưu...' : (isEdit ? 'Lưu thay đổi' : 'Tạo câu hỏi')}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: 20 }}>
+    <section role="dialog" aria-modal="true" aria-labelledby="question-form-title" className="clean-card" style={{ width: 'min(720px,100%)', maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <h2 id="question-form-title">{initialData ? 'Sửa câu hỏi' : 'Tạo câu hỏi DRAFT'}</h2>
+        <button className="btn-ghost" aria-label="Đóng" onClick={onClose} disabled={save.isPending}><X size={20}/></button>
+      </header>
+      {initialData?.status === 'APPROVED' && <p>Chỉnh sửa tạo phiên bản mới ở DRAFT và cần duyệt lại. Phiên bản cũ được giữ trong lịch sử.</p>}
+      <form onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
+        <label>Danh mục<select className="input-field" required value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+          <option value="">Chọn danh mục</option>{available.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select></label>
+        <label>Loại câu hỏi<select className="input-field" value={type} onChange={e => changeType(e.target.value as QuestionType)}>
+          <option value="MULTIPLE_CHOICE">Trắc nghiệm</option><option value="TRUE_FALSE">Đúng/Sai</option><option value="SHORT_ANSWER">Trả lời ngắn</option><option value="ESSAY">Tự luận</option>
+        </select></label>
+        <label>Độ khó<select className="input-field" value={difficulty} onChange={e => setDifficulty(e.target.value as Question['difficultyLevel'])}>
+          <option value="EASY">Dễ</option><option value="MEDIUM">Trung bình</option><option value="HARD">Khó</option>
+        </select></label>
+        <label>Nội dung<textarea className="input-field" rows={4} required maxLength={5000} value={content} onChange={e => setContent(e.target.value)}/></label>
+        {choice ? <fieldset><legend>Lựa chọn — chọn một đáp án đúng</legend>
+          {options.map((o, i) => <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input type="radio" name="correct" aria-label={`Đáp án ${i + 1} đúng`} checked={o.correct} onChange={() => setOptions(options.map((v, n) => ({ ...v, correct: i === n })))}/>
+            <input className="input-field" aria-label={`Lựa chọn ${i + 1}`} required maxLength={5000} value={o.content} onChange={e => setOptions(options.map((v, n) => n === i ? { ...v, content: e.target.value } : v))}/>
+            {type === 'MULTIPLE_CHOICE' && options.length > 2 && <button type="button" className="btn-ghost" aria-label={`Xóa lựa chọn ${i + 1}`} onClick={() => setOptions(options.filter((_, n) => n !== i))}><Trash2 size={16}/></button>}
+          </div>)}
+          {type === 'MULTIPLE_CHOICE' && options.length < 26 && <button type="button" className="btn-secondary" onClick={() => setOptions([...options, { content: '', correct: false }])}><Plus size={16}/> Thêm lựa chọn</button>}
+        </fieldset> : <label>Đáp án mong đợi / hướng dẫn chấm {type === 'ESSAY' && '(tùy chọn)'}<textarea className="input-field" required={type === 'SHORT_ANSWER'} rows={3} maxLength={10000} value={expectedAnswer} onChange={e => setExpectedAnswer(e.target.value)}/></label>}
+        <fieldset style={{ display: 'grid', gap: 12 }}><legend>Nguồn nội dung (thông tin tham chiếu)</legend>
+          <label>Loại nguồn<select className="input-field" value={sourceType} onChange={e => setSourceType(e.target.value as SourceType)}>
+            {(['NONE','USER_DOCUMENT','EXTERNAL_WEB','ORGANIZATION_BANK','PUBLIC_BANK','SYSTEM_BANK'] as SourceType[]).map(s => <option key={s}>{s}</option>)}
+          </select></label>
+          <label>Nhãn nguồn<input className="input-field" maxLength={500} value={sourceLabel} onChange={e => setSourceLabel(e.target.value)}/></label>
+          <label>Mã tham chiếu<input className="input-field" maxLength={255} value={sourceRefId} onChange={e => setSourceRefId(e.target.value)}/></label>
+          <label>URL nguồn<input className="input-field" type="url" maxLength={2000} value={sourceUrl} onChange={e => setSourceUrl(e.target.value)}/></label>
+          <label>Trích đoạn<textarea className="input-field" rows={2} maxLength={10000} value={sourceExcerpt} onChange={e => setSourceExcerpt(e.target.value)}/></label>
+        </fieldset>
+        {error && <p role="alert" style={{ color: 'var(--color-error)' }}>{error}</p>}
+        <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+          <button type="button" className="btn-secondary" disabled={save.isPending} onClick={onClose}>Hủy</button>
+          <button className="btn-primary" disabled={save.isPending}>{save.isPending ? 'Đang lưu…' : 'Lưu DRAFT'}</button>
+        </footer>
+      </form>
+    </section>
+  </div>
 }
