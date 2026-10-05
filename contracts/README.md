@@ -6,6 +6,7 @@ the coordination baseline, not newly implemented endpoints.
 
 | Document | Purpose |
 | --- | --- |
+| [Lifecycle và eligibility mới](question-bank-lifecycle.md) | Quyết định bank-aware thay APPROVED-only toàn cục |
 | [Question Bank API](question-bank-api.md) | Actual provider routes/DTOs and required approved selection/version capabilities |
 | [Exam integration](exam-integration.md) | Consumers, lifecycle ownership, immutable publication and security boundaries |
 | [Events](events.md) | Current submission message and proposed reliability requirements |
