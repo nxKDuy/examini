@@ -36,4 +36,3 @@ export const RESULT_STATUS: Record<string, StatusDef> = {
   GRADED: { label: 'Đã chấm', tone: 'success', icon: icon(CheckCircle2), help: 'Đã có điểm chính thức.' },
   IN_PROGRESS: { label: 'Chưa nộp', tone: 'neutral', icon: icon(Clock), help: 'Lượt làm bài chưa được nộp.' },
 }
-
