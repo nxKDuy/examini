@@ -32,8 +32,8 @@ class ExamCoreTest {
     @MockBean QuestionBankClient bank;
     @MockBean com.datn.exam.client.SessionClient sessions;
     UUID owner,manager,proctor,student,qid,oid;
-    @BeforeEach void setup(){when(sessions.eligibility(any(),any(),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Eligibility(0,false));owner=UUID.randomUUID();manager=UUID.randomUUID();proctor=UUID.randomUUID();student=UUID.randomUUID();qid=UUID.randomUUID();oid=UUID.randomUUID();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("APPROVED",1L)));}
-    QuestionBankClient.Question question(String status,long version){return new QuestionBankClient.Question(qid,version,status,"MULTIPLE_CHOICE","Original",List.of(new Snapshot.Option(oid,"Yes",0,true),new Snapshot.Option(UUID.randomUUID(),"No",1,false)),null);}
+    @BeforeEach void setup(){when(sessions.eligibility(any(),any(),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Eligibility(0,false));owner=UUID.randomUUID();manager=UUID.randomUUID();proctor=UUID.randomUUID();student=UUID.randomUUID();qid=UUID.randomUUID();oid=UUID.randomUUID();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("ACTIVE",1L,true)));}
+    QuestionBankClient.Question question(String status,long version,Boolean eligible){return new QuestionBankClient.Question(qid,version,status,"MULTIPLE_CHOICE","Original",List.of(new Snapshot.Option(oid,"Yes",0,true),new Snapshot.Option(UUID.randomUUID(),"No",1,false)),null,eligible,"PERSONAL",null);}
     String token(UUID id,String role){return "Bearer "+Jwts.builder().subject(id.toString()).claim("role",role).claim("type","access").expiration(new Date(System.currentTimeMillis()+60000)).signWith(Keys.hmacShaKeyFor("unit-test-only-signing-key-32-bytes-minimum".getBytes(StandardCharsets.UTF_8))).compact();}
     UUID create()throws Exception {String body="{\"title\":\"Exam\",\"durationMinutes\":10,\"passingScore\":0,\"type\":\"EXAM\",\"questions\":[{\"questionId\":\""+qid+"\",\"weight\":2.5}]}";
         var response=mvc.perform(post("/exams/manual").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(body)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();return UUID.fromString(json.readTree(response).path("id").asText());}
@@ -49,7 +49,7 @@ class ExamCoreTest {
         core.assign(id,manager,student,false);core.transition(id,manager,Exam.Status.PUBLISHED);
         assertThrows(Exception.class,()->core.authorizeStart(id,student));
         core.transition(id,manager,Exam.Status.OPEN);core.authorizeStart(id,student);
-        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("APPROVED",2L)));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("ACTIVE",2L,true)));
         var safe=mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertFalse(safe.contains("correct"));assertFalse(safe.contains("expectedAnswer"));assertTrue(safe.contains("Original"));assertTrue(safe.contains("2.5"));assertEquals(1,json.readTree(safe).get(0).path("questionVersion").asInt());
         assertThrows(Exception.class,()->core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,100,50,1)));
@@ -168,13 +168,54 @@ class ExamCoreTest {
         assertFalse(draftResponse.contains(draft.toString()));
     }
     @Test void eligibilityPolicyAndParticipantRace()throws Exception {
-        UUID id=create();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("DRAFT",1)));
+        UUID id=create();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("DRAFT",1,false)));
         assertThrows(Exception.class,()->core.transition(id,owner,Exam.Status.PUBLISHED));assertEquals(Exam.Status.DRAFT,exams.findById(id).orElseThrow().getStatus());
-        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("APPROVED",1)));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("ACTIVE",1,true)));
         assertThrows(Exception.class,()->core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,200,101,1)));
         core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,1,1,1));core.transition(id,owner,Exam.Status.PUBLISHED);core.transition(id,owner,Exam.Status.OPEN);
         var pool=Executors.newFixedThreadPool(2);var gate=new CountDownLatch(1);
         try {List<Future<Boolean>> results=new ArrayList<>();for(int i=0;i<2;i++)results.add(pool.submit(()->{gate.await();try{core.join(id,UUID.randomUUID(),null);return true;}catch(Exception e){return false;}}));gate.countDown();int accepted=0;for(var result:results)if(result.get())accepted++;assertEquals(1,accepted);}finally{pool.shutdownNow();}
+    }
+    @Test void bankAwareEligibilityUsesProviderDecisionAndPreservesSnapshot()throws Exception {
+        for(String bankType:List.of("PERSONAL","PUBLIC","SYSTEM","ORGANIZATION")) {
+            UUID id=create();var original=question("ACTIVE",3,true);
+            String publicationStatus=bankType.equals("PERSONAL")?null:bankType.equals("ORGANIZATION")?"APPROVED":"PUBLISHED";
+            var eligible=new QuestionBankClient.Question(qid,3L,"ACTIVE",original.questionType(),original.content(),original.options(),null,true,bankType,publicationStatus);
+            when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(eligible));
+            core.member(id,owner,manager,Exam.MemberRole.MANAGER,false);core.accept(id,manager,"TEACHER");
+            core.transition(id,manager,Exam.Status.PUBLISHED);
+            verify(bank,atLeastOnce()).eligible(eq(List.of(qid)),eq("test-qb"),eq(owner),eq(true),eq(true));
+            var frozen=exams.findById(id).orElseThrow().getSnapshots().get(0);
+            assertEquals(3,frozen.questionVersion());assertEquals(0,new BigDecimal("2.5").compareTo(frozen.points()));assertTrue(frozen.options().get(0).correct());
+            when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(new QuestionBankClient.Question(qid,4L,"ARCHIVED",original.questionType(),"Changed provider",List.of(),null,false,bankType,"REJECTED")));
+            var safe=mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertEquals(3,json.readTree(safe).get(0).path("questionVersion").asInt());assertTrue(safe.contains("Original"));assertFalse(safe.contains("Changed provider"));assertFalse(safe.contains("correct"));
+            assertEquals(frozen,exams.findById(id).orElseThrow().getSnapshots().get(0));
+        }
+    }
+    @Test void falseOrMissingEligibilityFailsClosedEvenLegacyApproved()throws Exception {
+        var active=question("ACTIVE",1,true);
+        var legacy=new QuestionBankClient.Question(qid,1L,"APPROVED",active.questionType(),active.content(),active.options(),null);
+        assertNull(legacy.eligible());
+        var missing=json.valueToTree(question("APPROVED",1,true));((com.fasterxml.jackson.databind.node.ObjectNode)missing).remove("eligible");
+        var deserialized=json.treeToValue(missing,QuestionBankClient.Question.class);assertNull(deserialized.eligible());
+        for(var ineligible:List.of(question("ACTIVE",1,false),question("APPROVED",1,false),legacy,deserialized)) {
+            UUID id=create();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(ineligible));
+            var error=assertThrows(org.springframework.web.server.ResponseStatusException.class,()->core.transition(id,owner,Exam.Status.PUBLISHED));
+            assertEquals(409,error.getStatusCode().value());var e=exams.findById(id).orElseThrow();assertEquals(Exam.Status.DRAFT,e.getStatus());assertTrue(e.getSnapshots().isEmpty());
+            assertTrue(audits.findByExamIdOrderByTimestampAsc(id).stream().noneMatch(a->a.getAction().equals("EXAM_PUBLISHED")));
+        }
+    }
+    @Test void eligibleDoesNotBypassVersionOrGradingKeyValidation()throws Exception {
+        var active=question("ACTIVE",1,true);
+        for(var invalid:List.of(
+            new QuestionBankClient.Question(qid,null,"ACTIVE",active.questionType(),active.content(),active.options(),null,true,"SYSTEM",null),
+            new QuestionBankClient.Question(qid,0L,"ACTIVE",active.questionType(),active.content(),active.options(),null,true,"PUBLIC","PUBLISHED"),
+            new QuestionBankClient.Question(qid,1L,"ACTIVE",active.questionType(),active.content(),List.of(new Snapshot.Option(oid,"No key",0,false),new Snapshot.Option(UUID.randomUUID(),"No key",1,false)),null,true,"PERSONAL",null))) {
+            UUID id=create();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(invalid));
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,()->core.transition(id,owner,Exam.Status.PUBLISHED));
+            assertEquals(Exam.Status.DRAFT,exams.findById(id).orElseThrow().getStatus());
+        }
     }
     @Test void assignedAndCodePoliciesAndTeacherInvitation()throws Exception {
         UUID id=create();core.transition(id,owner,Exam.Status.PUBLISHED);core.transition(id,owner,Exam.Status.OPEN);

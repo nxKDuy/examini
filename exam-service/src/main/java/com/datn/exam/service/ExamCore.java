@@ -243,8 +243,8 @@ public class ExamCore {
         var snapshots=new ArrayList<Snapshot>();int pos=0;
         for(UUID id:e.getQuestionIds()) {
             var q=byId.get(id);BigDecimal points=e.getPoints().get(id);
-            if(q==null || !"APPROVED".equals(q.status()) || q.questionVersion()==null || q.questionVersion()<1)
-                throw error(409,"Question is missing, unapproved or unversioned: "+id);
+            if(q==null || !Boolean.TRUE.equals(q.eligible()) || q.questionVersion()==null || q.questionVersion()<1)
+                throw error(409,"Question is missing, ineligible or unversioned: "+id);
             if(points==null || points.signum()<=0)throw error(400,"Positive points required");
             if(q.content()==null || q.content().isBlank() || !Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY").contains(q.questionType()))
                 throw error(409,"Incomplete snapshot");
