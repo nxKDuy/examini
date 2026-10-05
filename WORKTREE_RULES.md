@@ -24,12 +24,23 @@ inferring them from these branch names. See `contracts/README.md`.
 | Owner | Primary paths | Business responsibility |
 | --- | --- | --- |
 | MAIN / SHARED | `contracts/**`, `WORKTREE_RULES.md`, `AGENTS.md`, repository integration/architecture documentation and protected configuration below | Cross-domain contracts, repository rules, architecture decisions, genuinely shared configuration, cross-domain conflict resolution. Do not implement Question Bank or Exam Taking feature logic here. |
-| Question Bank | `question-bank-service/**`, `frontend/src/features/question-bank/**`; migrations under Question Bank | Question, QuestionType, Difficulty, QuestionStatus, QuestionSource, QuestionVersion, QuestionReview, approval workflow, source provenance, import and filtering; provider APIs for other domains. Do not edit Exam Taking internals. |
-| Exam Taking | `exam-service/**`, `exam-session-service/**`, `grading-service/**`, `frontend/src/features/exams/**`, `frontend/src/features/grading/**`; migrations under those services | Exam, ExamQuestion, ExamSession, Answer, Submission, GradingResult, timer, submit, auto/manual grading and results. Consume Question Bank public APIs; do not change its entities, persistence or lifecycle. |
+| Question Bank | `question-bank-service/**`; migrations under Question Bank | Question, QuestionType, Difficulty, QuestionStatus, QuestionSource, QuestionVersion, QuestionReview, approval workflow, source provenance, import and filtering; provider APIs for other domains. Do not edit Exam Taking internals. |
+| Exam Taking | `exam-service/**`, `exam-session-service/**`, `grading-service/**`; migrations under those services | Exam, ExamQuestion, ExamSession, Answer, Submission, GradingResult, timer, submit, auto/manual grading and results. Consume Question Bank public APIs; do not change its entities, persistence or lifecycle. |
 
-The exam-owned Question selector UI consumes public Question Bank DTOs; its
-location does not transfer ownership of Question Bank frontend files. DTOs used
-by consumers live in their own domain, without imports of foreign JPA entities.
+| Frontend App (`frontend/app`) | `frontend/**` | Phase 1 frontend product development, application UI, shared frontend runtime/configuration, API integration and UI validation. Backend implementation is read-only; request missing contracts from their provider and MAIN. |
+
+For ongoing Phase 1 UI work, Frontend App owns all frontend files, including
+Question Bank, Exam and Grading screens. Backend domain owners retain business
+semantics and public contracts; they do not independently edit frontend files.
+Consumers use public DTOs without importing foreign persistence entities.
+Frontend guards are UX only: backend authorization is authoritative; TEACHER
+persona never implies ADMIN. Reuse the shared API/auth runtime and never
+manufacture identity headers.
+
+Frontend UI work stops at `READY FOR MANUAL UI VALIDATION` after the relevant
+TypeScript/build/tests and browser checks. Syncing from MAIN and merging/pushing
+require an explicit task instruction; never do them automatically. Visual skills
+must suit application dashboards rather than impose landing-page aesthetics.
 
 ## Shared and protected paths
 
@@ -38,13 +49,12 @@ MAIN coordinates changes to:
 - Root `pom.xml`, `docker-compose.yml`, `.env.example`, `.gitignore`,
   `docker/**`, root startup/build scripts and shared infrastructure configuration.
 - `api-gateway/**`, `eureka-server/**`, `auth-service/**`, `analytics-service/**`.
-- `frontend/package.json`, `frontend/package-lock.json`, `frontend/vite.config.ts`,
-  `frontend/tsconfig*.json`, `frontend/index.html` and other root frontend config.
-- `frontend/src/App.tsx` (router), `frontend/src/main.tsx`,
-  `frontend/src/lib/**` (global API client), `frontend/src/store/**`,
-  `frontend/src/components/**`, `frontend/src/features/auth/**`,
-  `frontend/src/features/dashboard/**`, `frontend/src/features/analytics/**`,
-  global styles/assets and other frontend files outside the owned feature paths.
+Frontend App coordinates frontend-only shared files such as package/config,
+router, API/auth runtime, components and global styles. Cross-domain contract,
+authorization semantics, backend or repository infrastructure changes still
+require MAIN approval. Keep frontend shared changes minimal and in dedicated
+commits, and avoid unrelated dependency upgrades.
+
 - Repository-wide rules, architecture/integration docs and `contracts/**`.
 
 Service-local POMs/config belong to that service owner; changes to shared
