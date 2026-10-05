@@ -71,6 +71,22 @@ support is verified. No shared entity or foreign database query is approved.
 
 ## Integration gates
 
+### Notification re-review: approved with integration follow-ups
+
+The Notification **FIX REQUIRED** decision above is resolved by
+`0b63778c2d4d64c18d844772b4bd57381dc42ccd` and contract correction
+`2163889d1278a3eb6a638c5915d8bd14567b8818`. MAIN inspected the complete fix diff
+and independently reran `mvn -f notification-service/pom.xml test -q` against
+isolated real PostgreSQL and RabbitMQ: 11 tests passed, no failures or errors.
+The envelope validates required ISO instant, strict integer versions and object
+payloads; malformed broker deliveries are dead-lettered without inbox records.
+The SPA result route is corrected. The branch worktree was clean at review.
+
+Notification is **APPROVED WITH FOLLOW-UPS / READY FOR MAIN INTEGRATION**.
+This is not a merge or producer-to-inbox E2E result. Shared wiring/database
+provisioning and the five provider emissions remain separate integration gates.
+Reporting's identity-race review gate remains unresolved until its own re-review.
+
 Neither business branch is merged by this decision. Owners fix the review
 findings in their own worktrees and return commit hashes plus relevant tests.
 MAIN then re-reviews, reconciles its pre-existing Analytics POM changes,
