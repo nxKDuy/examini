@@ -106,7 +106,7 @@ class JwtAuthFilterTest {
     }
 
     @Test
-    void publicAuthAndWebSocketRequestsRemainAvailableButIdentityHeadersAreStripped() {
+    void publicAuthRequestsRemainAvailableButIdentityHeadersAreStripped() {
         for (String path : new String[]{"/auth/login", "/auth/register", "/auth/refresh",
                 "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh"}) {
             ServerWebExchange forwarded = forward(MockServerHttpRequest.post(path)
@@ -119,12 +119,24 @@ class JwtAuthFilterTest {
             assertNull(forwarded.getRequest().getHeaders().getFirst("X-System-Privilege"));
         }
 
+    }
+
+    @Test
+    void websocketHandshakeRequiresAccessTokenAndReplacesSpoofedIdentity() {
+        assertRejected(MockServerHttpRequest.get("/ws/info").build());
+
+        String userId = UUID.randomUUID().toString();
         ServerWebExchange websocket = forward(MockServerHttpRequest.get("/ws/info")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(userId, "STUDENT", "STUDENT", "NONE", null, "access"))
                 .header("X-User-Id", "spoof")
+                .header("X-User-Role", "ADMIN")
+                .header("X-User-Persona", "TEACHER")
                 .header("X-System-Privilege", "ADMIN")
                 .build());
-        assertNull(websocket.getRequest().getHeaders().getFirst("X-User-Id"));
-        assertNull(websocket.getRequest().getHeaders().getFirst("X-System-Privilege"));
+        assertEquals(userId, websocket.getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("STUDENT", websocket.getRequest().getHeaders().getFirst("X-User-Role"));
+        assertEquals("STUDENT", websocket.getRequest().getHeaders().getFirst("X-User-Persona"));
+        assertEquals("NONE", websocket.getRequest().getHeaders().getFirst("X-System-Privilege"));
     }
 
     @Test

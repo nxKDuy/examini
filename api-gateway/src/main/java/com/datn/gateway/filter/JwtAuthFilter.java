@@ -85,7 +85,6 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
 
     private boolean isPublicAuthRequest(ServerWebExchange exchange) {
         String path = exchange.getRequest().getURI().getPath();
-        if ("/ws".equals(path) || path.startsWith("/ws/")) return true;
         return HttpMethod.POST.equals(exchange.getRequest().getMethod())
                 && PUBLIC_AUTH_PATHS.contains(path);
     }
