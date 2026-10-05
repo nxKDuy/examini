@@ -37,6 +37,8 @@ public class JwtService {
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("persona", user.getPersonalPersona() == null ? null : user.getPersonalPersona().name())
+                .claim("systemPrivilege", user.getSystemPrivilege().name())
                 .claim("type", "access")
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + accessExpiryMs))

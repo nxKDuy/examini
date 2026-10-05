@@ -41,13 +41,13 @@ public class AuthController {
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Đăng xuất — thu hồi refresh token", security = @SecurityRequirement(name = "Bearer"))
-    public void logout(@RequestHeader("X-User-Id") String userId) {
-        authService.logout(userId);
+    public void logout(@RequestHeader("Authorization") String authorization) {
+        authService.logout(authService.authenticatedUserId(authorization));
     }
 
     @GetMapping("/me")
     @Operation(summary = "Lấy thông tin người dùng hiện tại", security = @SecurityRequirement(name = "Bearer"))
-    public AuthResponse.UserInfo me(@RequestHeader("X-User-Id") String userId) {
-        return authService.me(userId);
+    public AuthResponse.UserInfo me(@RequestHeader("Authorization") String authorization) {
+        return authService.me(authService.authenticatedUserId(authorization));
     }
 }

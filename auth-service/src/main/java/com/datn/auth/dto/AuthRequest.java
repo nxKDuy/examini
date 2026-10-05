@@ -24,9 +24,14 @@ public class AuthRequest {
             @NotBlank
             @Size(max = 255) String fullName,
 
-            // ponytail: default STUDENT, admin tự cấp quyền sau
+            AccountType accountType,
+            Persona persona,
+            // Kept for existing clients; privileged values are rejected.
             com.datn.auth.entity.User.Role role
-    ) {}
+    ) {
+        public enum AccountType { PERSONAL, BUSINESS }
+        public enum Persona { STUDENT, TEACHER }
+    }
 
     public record RefreshRequest(
             @NotBlank String refreshToken

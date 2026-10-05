@@ -2,7 +2,7 @@ import api from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
 
 interface LoginPayload { email: string; password: string }
-interface RegisterPayload { email: string; password: string; fullName: string }
+interface RegisterPayload { email: string; password: string; fullName: string; accountType: 'PERSONAL'; persona: 'STUDENT' | 'TEACHER' }
 
 export const authApi = {
   login: async (data: LoginPayload) => {

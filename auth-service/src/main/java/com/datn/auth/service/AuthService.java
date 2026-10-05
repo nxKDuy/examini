@@ -30,6 +30,14 @@ public class AuthService {
 
     @Transactional
     public AuthResponse.TokenResponse register(AuthRequest.RegisterRequest req) {
+        if (req.accountType() == AuthRequest.RegisterRequest.AccountType.BUSINESS) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "Đăng ký tổ chức chưa được hỗ trợ");
+        }
+        if (req.persona() != null && req.role() != null
+                && !req.persona().name().equals(req.role().name())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "persona và role không khớp");
+        }
+        User.Persona persona = resolvePersona(req);
         if (userRepository.existsByEmail(req.email())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email đã tồn tại");
         }
@@ -37,10 +45,21 @@ public class AuthService {
                 .email(req.email())
                 .passwordHash(passwordEncoder.encode(req.password()))
                 .fullName(req.fullName())
-                .role(req.role() != null ? req.role() : User.Role.STUDENT)
+                .role(User.Role.valueOf(persona.name()))
+                .personalPersona(persona)
+                .systemPrivilege(User.SystemPrivilege.NONE)
                 .build();
         userRepository.save(user);
         return issueTokens(user);
+    }
+
+    private User.Persona resolvePersona(AuthRequest.RegisterRequest req) {
+        if (req.persona() != null) return User.Persona.valueOf(req.persona().name());
+        if (req.role() == null) return User.Persona.STUDENT;
+        if (req.role() == User.Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không thể đăng ký tài khoản quản trị");
+        }
+        return User.Persona.valueOf(req.role().name());
     }
 
     public AuthResponse.TokenResponse login(AuthRequest.LoginRequest req) {
@@ -78,10 +97,24 @@ public class AuthService {
         redis.delete(REFRESH_KEY_PREFIX + userId);
     }
 
+    public String authenticatedUserId(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Thiếu access token");
+        }
+        try {
+            Claims claims = jwtService.validateAndExtract(authorization.substring(7));
+            if (!"access".equals(claims.get("type", String.class))) throw new JwtException("Not an access token");
+            return claims.getSubject();
+        } catch (JwtException e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Access token không hợp lệ");
+        }
+    }
+
     public AuthResponse.UserInfo me(String userId) {
         User user = userRepository.findById(UUID.fromString(userId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Người dùng không tồn tại"));
-        return new AuthResponse.UserInfo(user.getId(), user.getEmail(), user.getFullName(), user.getRole());
+        return new AuthResponse.UserInfo(user.getId(), user.getEmail(), user.getFullName(), user.getRole(),
+                user.getPersonalPersona(), user.getSystemPrivilege());
     }
 
     private AuthResponse.TokenResponse issueTokens(User user) {

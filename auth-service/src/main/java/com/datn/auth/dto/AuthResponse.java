@@ -17,6 +17,8 @@ public class AuthResponse {
             UUID id,
             String email,
             String fullName,
-            User.Role role
+            User.Role role,
+            User.Persona persona,
+            User.SystemPrivilege systemPrivilege
     ) {}
 }

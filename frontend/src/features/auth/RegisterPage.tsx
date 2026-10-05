@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authApi } from './authApi'
-import { Brain, UserPlus } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const [form, setForm] = useState({ fullName: '', email: '', password: '', confirm: '' })
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', confirm: '', persona: 'STUDENT' as 'STUDENT' | 'TEACHER' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -16,7 +16,7 @@ export default function RegisterPage() {
     setLoading(true)
     setError('')
     try {
-      await authApi.register({ email: form.email, password: form.password, fullName: form.fullName })
+      await authApi.register({ email: form.email, password: form.password, fullName: form.fullName, accountType: 'PERSONAL', persona: form.persona })
       navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail ?? 'Đăng ký thất bại, vui lòng thử lại.')
@@ -58,6 +58,16 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div>
+            <label htmlFor="reg-persona" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600,
+              color: 'var(--color-surface-200)', marginBottom: '8px' }}>Loại tài khoản cá nhân</label>
+            <select id="reg-persona" className="input-field" value={form.persona}
+              onChange={e => setForm(f => ({ ...f, persona: e.target.value as 'STUDENT' | 'TEACHER' }))}
+              style={{ height: 44, fontSize: '0.95rem' }}>
+              <option value="STUDENT">Học sinh / Sinh viên</option>
+              <option value="TEACHER">Giáo viên</option>
+            </select>
+          </div>
           {field('reg-name', 'Họ và tên', {
             type: 'text', placeholder: 'Nguyễn Văn A', required: true, autoComplete: 'name',
             value: form.fullName, onChange: e => setForm(f => ({ ...f, fullName: e.target.value }))
