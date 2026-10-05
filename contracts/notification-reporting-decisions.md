@@ -85,11 +85,25 @@ The SPA result route is corrected. The branch worktree was clean at review.
 Notification is **APPROVED WITH FOLLOW-UPS / READY FOR MAIN INTEGRATION**.
 This is not a merge or producer-to-inbox E2E result. Shared wiring/database
 provisioning and the five provider emissions remain separate integration gates.
-Reporting's identity-race review gate remains unresolved until its own re-review.
+### Reporting re-review: approved with integration follow-ups
 
-Neither business branch is merged by this decision. Owners fix the review
-findings in their own worktrees and return commit hashes plus relevant tests.
-MAIN then re-reviews, reconciles its pre-existing Analytics POM changes,
+Reporting's **FIX REQUIRED** decision above is resolved by `d03730c`.
+MAIN inspected the complete fix diff and independently ran
+`mvn -B -f analytics-service/pom.xml package -q` against isolated real PostgreSQL:
+13 tests passed, no failures or errors. A transaction-scoped session advisory
+lock now precedes identity lookup; the upsert also guards identity equality.
+The concurrent conflicting-first-delivery test verifies consistent result and
+question identities. Required occurredAt validation and the dedicated
+ANALYTICS_EXAM_PERMISSION_TOKEN configuration are implemented.
+
+Reporting is **APPROVED WITH FOLLOW-UPS / READY FOR MAIN INTEGRATION**.
+Tests use synthetic events and a mocked Exam permission client. Grading event
+publication, permission-only provider support and real Gateway-backed E2E are
+still unimplemented or unverified; empty configuration remains fail closed.
+
+Neither business branch is merged by these decisions. Both consumer review
+fixes have passed re-review; owners retain clean branches ready for integration.
+MAIN then reconciles its pre-existing Analytics POM changes,
 integrates shared wiring, provisions the database, refreshes shared Graphify
 and validates real producer-to-consumer delivery through Gateway-backed APIs.
 Unit/integration consumer tests with synthetic events do not prove producer E2E.
