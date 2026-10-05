@@ -141,6 +141,8 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-datn}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-datn_secret}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      QB_INTERNAL_TOKEN: ${QB_INTERNAL_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,6 +170,9 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_secret}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
+      QB_INTERNAL_TOKEN: ${QB_INTERNAL_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -200,6 +205,8 @@ services:
       SPRING_RABBITMQ_USERNAME: guest
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -233,6 +240,8 @@ services:
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       GEMINI_API_KEY: ${GEMINI_API_KEY:-demo-key}
+      JWT_SECRET: ${JWT_SECRET}
+      EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
