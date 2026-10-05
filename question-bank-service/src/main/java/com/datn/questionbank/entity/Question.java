@@ -43,6 +43,9 @@ public class Question {
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
+    @Column(name = "bank_id", nullable = false, updatable = false)
+    private UUID bankId;
+
     @Column(length = 500)
     private String source;
 

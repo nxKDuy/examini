@@ -34,7 +34,11 @@ class QuestionServiceTest {
         repo = mock(QuestionRepository.class); versions = mock(QuestionVersionRepository.class);
         reviews = mock(QuestionReviewRepository.class); categories = mock(CategoryService.class);
         json = new ObjectMapper().registerModule(new JavaTimeModule());
-        service = new QuestionService(repo, categories, versions, reviews, new QuestionPolicy(), json);
+        var banks = mock(BankRegistry.class);
+        UUID bankId = UUID.randomUUID();
+        when(banks.defaultPersonal(any())).thenReturn(bankId);
+        when(banks.get(bankId)).thenReturn(QuestionBank.builder().id(bankId).type(QuestionBank.BankType.PERSONAL).ownerUserId(owner.userId()).build());
+        service = new QuestionService(repo, categories, versions, reviews, new QuestionPolicy(), json, banks);
         when(categories.getOrThrow(category.getId())).thenReturn(category);
         when(repo.saveAndFlush(any())).thenAnswer(call -> {
             Question q = call.getArgument(0); if (q.getId() == null) q.setId(UUID.randomUUID());

@@ -76,4 +76,21 @@ class QuestionAuthenticationTest {
         var access=request("GET","/questions");access.addHeader("Authorization","Bearer "+token("access","ADMIN",new Date(System.currentTimeMillis()+60000)));
         assertEquals(401,run(noKey,access).getStatus());
     }
+    @Test void phase2AuthorityRequiresExplicitConsistentSignedPrivilege() throws Exception {
+        for(String role:List.of("TEACHER","ADMIN")) {
+            var req=request("GET","/question-banks");
+            req.addHeader("Authorization","Bearer "+token("access",role,new Date(System.currentTimeMillis()+60000)));
+            req.addHeader("X-System-Privilege","ADMIN");
+            assertEquals("OK",run(filter,req).getContentAsString());
+            assertFalse(((QuestionActor)req.getAttribute(QuestionActor.class.getName())).systemAdmin());
+        }
+        for(String role:List.of("ADMIN","TEACHER")) {
+            String jwt=Jwts.builder().subject(owner.toString()).claim("type","access").claim("role",role).claim("systemPrivilege","ADMIN")
+                    .expiration(new Date(System.currentTimeMillis()+60000)).signWith(Keys.hmacShaKeyFor(JWT_TEST_KEY.getBytes(StandardCharsets.UTF_8))).compact();
+            var req=request("GET","/question-banks");req.addHeader("Authorization","Bearer "+jwt);
+            var response=run(filter,req);
+            if(role.equals("ADMIN")) {assertEquals("OK",response.getContentAsString());assertTrue(((QuestionActor)req.getAttribute(QuestionActor.class.getName())).systemAdmin());}
+            else assertEquals(401,response.getStatus());
+        }
+    }
 }

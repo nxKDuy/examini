@@ -34,6 +34,7 @@ public class QuestionService {
     private final QuestionReviewRepository reviews;
     private final QuestionPolicy policy;
     private final ObjectMapper json;
+    private final BankRegistry banks;
 
     public Page<QuestionProjection> findAll(UUID categoryId, DifficultyLevel difficulty, QuestionType type,
             QuestionStatus status, CreationMethod method, SourceType sourceType, String text,
@@ -63,12 +64,21 @@ public class QuestionService {
     public QuestionResponse create(CreateRequest req, QuestionActor actor) {
         policy.requireAuthor(actor);
         if (req.scope() != null && req.scope() != QuestionScope.PERSONAL) throw bad("Phase 1 chỉ hỗ trợ PERSONAL");
+        return createInBank(req, banks.defaultPersonal(actor.userId()), actor);
+    }
+
+    @Transactional
+    public QuestionResponse createInBank(CreateRequest req, UUID bankId, QuestionActor actor) {
+        var bank = banks.get(bankId);
+        banks.requireWrite(bank, actor);
+        QuestionScope scope = QuestionScope.valueOf(bank.getType().name());
+        if (req.scope() != null && req.scope() != scope) throw bad("scope không khớp bank");
         Question q = Question.builder().category(categoryService.getOrThrow(req.categoryId()))
                 .content(req.content()).questionType(req.questionType()).difficultyLevel(req.difficultyLevel())
                 .source(req.source()).sourceLabel(req.sourceLabel() != null ? req.sourceLabel() : req.source())
                 .sourceType(req.sourceType() == null ? SourceType.NONE : req.sourceType())
                 .sourceRefId(req.sourceRefId()).sourceUrl(req.sourceUrl()).sourceExcerpt(req.sourceExcerpt())
-                .expectedAnswer(req.expectedAnswer()).createdBy(actor.userId()).updatedAt(LocalDateTime.now())
+                .expectedAnswer(req.expectedAnswer()).createdBy(actor.userId()).bankId(bankId).scope(scope).updatedAt(LocalDateTime.now())
                 .build();
         replaceOptions(q, req.options());
         validate(q);
@@ -119,6 +129,8 @@ public class QuestionService {
     public QuestionResponse review(UUID id, ReviewRequest req, QuestionActor actor) {
         policy.requireReviewer(actor);
         Question q = lock(id);
+        if (q.getScope() == QuestionScope.SYSTEM && !actor.systemAdmin())
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "System review yêu cầu explicit authority");
         policy.requireRead(q, actor);
         matchVersion(q, req.questionVersion());
         if (q.getStatus() != QuestionStatus.PENDING_REVIEW) throw conflict("Chỉ PENDING_REVIEW được quyết định duyệt");
@@ -187,7 +199,8 @@ public class QuestionService {
             Question q = found.get(id);
             if (q == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy câu hỏi");
             policy.requireRead(q, actor);
-            if (eligible && q.getStatus() != QuestionStatus.APPROVED) throw conflict("Batch chứa câu hỏi chưa được duyệt");
+            if (eligible && (q.getScope() != QuestionScope.PERSONAL || q.getStatus() != QuestionStatus.APPROVED))
+                throw conflict("Batch chứa câu hỏi không đủ điều kiện PERSONAL APPROVED");
             requireAnswers(q, includeAnswers, actor);
             QuestionVersion v = snapshots.get(id);
             if (v == null || v.getVersionNumber() != q.getQuestionVersion()) throw conflict("Thiếu snapshot phiên bản câu hỏi");
@@ -234,7 +247,8 @@ public class QuestionService {
             }
         } catch (IOException | CsvValidationException e) { throw bad("CSV không hợp lệ gần dòng " + (total + 2)); }
         // Parse/validate before persistence; database failures roll back the import rather than reporting false success.
-        for (Question q : valid) saveRevision(q, actor.userId());
+        UUID bankId = banks.defaultPersonal(actor.userId());
+        for (Question q : valid) { q.setBankId(bankId); saveRevision(q, actor.userId()); }
         return new ImportResult(total, valid.size(), errors.size(), errors);
     }
 
@@ -282,6 +296,21 @@ public class QuestionService {
             versions.save(QuestionVersion.builder().questionId(q.getId()).versionNumber(q.getQuestionVersion())
                     .snapshot(json.writeValueAsString(fullResponse(q))).createdAt(q.getUpdatedAt()).changedBy(actor).build());
         } catch (JsonProcessingException e) { throw new IllegalStateException("Cannot serialize question revision", e); }
+    }
+
+    /** Internal domain operation: caller validates source visibility and target bank before copying. */
+    @Transactional
+    QuestionResponse copySnapshot(QuestionResponse source, UUID bankId, SourceType sourceType, String sourceRef, QuestionActor actor) {
+        var bank = banks.get(bankId);
+        banks.requireWrite(bank, actor);
+        if (bank.getType() != QuestionBank.BankType.PERSONAL) throw bad("Fork target phải là PERSONAL");
+        Question q = Question.builder().bankId(bankId).category(categoryService.getOrThrow(source.categoryId()))
+                .content(source.content()).questionType(source.questionType()).difficultyLevel(source.difficultyLevel())
+                .expectedAnswer(source.expectedAnswer()).source(source.source()).sourceLabel(source.sourceLabel())
+                .sourceUrl(source.sourceUrl()).sourceExcerpt(source.sourceExcerpt()).sourceType(sourceType).sourceRefId(sourceRef)
+                .creationMethod(CreationMethod.COPIED).createdBy(actor.userId()).updatedAt(LocalDateTime.now()).build();
+        replaceOptions(q, source.options().stream().map(o -> new OptionRequest(o.content(), Boolean.TRUE.equals(o.correct()), o.displayOrder())).toList());
+        validate(q); saveRevision(q, actor.userId()); return fullResponse(q);
     }
     private QuestionResponse readSnapshot(QuestionVersion v) {
         try { return json.readValue(v.getSnapshot(), QuestionResponse.class); }

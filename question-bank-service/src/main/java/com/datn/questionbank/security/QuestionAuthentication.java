@@ -61,7 +61,10 @@ public class QuestionAuthentication extends OncePerRequestFilter {
             String role = claims.get("role", String.class);
             if (!"access".equals(claims.get("type", String.class)) || claims.getExpiration() == null
                     || !Set.of("ADMIN", "TEACHER", "STUDENT").contains(role == null ? "" : role)) throw unauthorized();
-            return new QuestionActor(UUID.fromString(claims.getSubject()), role, false);
+            String privilege = claims.get("systemPrivilege", String.class);
+            if (privilege != null && (!Set.of("NONE", "ADMIN").contains(privilege)
+                    || "ADMIN".equals(privilege) != "ADMIN".equals(role))) throw unauthorized();
+            return new QuestionActor(UUID.fromString(claims.getSubject()), role, false, privilege == null ? "NONE" : privilege);
         } catch (JwtException | IllegalArgumentException | NullPointerException error) { throw unauthorized(); }
     }
     private QuestionActor serviceActor(HttpServletRequest request, String supplied) {
