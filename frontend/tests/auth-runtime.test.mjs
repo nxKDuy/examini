@@ -201,3 +201,19 @@ test('late 401 after a same-session refresh retries with the current access toke
   assert.equal(store.getState().accessToken, 'new')
   assert.equal(requests.filter(c => c.url === '/auth/refresh').length, 1)
 })
+
+
+test('configured system Admin hydrates with canonical null personal persona', async () => {
+  const admin = { id: 'admin-id', email: 'admin@example.test', fullName: 'Administrator', role: 'ADMIN', persona: null, systemPrivilege: 'ADMIN' }
+  respond = c => [200, c.url === '/auth/me' ? admin : tokens]
+  await authApi.login({ email: admin.email, password: 'fixture' })
+  assert.equal(isSystemAdmin(store.getState().user), true)
+  assert.equal(hasPersona(store.getState().user, 'TEACHER'), false)
+  assert.equal(hasPersona(store.getState().user, 'STUDENT'), false)
+})
+
+test('personal identity with null persona does not hydrate', async () => {
+  respond = c => [200, c.url === '/auth/me' ? { ...profile('TEACHER'), persona: null } : tokens]
+  await assert.rejects(authApi.login({ email: 'fixture@example.test', password: 'fixture' }))
+  assert.equal(store.getState().user, null)
+})

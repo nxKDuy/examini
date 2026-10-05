@@ -8,14 +8,15 @@ export interface AuthUser {
   fullName: string
   role: 'ADMIN' | Persona
   // Optional only for compatibility with older /auth/me responses.
-  persona?: Persona
+  persona?: Persona | null
   systemPrivilege?: 'NONE' | 'ADMIN'
 }
 
 export function validateAuthUser(user: AuthUser): AuthUser {
   if (!user || typeof user.id !== 'string' || typeof user.email !== 'string' || typeof user.fullName !== 'string' ||
     !['ADMIN', 'TEACHER', 'STUDENT'].includes(user.role) ||
-    (user.persona !== undefined && !['STUDENT', 'TEACHER'].includes(user.persona)) ||
+    (user.persona !== undefined && user.persona !== null && !['STUDENT', 'TEACHER'].includes(user.persona)) ||
+    (user.persona === null && (user.role !== 'ADMIN' || user.systemPrivilege !== 'ADMIN')) ||
     (user.systemPrivilege !== undefined && !['NONE', 'ADMIN'].includes(user.systemPrivilege))) {
     throw new Error('Invalid /auth/me identity')
   }
