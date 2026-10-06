@@ -114,6 +114,7 @@ services:
       JWT_REFRESH_EXPIRY_MS: ${JWT_REFRESH_EXPIRY_MS:-604800000}  # 7 days
       AUTH_BOOTSTRAP_EMAIL: ${AUTH_BOOTSTRAP_EMAIL:-}
       AUTH_BOOTSTRAP_PASSWORD: ${AUTH_BOOTSTRAP_PASSWORD:-}
+      NOTIFICATION_CONTACT_TOKEN: ${NOTIFICATION_CONTACT_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,6 +170,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
       QB_INTERNAL_TOKEN: ${QB_INTERNAL_TOKEN}
+      EXAM_NOTIFICATION_TOKEN: ${EXAM_NOTIFICATION_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
