@@ -150,6 +150,13 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
   không close/delete workspace. Gmail delivery, browser push và producer Exam
   E2E chưa được xác nhận; contracts/notification-scheduling.md phân loại rõ.
 - Frontend chưa dispatch Scheduling: chờ backend MAIN review, sau đó UI/UX gate.
+- Checkpoint ngày 2026-10-07: MAIN runtime Auth/Gateway/Notification riêng đạt
+  43/43 checks, PostgreSQL Auth V1–V4/Notification V1–V2 thành công. Đây chỉ là
+  API/component gate, chưa producer Scheduling, Gmail hoặc browser push thực.
+  Chi tiết tại notification-scheduling.md. Exam worker tiếp tục các phần độc
+  lập; câu hỏi `msg_4f5be95a5cb0` về `submitted` khi có nhiều attempt vẫn chờ
+  câu trả lời rõ ràng của người dùng. MAIN chưa chọn thay người dùng, chưa
+  trả lời/ACK câu hỏi, chưa giao frontend contract chưa ổn định.
 - Toàn bộ dirty MAIN gồm untracked đã stash trước Auth merge, restore kiểm
   SHA256 patch/file và status đúng nguyên trạng. Backup stash giữ nguyên;
   original Phase1 stash vẫn hiện hữu. Không discard/push.

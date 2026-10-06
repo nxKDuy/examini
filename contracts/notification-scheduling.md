@@ -101,3 +101,20 @@ Evidence component: archive aa32371, 52/52 tests trên PostgreSQL 16/RabbitMQ 3.
 Mailpit; RFC8291 vector, ES256, independent decrypt, ownership/SSRF/retry/dedup/
 expiry và late wording. **Chưa claim producer Exam E2E, Gmail inbox hay browser
 push thực**, đây là release gates còn phải xác minh.
+
+### MAIN runtime checkpoint ngày 2026-10-07
+
+Image Notification từ committed MAIN `f5067a8` build thành công. Harness riêng
+chạy PostgreSQL 16, Redis 7, RabbitMQ 3.13 và Auth/Gateway/Notification thật trên
+network/database sạch: **43/43 PASS**. Auth V1–V4 và Notification V1–V2 migrate
+thành công. API qua Gateway kiểm tra access JWT, refresh-token rejection,
+identity spoof rejection, subscription ownership/transfer/revoke và SSRF guard.
+Public-key endpoint cần đăng nhập; thiếu VAPID trả `enabled=false`.
+
+Đây là kiểm tra API thành phần, **không** là Scheduling E2E: chưa producer Exam,
+chưa email gửi thực, chưa browser subscription/display. Push subscription dùng
+key P-256 được tạo cho kiểm tra API; không có push provider nào được gọi.
+Harness/result local tại `/tmp/examini-scheduling-notification-api-runtime.py`
+và `/tmp/examini-scheduling-notification-api-runtime-result.json`; credentials
+test sinh ngẫu nhiên, không ghi vào report. Container/network của harness được
+dọn sau test; stack và worktree hiện hữu giữ nguyên.
