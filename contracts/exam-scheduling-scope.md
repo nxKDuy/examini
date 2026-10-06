@@ -54,8 +54,8 @@ frontend không tự quyết eligibility từ timestamps.
 - In-app, email và browser push cho Scheduling; không chỉ tạo event placeholder.
 - Cover đặt lịch, đổi lịch, Open/Close và reminder trước startAt.
 - Teacher cấu hình mốc nhắc, mặc định 24 giờ và 15 phút, có thể tắt.
-- Người nhận: Student đã được giao/đã Join và OWNER/MANAGER; không broadcast tới
-  mọi Student khi Exam PUBLIC. Student chưa Join vẫn nhận nếu đã được giao.
+- Người nhận: Student đã được giao/đã Join/chủ động theo dõi lịch PUBLIC và
+  OWNER/MANAGER; không broadcast tới mọi Student khi Exam PUBLIC.
 - Đổi lịch hủy reminder cũ và lập lại theo lịch mới; tránh gửi trùng khi retry.
 - Chưa có SMTP/Web Push trong Notification hiện tại. Nhà cung cấp, thông tin
   liên hệ tin cậy, subscription/permission, cấu hình và retry là contract/domain
@@ -71,8 +71,9 @@ frontend không tự quyết eligibility từ timestamps.
 - Calendar chỉ hiển thị Exam người dùng có quyền xem; cần query theo khoảng thời
   gian và student availability từ backend, không fetch toàn bộ rồi đoán quyền.
 - Student có thể chủ động gắn cờ để đưa PUBLIC Exam chưa Join vào My Calendar;
-  không tự thêm mọi PUBLIC Exam. Việc gắn cờ có kéo theo notification/reminder
-  hay không đang chờ người dùng chốt; không được tự suy ra từ quyền xem.
+  không tự thêm mọi PUBLIC Exam. Cờ lưu theo tài khoản, bật/tắt được, kèm
+  notification/reminder theo chính sách đã chốt; không tự Join/chiếm capacity
+  hoặc cấp quyền Start. Đây là quyết định trực tiếp của người dùng.
 - Mặc định view, vị trí, card, interaction, màu/badge, mobile và push opt-in phải
   được người dùng chốt trong UI/UX SCOPE LOCK sau backend review.
 
@@ -86,7 +87,7 @@ nhu cầu Scheduling trên. Không tự merge các feature Phase 2 chưa review.
 ## DOMAIN SCOPE LOCK — ĐÃ CHỐT CÁC NHÓM DƯỚI ĐÂY
 
 Nguồn: người dùng trả lời các nhóm clarification của Exam và Notification ngày
-2026-10-06. Ngoại lệ còn mở duy nhất: notification của PUBLIC Calendar flag.
+2026-10-06, gồm PUBLIC Calendar flag kèm notification/reminder.
 Đây vẫn là yêu cầu đã duyệt, chưa phải implementation đã được review.
 
 ### Exam — lịch và biên thời gian
@@ -120,7 +121,9 @@ Nguồn: người dùng trả lời các nhóm clarification của Exam và Noti
 
 - Student không thấy DRAFT. assigned/joined thấy PUBLISHED/OPEN/CLOSED theo quyền.
 - PUBLIC PUBLISHED được khám phá trước giờ; vào My Calendar nếu Student chủ động
-  gắn cờ, hoặc đã assigned/joined. Cờ không mặc nhiên là ExamParticipant.
+  gắn cờ, hoặc đã assigned/joined. Cờ không là ExamParticipant nhưng người theo
+  dõi nhận các thông báo đặt/đổi/gỡ lịch, Open/Close và reminder theo ma trận kênh.
+  Bỏ cờ loại recipient theo dõi; nếu vẫn assigned/joined thì quyền đó giữ nguyên.
 - Code hợp lệ được preview trước giờ, không Join/chiếm capacity/nhận reminder.
 - Exam không lịch chỉ hiện Agenda; không bịa ngày cho Month/Week/Day.
 - MISSED khi đã qua endAt và chưa có attempt; Close sớm/unscheduled Close chỉ
@@ -153,14 +156,15 @@ Nguồn: người dùng trả lời các nhóm clarification của Exam và Noti
   SMTP TLS/auth đã kiểm PASS; chưa gửi email, không coi đó là delivery E2E.
   Không đưa địa chỉ sender hay mật khẩu vào Git/handoff.
 
-### Gate còn mở và quyền triển khai
+### Quyền triển khai và UI gate
 
-PUBLIC flag: người dùng đang chọn chỉ thêm Calendar hay cũng nhận Scheduling
-notification/reminder. Tên/nút/tương tác sẽ chốt ở UI/UX gate. Không implementation
-phần phụ thuộc cho tới câu trả lời; MAIN sẽ gửi lại bằng Orca. Workers khảo sát
-tổng hợp lock/report rồi worker_done; implementation là Dispatch riêng.
+PUBLIC flag đã được user chốt "kèm nof". Product/Domain gates được khóa; không
+còn business assumption cho gate này. Tên/nút/tương tác sẽ chốt ở UI/UX gate.
+Workers khảo sát đã settlement; implementation được giao bằng Dispatch riêng.
 Worker mới nếu cần: người dùng chọn model trước khi khởi chạy. Reuse worker hiện
-có không tự đổi model. MAIN không tự trả lời business/UX thay người dùng.
+có không tự đổi model. Worker Auth contact mới được user chọn Claude Opus 5.5;
+MAIN phải xác nhận model thực tế, không tự fallback. MAIN không tự trả lời
+business/UX thay người dùng; worker phát hiện quyết định còn thiếu phải hỏi.
 
 ## UI/UX SCOPE LOCK — CHƯA CHỐT
 

@@ -1,7 +1,7 @@
 # Scheduling — điều phối và review kỹ thuật MAIN
 
-Trạng thái: scope/domain đã duyệt tại `ee2096c`; PUBLIC flag còn chờ quyết định
-notification. Các API/event dưới đây là **đề xuất**, chưa được triển khai.
+Trạng thái: scope/domain đã duyệt; người dùng chốt PUBLIC flag kèm Notification
+ngày 2026-10-06. Các API/event dưới đây chưa được triển khai.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -11,15 +11,15 @@ Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằ
 | Exam | task_871bb2752b8f / ctx_88e92c46c638 | succeeded cho KHẢO SÁT; report `/tmp/examini-exam-scheduling-domain-survey.md`, HEAD 6bdf453, sạch, không code/migration |
 | Notification | task_ed003ca4e9de / ctx_caac4eff4a87 | succeeded cho KHẢO SÁT; report notification-scheduling-survey.md, HEAD 2163889, sạch, không code/migration |
 
-Hai terminal được giữ lại theo yêu cầu dùng workspace lâu dài. Chưa có Dispatch
-implementation Scheduling, chưa giao UI. Không coi khảo sát là feature PASS.
+Hai terminal được giữ lại theo yêu cầu dùng workspace lâu dài. MAIN sẽ giao
+Dispatch implementation riêng; chưa giao UI. Không coi khảo sát là feature PASS.
 
 ## Auth contact — scope tối thiểu cho worker riêng
 
 MAIN đã xác minh User hiện chỉ có id/email/fullName và không có account-active hay
 emailVerified. Không invent `active` từ persona/role hoặc thêm activation domain.
 
-Provider proposal, cần review implementation trước khi chốt public contract:
+MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phải review:
 
 - `POST /auth/internal/contacts`, body `{userIds: [UUID]}`, tối đa 100 ID.
 - Response chỉ `{userId, email, displayName}` cho ID tồn tại; không trả password,
@@ -32,21 +32,36 @@ Provider proposal, cần review implementation trước khi chốt public contra
   tồn tại, response data minimization, regression Auth hiện có.
 - Worker chỉ sở hữu auth-service; không thay đăng ký, JWT/role/persona, bootstrap
   hoặc frontend. Shared Gateway/config/contracts phải gửi MAIN riêng.
-- Worker mới CHƯA KHỞI CHẠY: chờ người dùng chọn model. Base committed MAIN;
-  không mang dirty files. Nếu model không được Orca hỗ trợ, báo đúng lỗi, không
-  tự thay bằng model khác.
+- Người dùng chọn Claude Opus 5.5 cho worker Auth contact mới. Base committed
+  MAIN, không mang dirty files. Nếu model không được Orca hỗ trợ, báo đúng lỗi,
+  không tự thay bằng model khác. Handoff ghi model thực tế từ Orca/agent status.
 
-## Exam và Notification — cần chốt schema chung
+## Exam và Notification — capability MAIN duyệt để triển khai
 
 - Exam authority: schedule/availability/participants/calendar flags; Notification
   authority: reminder jobs, inbox, channel deliveries/subscriptions.
-- Đề xuất additive events `exam.schedule.changed`, `exam.lifecycle.changed`, v1
+- Additive events `exam.schedule.changed`, `exam.lifecycle.changed`, v1
   envelope của examini.events, stable eventId/outbox/confirm và revision.
+- Exam schedule DTO/event: examId/title, startAt/endAt UTC instant nullable,
+  IANA timezone, deadlineRule, reminderOffsetsMinutes, scheduleRevision,
+  changeType SCHEDULED/RESCHEDULED/UNSCHEDULED, lifecycle và actorUserId.
+  Lifecycle event có status/trigger AUTO hoặc MANUAL/lifecycleRevision.
 - Recipient API hẹp dùng EXAM_NOTIFICATION_TOKEN riêng, không broad token mở
-  answer keys. Không chứa private audit reason/join code/key/score.
+  answer keys: GET /exams/{id}/internal/notification-recipients. Snapshot có
+  revision/lifecycle/schedule/deadlineRule cùng userId/relation/started/submitted;
+  không chứa private audit reason/join code/key/score/email.
+- Recipient relation gồm OWNER/MANAGER/ASSIGNED/JOINED/FOLLOWER (PUBLIC flag).
+  Mỗi user chỉ nhận một thông báo logic dù có nhiều relation.
 - Recipient assignment/membership/flag thay đổi sau đặt lịch phải được phản ánh;
   không dùng danh sách snapshot ban đầu như authority vĩnh viễn.
-- Final DTO/route/schema và relation cho PUBLIC flag đợi gate người dùng.
+- Provider/consumer chốt tên field/envelope thống nhất trong handoff; không tự
+  đổi capability/authority đã duyệt. Route/DTO breaking change gửi MAIN trước.
+- Notification được thêm Spring Mail theo BOM hiện tại và Web Push implementation
+  chuẩn VAPID có kiểm tra dependency/license/maintenance; không upgrade unrelated
+  dependency. Service-local POM commit riêng, MAIN review dependency trước merge.
+- SMTP production/development sender dùng cấu hình Gmail local đã cung cấp;
+  SMTP test bằng Mailpit/GreenMail không là bằng chứng Gmail delivery. Shared
+  Compose/env/Gateway do MAIN làm sau provider contracts, chỉ placeholder Git.
 
 ## Những điểm kỹ thuật MAIN sẽ kiểm khi nhận implementation
 
