@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ClipboardCheck, PenLine, XCircle } from 'lucide-react'
@@ -18,6 +18,11 @@ export default function GradingPage() {
   const status = params.get('status') ?? ''
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
+  const detailRef = useRef<HTMLElement>(null)
+  function select(id: string) {
+    setSelected(id)
+    setTimeout(() => { const top = detailRef.current?.getBoundingClientRect().top ?? 0; if (top < 64 || top > window.innerHeight - 120) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 50)
+  }
   const exams = useQuery({ queryKey: ['exams', 'all'], queryFn: examApi.listAll })
   const gradable = (exams.data ?? []).filter(e => e.status !== 'DRAFT')
   const subs = useQuery({
@@ -57,10 +62,10 @@ export default function GradingPage() {
             <div className="card-header"><h2 style={{ fontSize: '0.9375rem' }}>{subs.data ? `${subs.data.totalElements} bài nộp` : 'Bài nộp'}</h2></div>
             {subs.isLoading ? <LoadingState rows={4} /> : subs.isError ? <ErrorState error={subs.error} onRetry={() => void subs.refetch()} />
               : subs.data!.content.length === 0 ? <EmptyState title="Không có bài nộp" description={status ? 'Không có bài ở trạng thái này.' : 'Bài nộp xuất hiện khi thí sinh nộp bài hoặc hết giờ.'} />
-              : subs.data!.content.map(s => <SubmissionRow key={s.id} s={s} active={selected === s.id} onSelect={() => setSelected(s.id)} />)}
+              : subs.data!.content.map(s => <SubmissionRow key={s.id} s={s} active={selected === s.id} onSelect={() => select(s.id)} />)}
             {subs.data && <Pagination label="Phân trang bài nộp" page={page} totalPages={subs.data.totalPages} onChange={setPage} />}
           </section>
-          <section className="card card-body sticky-pane" aria-label="Chi tiết bài nộp">
+          <section ref={detailRef} className="card card-body sticky-pane" aria-label="Chi tiết bài nộp">
             {selected ? <SubmissionDetail key={selected} id={selected} /> : <EmptyState title="Chọn một bài nộp" description="Xem câu trả lời, kết quả chấm tự động và lưu điểm cuối." />}
           </section>
         </div>

@@ -244,7 +244,11 @@ a.stat:hover { background: var(--color-subtle); }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 
 /* Split panes (list + detail) */
-.split { display: grid; gap: 16px; grid-template-columns: minmax(280px, 390px) minmax(0, 1fr); align-items: start; }
+.split { display: grid; gap: 16px; grid-template-columns: minmax(280px, 390px) minmax(0, 1fr); align-items: stretch; }
+/* Both panes share the row height; empty states sit in the vertical middle. */
+.split > .card { display: flex; flex-direction: column; min-width: 0; }
+.split > .card > .empty-state { flex: 1; align-content: center; }
+.split > .sticky-pane { position: static; max-height: none; overflow: visible; }
 @media (max-width: 1023px) { .split { grid-template-columns: minmax(0, 1fr); } }
 .sticky-pane { position: sticky; top: 80px; max-height: calc(100dvh - 96px); overflow-y: auto; overscroll-behavior: contain; }
 @media (max-width: 1023px) { .sticky-pane { position: static; max-height: none; overflow: visible; } }
@@ -284,9 +288,6 @@ a.stat:hover { background: var(--color-subtle); }
 /* Auth pages: card over oversized faded type */
 .auth-shell { position: relative; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; overflow: hidden; background: #d9d9d9; }
 .auth-card { position: relative; z-index: 1; width: min(480px, 100%); }
-.auth-backdrop { position: absolute; inset: 0; pointer-events: none; user-select: none; color: #ececec; font-size: clamp(3rem, 9vw, 8rem); line-height: 1.05;
-  letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; }
-.auth-backdrop span { position: absolute; }
 
 /* Misc */
 @keyframes page-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -310,3 +311,4 @@ a.stat:hover { background: var(--color-subtle); }
 @media (max-width: 900px) { .take-nav > .hide-desktop { visibility: visible; } }
 /* The card already draws the outer rule */
 .card > .list-item:last-child, .card > div > .list-item:last-child, .card li:last-child > .list-item { border-bottom: 0; }
+.split > .card { scroll-margin-top: 80px; }

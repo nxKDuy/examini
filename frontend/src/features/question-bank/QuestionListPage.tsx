@@ -39,7 +39,7 @@ export default function QuestionListPage() {
 
   function select(id: string) {
     setSelectedId(id)
-    if (window.matchMedia('(max-width: 1023px)').matches) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    setTimeout(() => { const top = detailRef.current?.getBoundingClientRect().top ?? 0; if (top < 64 || top > window.innerHeight - 120) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 50)
   }
 
   return (

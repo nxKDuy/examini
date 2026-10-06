@@ -52,7 +52,7 @@ export function Notice({ tone = 'info', title, children, action, live }: {
 
 export function EmptyState({ icon, title, description, action }: { icon?: ReactNode; title: string; description?: ReactNode; action?: ReactNode }) {
   return (
-    <div style={{ padding: '40px 20px', textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 8 }}>
+    <div className="empty-state" style={{ padding: '40px 20px', textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 8 }}>
       <div style={{ color: 'var(--color-muted)' }} aria-hidden>{icon ?? <SearchX size={32} />}</div>
       <h3>{title}</h3>
       {description && <p className="muted small" style={{ maxWidth: '52ch' }}>{description}</p>}
