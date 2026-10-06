@@ -6,17 +6,21 @@ and read state; it never owns the business fact that triggered it.
 
 ## CURRENT: notification-service
 
-Implemented on `feature/notification`. Port 8087, database `notification_db`,
-Gateway route `/notifications/**` (shared wiring awaits MAIN approval).
+Đã review và tích hợp MAIN tại `13b5f28`, từ `feature/notification`
+`aa32371`. Port 8087, database `notification_db`, Gateway `/notifications/**`.
+Scheduling consumer, durable reminder và ba kênh đã có implementation; producer
+Exam Scheduling còn chờ MAIN review. Đây chưa phải bằng chứng Gmail delivery hay
+browser push thật. Xem [Scheduling contract](notification-scheduling.md).
 
-No producer emits these events yet. The only existing message,
+Các event nghiệp vụ không thuộc Scheduling trong bảng đề xuất dưới đây chưa có
+producer được tích hợp. Message hiện hành,
 `exam.submitted.queue`, is a point-to-point queue on the default exchange with a
 bare session ID consumed by Grading: a second consumer would steal Grading's
 messages and the payload has no recipient. Notification does not use it.
 Until a producer ships its event below, users receive no notification of that
 kind; nothing is fabricated.
 
-## REQUIRED / PROPOSED: event transport
+## CURRENT: event transport của consumer
 
 ```text
 Exchange:     examini.events (topic, durable). Producers and consumer both declare it idempotently.
@@ -74,8 +78,8 @@ Acceptance evidence: provider commit, outbox-after-commit test, stable eventId
 across redelivery, and a message on `examini.events` consumed by
 `notification-service` (see its integration test for the envelope).
 
-Not proposed for Phase 1: exam published/opened fan-out to all participants
-(needs a participant-list contract), invitation accepted, reminders, broadcast.
+Scheduling có contract riêng cho người nhận, Publish/Open/Close và reminders.
+Invitation accepted và broadcast ngoài phạm vi hiện tại.
 
 ## CURRENT: API (current user only)
 
@@ -94,7 +98,10 @@ nothing. ADMIN sees only their own inbox. A foreign or unknown ID returns 404.
 NotificationResponse:
   id: UUID
   type: QUESTION_APPROVED | QUESTION_REJECTED | EXAM_MEMBER_INVITED | EXAM_ASSIGNED
-        | SUBMISSION_RECEIVED | RESULT_AVAILABLE   (new types may be added; render unknown as generic)
+        | SUBMISSION_RECEIVED | RESULT_AVAILABLE
+        | EXAM_SCHEDULED | EXAM_RESCHEDULED | EXAM_UNSCHEDULED
+        | EXAM_OPENED | EXAM_CLOSED | EXAM_REMINDER
+        (new types may be added; render unknown as generic)
   title, message: Vietnamese display text rendered by Notification
   entityType: QUESTION | EXAM | EXAM_SESSION
   entityId: UUID of that resource (no embedded foreign entity)
@@ -111,7 +118,8 @@ through the shared API client (Bearer token, no identity headers):
 
 - List: `GET /notifications?size=20` (use `content`, `totalElements`, `last`).
   Unread badge: `GET /notifications/unread-count`. Poll or refetch on focus;
-  no push channel exists yet.
+  Browser push đã có backend, nhưng permission/subscription/service worker cần
+  frontend tích hợp theo UI/UX scope; không coi push thay cho inbox polling.
 - Mark one: `PATCH /notifications/{id}/read`; mark all: `PATCH /notifications/read-all`.
 - Relative time comes from `createdAt`. Icon by `type`. Navigation by
   `entityType`/`entityId`: QUESTION -> question detail, EXAM -> exam
@@ -126,7 +134,8 @@ Table `notifications`: `id`, `recipient_user_id`, `type`, `title`, `message`,
 `source_event_type`, `created_at`, `read_at`. Unique
 `(source_event_id, recipient_user_id)`; indexes for the inbox and unread count.
 
-Only IN_APP exists; the row itself is the in-app delivery and read state.
-FUTURE email/push would add a `notification_deliveries(notification_id, channel,
-status, attempts)` table keyed by the existing notification ID, so notification
-identity does not change. Preferences, digests and templates are not in scope.
+Inbox row là IN_APP và có read state. Scheduling thêm PostgreSQL V2: trạng thái
+Exam, durable jobs, push subscriptions và `notification_deliveries`; email/push
+tracking gắn với notification hiện hữu. Không có email/push cho các event generic
+Phase 1 trong bảng đề xuất. Preferences, digests ngoài scope. Xem contract
+Scheduling về expiry, retry, recipient và mức bảo đảm gửi.

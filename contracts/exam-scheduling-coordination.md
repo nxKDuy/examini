@@ -141,7 +141,14 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
   quan sát final agent turn chỉ xử lý inbox, không nhận implementation/worker_done;
   retry cùng task không tạo worker/worktree hay sửa model.
 - Notification implementation task_49897a0178ea / ctx_4650178a9c97: start
-  observed; schema consumer đã route tới Exam. Chưa coi API/event là implemented.
+  observed; đã succeeded tại c20a651. Follow-up task_8b0da8f833d3 /
+  ctx_6eb0eea0de03 succeeded tại aa32371, sửa wording reminder trễ.
+  MAIN review diff và Surefire từ archive aa32371: 52/0/0/0 trên PostgreSQL 16,
+  RabbitMQ 3.13, Mailpit. Merge component tại 13b5f28 trước Exam là dependency
+  độc lập để nhận event; không merge feature Exam Phase2 chưa review.
+  Cả hai Dispatch đã release theo đúng settlement; external terminal retained,
+  không close/delete workspace. Gmail delivery, browser push và producer Exam
+  E2E chưa được xác nhận; contracts/notification-scheduling.md phân loại rõ.
 - Frontend chưa dispatch Scheduling: chờ backend MAIN review, sau đó UI/UX gate.
 - Toàn bộ dirty MAIN gồm untracked đã stash trước Auth merge, restore kiểm
   SHA256 patch/file và status đúng nguyên trạng. Backup stash giữ nguyên;
