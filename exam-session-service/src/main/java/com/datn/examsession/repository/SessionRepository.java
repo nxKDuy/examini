@@ -12,6 +12,11 @@ public interface SessionRepository extends JpaRepository<ExamSession, UUID> {
     @Query("select s from ExamSession s where s.id = :id") Optional<ExamSession> lockById(UUID id);
     long countByExamIdAndUserId(UUID examId,UUID userId);
     long countByExamIdAndStatus(UUID examId,ExamSession.Status status);
+    long countByExamIdAndStatusAndExpiresAtAfter(UUID examId,ExamSession.Status status,java.time.Instant now);
+    boolean existsByExamId(UUID examId);
+    Optional<ExamSession> findByExamIdAndStartAdmissionId(UUID examId,UUID startAdmissionId);
+    Optional<ExamSession> findTopByExamIdAndUserIdOrderByAttemptNumberDesc(UUID examId,UUID userId);
+    java.util.List<ExamSession> findByExamIdAndUserIdIn(UUID examId,java.util.Collection<UUID> userIds);
     java.util.List<ExamSession> findByExamIdAndStatus(UUID examId,ExamSession.Status status);
     java.util.List<ExamSession> findByStatusAndExpiresAtLessThanEqual(ExamSession.Status status,java.time.Instant expiresAt);
     java.util.List<ExamSession> findByExamId(UUID examId);

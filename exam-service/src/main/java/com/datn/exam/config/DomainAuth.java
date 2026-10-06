@@ -16,6 +16,7 @@ import java.security.MessageDigest;
 public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
     @Value("${jwt.secret:}") private String jwtSecret="";
     @Value("${exam.internal-token:}") private String internalToken="";
+    @Value("${notification.internal-token:}") private String notificationToken="";
     @Override public void addInterceptors(InterceptorRegistry registry) {registry.addInterceptor(this).excludePathPatterns("/actuator/health","/error");}
     @Override public boolean preHandle(HttpServletRequest req,HttpServletResponse res,Object handler) {
         String bearer=req.getHeader("Authorization"),service=req.getHeader("X-Service-Token");
@@ -23,6 +24,17 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Duplicate authentication headers");
         // Authorize the mapped controller route, not the raw/percent-encoded URL.
         String mapped=String.valueOf(req.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE));
+        if(isScheduleInternal(mapped)) {
+            if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Internal service authentication required");
+            return true;
+        }
+        boolean notificationInternal="GET".equals(req.getMethod()) && mapped.equals("/exams/{id}/internal/notification-recipients");
+        if(notificationInternal) {
+            if(bearer!=null || service==null || notificationToken.isBlank() || !MessageDigest.isEqual(notificationToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Notification service authentication required");
+            return true;
+        }
         boolean internal=mapped.matches("/exams/[^/]+/internal/(start|safe|grading|permission)|/sessions/[^/]+/internal/(answers|owner)|/sessions/exam/[^/]+/internal/eligibility");
         if(internal) {
             if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
@@ -34,10 +46,19 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             var claims=Jwts.parser().verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8))).build().parseSignedClaims(bearer.substring(7)).getPayload();
             String role=claims.get("role",String.class);
             if(!"access".equals(claims.get("type",String.class)) || claims.getExpiration()==null || !Set.of("TEACHER","ADMIN","STUDENT").contains(role)) throw new IllegalArgumentException();
+            if("STUDENT".equals(role) && isScheduleStudentRoute(req.getMethod(),mapped)) {
+                req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
+            }
             String path=mapped;
             boolean studentPath=path.equals("/exams/public") || path.equals("/exams/my") || path.endsWith("/lobby") || path.endsWith("/preflight") || path.endsWith("/join") || path.startsWith("/exams/code/");
             if(!studentPath && "STUDENT".equals(role))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Teacher role required");
             req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}
+    }
+    private boolean isScheduleInternal(String path) {
+        return path.matches("/exams/[^/]+/internal/start-admissions(?:/[^/]+/(?:claim|confirm|release))?|/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+)");
+    }
+    private boolean isScheduleStudentRoute(String method,String path) {
+        return ("GET".equals(method) && path.equals("/exams/calendar")) || path.matches("/exams/[^/]+/(availability|follow)") || path.endsWith("/preview");
     }
 }

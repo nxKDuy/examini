@@ -17,8 +17,11 @@ import java.time.*;
 public class ExamCore {
     private final ExamRepository exams;
     private final ExamAuditRepository audits;
+    private final StartAdmissionRepository admissions;
     private final QuestionBankClient questions;
     private final com.datn.exam.client.SessionClient sessions;
+    private final ExamEventPublisher events;
+    private final java.time.Clock clock;
     @Value("${exam.internal-token:}") private String internalToken="";
     @Value("${exam.capacity.platform-limit:100}") private int platformLimit = 100;
     @Value("${question-bank.internal-token:}") private String questionToken = "";
@@ -37,20 +40,27 @@ public class ExamCore {
     public void audit(Exam e, UUID actor, String action, String metadata) {
         audits.save(new ExamAudit(e.getId(), actor, action, metadata));
     }
+    private void recipientChanged(Exam e,String cause,UUID actor) {
+        e.setRecipientRevision(e.getRecipientRevision()+1);
+        events.recipientsChanged(e,cause,actor);
+    }
     public void member(UUID id, UUID actor, UUID user, Exam.MemberRole role, boolean remove) {
         Exam e=load(id);
         if (!role(e,actor).equals("OWNER")) throw error(403,"Only owner manages collaborators");
         if (user == null || user.equals(e.getOwnerUserId())) throw error(400,"Owner cannot be a member");
+        boolean wasManager=Exam.MemberRole.MANAGER==e.getMembers().get(user);
         var old=e.getMembers().getOrDefault(user,e.getInvitations().get(user));
         if(remove) { if(old == null) return; e.getMembers().remove(user); e.getInvitations().remove(user); }
         else { if(role == null) throw error(400,"Member role required"); if(old != null) throw error(409,"Member already exists; remove first"); e.getInvitations().put(user,role); }
         audit(e,actor,(remove?old:role).name()+(remove?"_REMOVED":"_INVITED"),user.toString());
+        if(remove && wasManager)recipientChanged(e,"MEMBER_REMOVED",actor);
     }
     public void accept(UUID id, UUID actor, String actorRole) {
-        if(!Set.of("TEACHER","ADMIN").contains(actorRole))throw error(403,"Teacher required");
+        if(!"TEACHER".equals(actorRole))throw error(403,"Teacher required");
         Exam e=load(id);var invited=e.getInvitations().remove(actor);
         if(invited==null)throw error(404,"No invitation");
         e.getMembers().put(actor,invited);audit(e,actor,invited.name()+"_ADDED","Invitation accepted");
+        if(invited==Exam.MemberRole.MANAGER)recipientChanged(e,"MEMBER_ADDED",actor);
     }
     public record Policy(Exam.AccessMode accessMode, int maxParticipants, int maxConcurrentSessions, int attemptLimit,String joinCode) {
         public Policy(Exam.AccessMode mode,int participants,int concurrent,int attempts){this(mode,participants,concurrent,attempts,null);}
@@ -72,8 +82,10 @@ public class ExamCore {
     public void assign(UUID id, UUID actor, UUID user, boolean remove) {
         Exam e=load(id);require(e,actor,true);draft(e);
         if(user==null) throw error(400,"User required");
-        if(remove)e.getParticipants().remove(user);else register(e,user,"ASSIGNED");
+        boolean existed=e.getParticipants().containsKey(user);
+        if(remove) {if(!existed)return;e.getParticipants().remove(user);} else {if(existed)return;register(e,user,"ASSIGNED");}
         audit(e,actor,remove?"PARTICIPANT_REMOVED":"PARTICIPANT_ASSIGNED",user.toString());
+        recipientChanged(e,remove?"UNASSIGNED":"ASSIGNED",actor);
     }
     private void register(Exam e, UUID user, String source) {
         if(e.getParticipants().containsKey(user)) return;
@@ -82,11 +94,18 @@ public class ExamCore {
     }
     public Exam join(UUID id, UUID user, String code) {
         Exam e=load(id);if(user==null)throw error(401,"Authentication required");
-        startWindow(e);
+        if(e.getStatus()!=Exam.Status.PUBLISHED && e.getStatus()!=Exam.Status.OPEN)throw error(409,"Exam is not available to join");
+        Instant now=clock.instant();
+        if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))throw error(409,"Join is not available before startAt");
+        if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Exam schedule has ended");
         if(e.getAccessMode()==Exam.AccessMode.ASSIGNED && !e.getParticipants().containsKey(user)) throw error(403,"Not assigned");
         if(e.getAccessMode()==Exam.AccessMode.JOIN_CODE && !e.getCode().equals(code)) throw error(403,"Invalid join code");
         checkAttempts(e,user);
-        register(e,user,e.getAccessMode().name());return e;
+        if(!e.getParticipants().containsKey(user)) {
+            register(e,user,e.getAccessMode().name());
+            recipientChanged(e,"JOINED",user);
+        }
+        return e;
     }
     private void checkAttempts(Exam e,UUID user){
         if(internalToken.isBlank())throw error(503,"Session integration not configured");
@@ -99,27 +118,57 @@ public class ExamCore {
         checkAttempts(e,user);return e;
     }
     public void startWindow(Exam e) {
-        if(e.getStatus()!=Exam.Status.OPEN) throw error(409,"Exam is not OPEN");
-        var now=LocalDateTime.now(ZoneOffset.UTC);
-        if((e.getStartTime()!=null && now.isBefore(e.getStartTime())) || (e.getEndTime()!=null && !now.isBefore(e.getEndTime())))
-            throw error(409,"Outside exam schedule");
+        if(e.getStatus()!=Exam.Status.OPEN) throw error(409,"EXAM_NOT_OPEN");
+        var now=clock.instant();
+        if(e.getStartAt()!=null && now.isBefore(e.getStartAt())) throw error(409,"BEFORE_START_AT");
+        if(e.getEndAt()!=null && !now.isBefore(e.getEndAt())) throw error(409,"AFTER_END_AT");
     }
     public Exam transition(UUID id, UUID actor, Exam.Status target) {
-        Exam e=load(id);require(e,actor,true);
+        return transition(id,actor,target,null,"MANUAL");
+    }
+    public Exam transition(UUID id,UUID actor,Exam.Status target,String reason,String trigger) {
+        Exam e=load(id);if(!"AUTO".equals(trigger))require(e,actor,true);
         boolean valid=(e.getStatus()==Exam.Status.DRAFT && target==Exam.Status.PUBLISHED) ||
             (e.getStatus()==Exam.Status.PUBLISHED && target==Exam.Status.OPEN) ||
-            (e.getStatus()==Exam.Status.OPEN && target==Exam.Status.CLOSED);
+            ((e.getStatus()==Exam.Status.OPEN || e.getStatus()==Exam.Status.PUBLISHED) && target==Exam.Status.CLOSED);
         if(!valid)throw error(409,"Invalid lifecycle transition");
-        if(target==Exam.Status.PUBLISHED) publishSnapshot(e);
+        if(target==Exam.Status.CLOSED && admissions.existsByExamIdAndStateIn(id,List.of(StartAdmission.State.PENDING,StartAdmission.State.CLAIMED)))
+            throw error(409,"START_ADMISSION_IN_PROGRESS");
+        if(target==Exam.Status.PUBLISHED) {
+            ScheduleRules.validate(e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDeadlineRule(),e.isAutoOpen(),e.isAutoClose(),e.getReminderOffsetsMinutes(),e.getDurationMinutes());
+            publishSnapshot(e);
+        }
         if(target==Exam.Status.OPEN && e.getSnapshots().isEmpty())throw error(409,"Legacy publication has no frozen snapshot; create a new exam");
-        e.setStatus(target);audit(e,actor,"EXAM_"+(target==Exam.Status.OPEN?"OPENED":target==Exam.Status.CLOSED?"CLOSED":"PUBLISHED"),null);
+        Instant now=clock.instant();
+        if(target==Exam.Status.OPEN && e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Cannot open after endAt");
+        if(target==Exam.Status.CLOSED && trigger.equals("MANUAL") && e.getEndAt()!=null && now.isBefore(e.getEndAt()) && (reason==null || reason.isBlank()))throw error(400,"Reason required for early close");
+        e.setStatus(target);e.setLifecycleRevision(e.getLifecycleRevision()+1);
+        String action=target==Exam.Status.OPEN?"EXAM_OPENED":target==Exam.Status.CLOSED?"EXAM_CLOSED":"EXAM_PUBLISHED";
+        audit(e,actor,action,auditMetadata(trigger,reason,null,null,e.getLifecycleRevision()));
+        events.lifecycleChanged(e,trigger,actor);
         return e;
     }
+    public Exam reopen(UUID id,UUID actor,String reason) {
+        Exam e=load(id);require(e,actor,true);
+        if(e.getStatus()!=Exam.Status.CLOSED)throw error(409,"Only CLOSED exams can be reopened");
+        if(e.getSnapshots().isEmpty())throw error(409,"Published snapshot unavailable");
+        if(reason==null || reason.isBlank())throw error(400,"Reason required to reopen");
+        if(e.getEndAt()!=null && !clock.instant().isBefore(e.getEndAt()))throw error(409,"Cannot reopen after endAt");
+        e.setStatus(Exam.Status.OPEN);e.setLifecycleRevision(e.getLifecycleRevision()+1);
+        audit(e,actor,"EXAM_REOPENED",auditMetadata("MANUAL",reason,null,null,e.getLifecycleRevision()));
+        events.lifecycleChanged(e,"MANUAL",actor);return e;
+    }
+    public void automaticTransition(UUID id,Exam.Status target) {transition(id,null,target,null,"AUTO");}
+    private String auditMetadata(String trigger,String reason,Object oldValue,Object newValue,long revision) {
+        return "{\"trigger\":\""+trigger+"\",\"reason\":"+(reason==null?"null":"\""+reason.replace("\\","\\\\").replace("\"","\\\"")+"\"")+",\"old\":"+(oldValue==null?"null":"\""+oldValue+"\"") +",\"new\":"+(newValue==null?"null":"\""+newValue+"\"")+",\"revision\":"+revision+"}";
+    }
     public void publishSnapshot(Exam e) {
+        ScheduleRules.validate(e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDeadlineRule(),e.isAutoOpen(),e.isAutoClose(),e.getReminderOffsetsMinutes(),e.getDurationMinutes());
         validatePolicy(new Policy(e.getAccessMode(),e.getMaxParticipants(),e.getMaxConcurrentSessions(),e.getAttemptLimit()));
         if(e.getDurationMinutes()<1 || e.getQuestionIds().isEmpty() || e.getQuestionIds().size()>200 ||
            new HashSet<>(e.getQuestionIds()).size()!=e.getQuestionIds().size() ||
-           (e.getStartTime()!=null && e.getEndTime()!=null && !e.getStartTime().isBefore(e.getEndTime())))
+           (e.getStartTime()!=null && e.getEndTime()!=null && !e.getStartTime().isBefore(e.getEndTime())) ||
+           (e.getEndAt()!=null && !e.getEndAt().isAfter(clock.instant())))
             throw error(400,"Invalid exam composition/timing");
         if(questionToken.isBlank()) throw error(503,"Question Bank integration not configured");
         var data=questions.eligible(e.getQuestionIds(),questionToken,e.getOwnerUserId(),true,true);

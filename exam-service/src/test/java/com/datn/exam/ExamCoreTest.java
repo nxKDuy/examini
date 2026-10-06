@@ -1,6 +1,7 @@
 package com.datn.exam;
 import com.datn.exam.client.QuestionBankClient;
 import com.datn.exam.dto.Snapshot;
+import com.datn.exam.dto.ScheduleDto;
 import com.datn.exam.entity.Exam;
 import com.datn.exam.repository.*;
 import com.datn.exam.service.*;
@@ -22,10 +23,12 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/exam_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","question-bank.internal-token=test-qb"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/exam_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","notification.internal-token=test-notification","question-bank.internal-token=test-qb"})
 @AutoConfigureMockMvc
 class ExamCoreTest {
     @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired ExamCore core;@Autowired ExamRepository exams;@Autowired ExamAuditRepository audits;
+    @Autowired ExamOutboxRepository outbox;@Autowired ScheduleService schedules;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockBean QuestionBankClient bank;
     @MockBean com.datn.exam.client.SessionClient sessions;
     UUID owner,manager,proctor,student,qid,oid;
@@ -58,6 +61,66 @@ class ExamCoreTest {
         mvc.perform(get("/exams/public").header("Authorization",token(owner,"TEACHER"),token(student,"STUDENT"))).andExpect(status().isUnauthorized());
         mvc.perform(get("/exams/public").header("X-User-Id",student)).andExpect(status().isUnauthorized());
         mvc.perform(put("/exams/"+id+"/open").header("Authorization",token(proctor,"TEACHER"))).andExpect(status().isForbidden());
+    }
+    @Test void unscheduledPublishKeepsReminderDefaultsAndDoesNotEmitDuplicateScheduleNotice()throws Exception {
+        UUID id=create();
+        assertEquals(List.of(1440,15),exams.findById(id).orElseThrow().getReminderOffsetsMinutes());
+        core.transition(id,owner,Exam.Status.PUBLISHED);
+        var types=outbox.findAll().stream().filter(event->event.getPayload().contains(id.toString())).map(com.datn.exam.entity.ExamOutboxEvent::getEventType).toList();
+        assertEquals(List.of("exam.lifecycle.changed"),types);
+    }
+
+    @Test void scheduleUpdateUsesOffsetAndRevisionAndPublicPreviewWaitsForStartAt()throws Exception {
+        UUID id=create();core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,10,5,2));
+        String schedule="{\"startAt\":\"2030-01-01T10:00:00Z\",\"endAt\":\"2030-01-01T11:00:00Z\",\"timezone\":\"UTC\",\"deadlineRule\":\"REQUIRE_FULL_WINDOW\",\"autoOpen\":false,\"autoClose\":true,\"reminderOffsetsMinutes\":[1440,15],\"expectedRevision\":0}";
+        mvc.perform(put("/exams/"+id+"/schedule").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(schedule))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scheduleRevision").value(1));
+        core.transition(id,owner,Exam.Status.PUBLISHED);
+        when(sessions.availability(eq(id),eq(student),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Availability(0,false,null,0,null,null));
+        mvc.perform(get("/exams/"+id+"/availability").header("Authorization",token(student,"STUDENT")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.canView").value(true)).andExpect(jsonPath("$.canJoin").value(false))
+            .andExpect(jsonPath("$.canStart").value(false)).andExpect(jsonPath("$.reasonCode").value("BEFORE_START_AT"));
+        var related=outbox.findAll().stream().filter(event->event.getPayload().contains(id.toString())).toList();
+        assertEquals(2,related.size());assertEquals(1,related.stream().filter(event->event.getEventType().equals("exam.schedule.changed")).count());
+        assertEquals(1,related.stream().filter(event->event.getEventType().equals("exam.lifecycle.changed")).count());
+        assertEquals(409,assertThrows(org.springframework.web.server.ResponseStatusException.class,()->core.join(id,student,null)).getStatusCode().value());
+    }
+
+    @Test void publicFollowCanBeRemovedAfterCloseAndDraftRecipientsExcludeStudents()throws Exception {
+        UUID id=create();core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,10,5,1));
+        core.assign(id,owner,student,false);
+        UUID manager=UUID.randomUUID();core.member(id,owner,manager,Exam.MemberRole.MANAGER,false);core.accept(id,manager,"TEACHER");
+        var draftSnapshot=schedules.notificationRecipients(id,"test-notification","test-notification");
+        assertEquals(Set.of("OWNER","MANAGER"),draftSnapshot.recipients().stream().map(ScheduleDto.Recipient::relation).collect(java.util.stream.Collectors.toSet()));
+        core.transition(id,owner,Exam.Status.PUBLISHED);
+        schedules.follow(id,student,true);core.transition(id,owner,Exam.Status.CLOSED);
+        long before=exams.findById(id).orElseThrow().getRecipientRevision();
+        var removed=schedules.follow(id,student,false);
+        assertFalse(removed.followed());assertTrue(removed.participant());assertEquals(before+1,exams.findById(id).orElseThrow().getRecipientRevision());
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,()->schedules.follow(id,student,true));
+        var recipientEvents=outbox.findAll().stream().filter(event->event.getEventType().equals("exam.recipients.changed")&&event.getPayload().contains(id.toString())).toList();
+        assertEquals(1,recipientEvents.stream().filter(event->event.getPayload().contains("\"cause\": \"FOLLOWED\"")).count());
+        assertEquals(1,recipientEvents.stream().filter(event->event.getPayload().contains("\"cause\": \"UNFOLLOWED\"")).count());
+        assertEquals("ASSIGNED",jdbc.queryForObject("select source from exam_participants where exam_id=? and user_id=?",String.class,id,student));
+    }
+
+    @Test void calendarShowsParticipantCountOnlyToExamStaffAndHidesDraftFromStudents()throws Exception {
+        UUID id=create();core.assign(id,owner,student,false);core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,10,5,1));
+        core.transition(id,owner,Exam.Status.PUBLISHED);
+        when(sessions.availability(eq(id),eq(student),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Availability(0,false,null,0,null,null));
+        var teacherResponse=mvc.perform(get("/exams/calendar").param("from","2030-01-01T00:00:00Z").param("to","2030-01-02T00:00:00Z").param("includeUnscheduled","true").param("size","100").header("Authorization",token(owner,"TEACHER")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var teacherItems=json.readTree(teacherResponse).path("content");com.fasterxml.jackson.databind.JsonNode teacherItem=null;
+        for(var item:teacherItems)if(id.toString().equals(item.path("examId").asText()))teacherItem=item;
+        assertNotNull(teacherItem);assertEquals(1,teacherItem.path("participantCount").asInt());assertEquals(10,teacherItem.path("maxParticipants").asInt());
+        var studentResponse=mvc.perform(get("/exams/calendar").param("from","2030-01-01T00:00:00Z").param("to","2030-01-02T00:00:00Z").param("includeUnscheduled","true").header("Authorization",token(student,"STUDENT")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var item=json.readTree(studentResponse).path("content").get(0);
+        assertTrue(item.get("participantCount").isNull());assertTrue(item.get("maxParticipants").isNull());
+        UUID draft=create();
+        var draftResponse=mvc.perform(get("/exams/calendar").param("from","2030-01-01T00:00:00Z").param("to","2030-01-02T00:00:00Z").param("includeUnscheduled","true").header("Authorization",token(student,"STUDENT")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertFalse(draftResponse.contains(draft.toString()));
     }
     @Test void eligibilityPolicyAndParticipantRace()throws Exception {
         UUID id=create();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("DRAFT",1)));
