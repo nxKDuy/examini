@@ -43,6 +43,14 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
   authority: reminder jobs, inbox, channel deliveries/subscriptions.
 - Additive events `exam.schedule.changed`, `exam.lifecycle.changed`, v1
   envelope của examini.events, stable eventId/outbox/confirm và revision.
+- MAIN duyệt CR msg_86077c344db3: thêm `exam.recipients.changed` v1, payload
+  examId/recipientRevision/cause/actorUserId; cause ASSIGNED/UNASSIGNED/
+  MEMBER_ADDED/MEMBER_REMOVED/FOLLOWED/UNFOLLOWED. Snapshot thêm recipientRevision.
+  Outbox và revision trong transaction đổi quan hệ; idempotent operation không
+  phát change giả. Không chứa danh sách user IDs/PII trong event này.
+- Schedule, lifecycle và recipient revision là ba sequence riêng. Consumer lấy
+  snapshot authority hiện hành, hủy jobs mất quyền, chỉ lập future reminders;
+  không thêm thông báo lịch khi Join/assignment/follow và không gửi bù mốc đã qua.
 - Exam schedule DTO/event: examId/title, startAt/endAt UTC instant nullable,
   IANA timezone, deadlineRule, reminderOffsetsMinutes, scheduleRevision,
   changeType SCHEDULED/RESCHEDULED/UNSCHEDULED, lifecycle và actorUserId.
