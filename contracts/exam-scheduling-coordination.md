@@ -246,3 +246,15 @@ câu trả lời rõ ràng và UI/UX Scope Lock. Runtime backend thật qua Gate
 có sẵn; login test riêng chỉ local, không chứa service/SMTP credentials.
 Sau tests/browser, worker dừng ở READY FOR MANUAL UI VALIDATION; user duyệt
 UI trước MAIN review/merge cuối. UI/UX và manual validation hiện **PENDING**.
+
+Worker đã sync sạch tại `6714709`, giữ nguyên Product UI, khảo sát API thật và
+gửi câu hỏi `msg_a1fb86f267f4` trong delivery `delivery_554044c44b3e`. MAIN đã
+chuyển sáu nhóm quyết định UI/UX đến user; chưa trả lời thay user và chưa ACK
+câu hỏi khi chưa có quyết định. Pending context lưu local tại
+`.git/coordination/scheduling-frontend-pending-user.json`; worker chờ cùng
+message ID, không tạo câu hỏi/Dispatch trùng hoặc tự implement.
+
+Stack test Notification đã provision VAPID từ cấu hình local, public-key API
+qua Gateway trả enabled=true; private key không vào Git/frontend/handoff.
+SMTP vẫn Mailpit, không gửi địa chỉ test qua Gmail. Đây là prerequisite cho
+browser push gate sau UI/UX, chưa chứng minh subscription/provider/display.
