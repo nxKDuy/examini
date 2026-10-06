@@ -70,6 +70,9 @@ frontend không tự quyết eligibility từ timestamps.
   completed/missed và click vào Exam detail/lobby.
 - Calendar chỉ hiển thị Exam người dùng có quyền xem; cần query theo khoảng thời
   gian và student availability từ backend, không fetch toàn bộ rồi đoán quyền.
+- Student có thể chủ động gắn cờ để đưa PUBLIC Exam chưa Join vào My Calendar;
+  không tự thêm mọi PUBLIC Exam. Việc gắn cờ có kéo theo notification/reminder
+  hay không đang chờ người dùng chốt; không được tự suy ra từ quyền xem.
 - Mặc định view, vị trí, card, interaction, màu/badge, mobile và push opt-in phải
   được người dùng chốt trong UI/UX SCOPE LOCK sau backend review.
 
@@ -80,13 +83,84 @@ riêng), Google Calendar/invitation integration, AI scheduling, Organization đ�
 đủ, webcam/anti-cheating mới, source ingestion, analytics/notification ngoài các
 nhu cầu Scheduling trên. Không tự merge các feature Phase 2 chưa review.
 
-## DOMAIN SCOPE LOCK — CHƯA CHỐT
+## DOMAIN SCOPE LOCK — ĐÃ CHỐT CÁC NHÓM DƯỚI ĐÂY
 
-Exam worker phải inspect và gom các quyết định domain còn thiếu, gửi câu hỏi
-tiếng Việt qua Orca cho MAIN chuyển đến người dùng. MAIN không tự trả lời thay
-người dùng. Chỉ sau câu trả lời mới chốt lock và được giao implementation.
-Notification implementation cũng phải qua clarification cho detail còn thiếu.
-Các lựa chọn kỹ thuật không đổi behavior do owner quyết định và giải thích.
+Nguồn: người dùng trả lời các nhóm clarification của Exam và Notification ngày
+2026-10-06. Ngoại lệ còn mở duy nhất: notification của PUBLIC Calendar flag.
+Đây vẫn là yêu cầu đã duyệt, chưa phải implementation đã được review.
+
+### Exam — lịch và biên thời gian
+
+- Cho phép không lịch, chỉ startAt, chỉ endAt hoặc cả hai. CAPPED_AT_END và
+  REQUIRE_FULL_WINDOW cần endAt, không fallback; autoOpen cần startAt, autoClose
+  cần endAt. Mặc định FULL_DURATION và auto flags tắt.
+- Cửa sổ [startAt, endAt); endAt chặn Start mới kể cả autoClose tắt. Còn đúng
+  duration thì Start được với REQUIRE_FULL_WINDOW.
+- Cho startAt đã qua nếu endAt chưa qua hoặc không có endAt; không Publish/đổi
+  sang lịch đã hết endAt. Giờ DST không tồn tại bị từ chối, giờ trùng cần offset.
+- Đổi timezone không tự đổi Instant; timestamp LocalDateTime cũ hiểu là UTC.
+
+### Exam — vận hành và audit
+
+- Start được tính khi session IN_PROGRESS đã lưu bền vững, kể cả mất HTTP
+  response. Preflight/Start thất bại không khóa rule. Start và đổi lịch phải
+  được tuần tự hóa; deadline đã cấp không bị đổi.
+- OPEN chưa có Student Start được đổi rule. startAt/timezone/auto flags chỉ sửa
+  khi DRAFT/PUBLISHED; OPEN chỉ extend endAt, không thêm endAt mới vào Exam đang
+  không có endAt. Attempt mới dùng revision mới; session cũ giữ deadline.
+- Publish giữa cửa sổ với autoOpen bật thì Open. autoClose đóng OPEN hoặc
+  PUBLISHED tại endAt. Downtime qua cả cửa sổ không phát Open giả; chỉ Close nếu
+  bật autoClose. Nếu autoClose tắt giữ lifecycle nhưng availability đã hết giờ.
+- Không Open lần đầu sau endAt; manual Close không bị autoOpen lại.
+- Reason bắt buộc khi dời lịch sau Publish, manual Close sớm và Reopen; DRAFT
+  edit/Open đúng lịch không bắt buộc. Audit ghi actor, thời điểm, old/new,
+  revision; auto actions ghi nguồn SYSTEM.
+
+### Exam — visibility và Calendar
+
+- Student không thấy DRAFT. assigned/joined thấy PUBLISHED/OPEN/CLOSED theo quyền.
+- PUBLIC PUBLISHED được khám phá trước giờ; vào My Calendar nếu Student chủ động
+  gắn cờ, hoặc đã assigned/joined. Cờ không mặc nhiên là ExamParticipant.
+- Code hợp lệ được preview trước giờ, không Join/chiếm capacity/nhận reminder.
+- Exam không lịch chỉ hiện Agenda; không bịa ngày cho Month/Week/Day.
+- MISSED khi đã qua endAt và chưa có attempt; Close sớm/unscheduled Close chỉ
+  báo CLOSED/unavailable.
+
+### Notification — người nhận và biên reminder
+
+- Không thông báo manual action cho chính actor; OWNER/MANAGER khác vẫn nhận.
+  Auto action gửi cho OWNER/MANAGER, reminder cũng gửi cho các role này.
+- Student không nhận lịch/reminder ở DRAFT; khi Publish Exam đã có lịch mới gửi
+  thông báo lịch. Open gửi cho Student liên quan; Close và extend endAt chỉ gửi
+  Student chưa nộp (cùng người quản lý theo rule trên).
+- Không gửi bù mốc nhắc đã qua; job trễ chỉ gửi khi chưa đến startAt và đúng
+  revision. Mốc Teacher cấu hình, mặc định 24h/15m; không giới hạn thành chỉ hai
+  preset. Join không gửi thêm thông báo lịch; bỏ giao hủy reminder, không thông
+  báo bỏ giao. Join trước startAt vẫn bị chặn.
+- Gỡ lịch gửi thông báo và hủy reminder. Mỗi lần lưu thay đổi lịch gửi một
+  thông báo; không gộp. Close hủy reminder; Reopen chỉ lập các mốc còn tương lai.
+
+### Notification — kênh và nội dung
+
+- In-app và push cover mọi sự kiện Scheduling. Email chỉ cho đặt/đổi/gỡ lịch và
+  reminder; không email Open/Close.
+- Push chỉ khi có permission/subscription; thiếu thì SKIPPED, không email bù.
+- Email gửi tới email đăng ký lấy từ Auth API tin cậy; hiện chưa có xác minh
+  email, ghi nhận follow-up Auth. Chưa thêm preference tắt email trong scope.
+- Nội dung tiếng Việt: tên Exam, thời gian có timezone, rule deadline, link SPA;
+  không join code/câu hỏi/đáp án/điểm/thông tin Student khác.
+- Gmail sender đã được người dùng cung cấp qua local .env ignored mode 600.
+  SMTP TLS/auth đã kiểm PASS; chưa gửi email, không coi đó là delivery E2E.
+  Không đưa địa chỉ sender hay mật khẩu vào Git/handoff.
+
+### Gate còn mở và quyền triển khai
+
+PUBLIC flag: người dùng đang chọn chỉ thêm Calendar hay cũng nhận Scheduling
+notification/reminder. Tên/nút/tương tác sẽ chốt ở UI/UX gate. Không implementation
+phần phụ thuộc cho tới câu trả lời; MAIN sẽ gửi lại bằng Orca. Workers khảo sát
+tổng hợp lock/report rồi worker_done; implementation là Dispatch riêng.
+Worker mới nếu cần: người dùng chọn model trước khi khởi chạy. Reuse worker hiện
+có không tự đổi model. MAIN không tự trả lời business/UX thay người dùng.
 
 ## UI/UX SCOPE LOCK — CHƯA CHỐT
 
