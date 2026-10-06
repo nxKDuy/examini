@@ -31,7 +31,8 @@ class SchedulingRulesTest {
         var s=new SchedulingMessages.Schedule("Toán 12",Instant.parse("2026-10-06T01:00:00Z"),Instant.parse("2026-10-06T03:00:00Z"),"Asia/Ho_Chi_Minh","CAPPED_AT_END");
         var c=SchedulingMessages.reminder(s,15);
         assertEquals("EXAM_REMINDER",c.type());
-        assertTrue(c.message().contains("Còn 15 phút nữa kỳ thi \"Toán 12\" bắt đầu") && c.message().contains("08:00 06/10/2026 (GMT+07:00, Asia/Ho_Chi_Minh)") && c.message().contains("giờ kết thúc lịch thi"));
+        assertTrue(c.message().contains("Nhắc lịch thi: kỳ thi \"Toán 12\" sắp bắt đầu") && c.message().contains("Bắt đầu: 08:00 06/10/2026 (GMT+07:00, Asia/Ho_Chi_Minh)") && c.message().contains("giờ kết thúc lịch thi"));
+        for(int offset:List.of(15,60,1440))assertFalse(SchedulingMessages.reminder(s,offset).message().matches("(?s).*(Còn|còn) .*"),"never claims a remaining time");
         assertEquals(Set.of("examTitle","timezone","deadlineRule","startAt","endAt","offsetMinutes"),c.metadata().keySet());
         assertTrue(SchedulingMessages.opened(s,Instant.parse("2026-10-06T00:00:00Z")).message().contains("vào thi từ 08:00"));
         assertFalse(SchedulingMessages.opened(s,Instant.parse("2026-10-06T02:00:00Z")).message().contains("vào thi từ"));

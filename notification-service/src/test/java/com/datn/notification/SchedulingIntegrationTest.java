@@ -213,6 +213,29 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         assertEquals("SCHEDULE_CHANGED",db.queryForObject("SELECT d.skip_reason FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.source_event_id=? AND d.channel='EMAIL'",String.class,reminder));
     }
 
+    @Test void lateReminderBeforeStartDoesNotClaimTheConfiguredLeadTime()throws Exception{
+        Instant t=BASE.plus(Duration.ofDays(2));snapOffsets=List.of(1440);
+        schedule(1,"SCHEDULED",t,List.of(1440),"PUBLISHED",owner);
+        db.update("UPDATE scheduling_jobs SET status='DONE' WHERE kind='SCHEDULE'");
+        snapshot("PUBLISHED",1,t,List.of(recipient(student,"ASSIGNED",false)));
+        // The 24h job only runs 30 seconds before start (worker downtime): still valid, but must not say "24 giờ".
+        clock.set(t.minusSeconds(30));drainJobs();
+        assertEquals(List.of("DONE"),reminderStatuses(t,1440));
+        var n=db.queryForMap("SELECT message,metadata->>'offsetMinutes' AS offset FROM notifications WHERE source_event_id=? AND recipient_user_id=?",
+            SchedulingConsumer.reminderKey(exam,t,1440),student);
+        String message=n.get("message").toString();
+        assertFalse(message.contains("24 giờ") || message.contains("1 ngày") || message.contains("Còn"),message);
+        assertTrue(message.contains("Bắt đầu: 07:00 08/10/2026 (GMT+07:00, Asia/Ho_Chi_Minh)"),message);
+        assertEquals("1440",n.get("offset"));
+        assertFalse(message.contains("joinCode") || message.contains("correct"));
+        // Still no catch-up and still expires at start.
+        clock.set(t.plusSeconds(1));schedule(2,"RESCHEDULED",t.plus(Duration.ofMinutes(30)),List.of(1440,15),"PUBLISHED",owner);
+        assertEquals(List.of(),reminderStatuses(t.plus(Duration.ofMinutes(30)),1440));
+        assertEquals(List.of("PENDING"),reminderStatuses(t.plus(Duration.ofMinutes(30)),15));
+        clock.set(t.plus(Duration.ofMinutes(31)));drainJobs();
+        assertEquals(List.of("EXPIRED"),reminderStatuses(t.plus(Duration.ofMinutes(30)),15));
+    }
+
     @Test void openReachesAllRelatedCloseOnlyUnsubmittedAndNeverTheActor()throws Exception{
         Instant t=BASE.plus(Duration.ofHours(1));
         schedule(1,"SCHEDULED",t,List.of(),"PUBLISHED",owner);snapshot("OPEN",1,t,everyone());

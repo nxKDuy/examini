@@ -57,6 +57,8 @@ public final class SchedulingMessages {
     public static Content closed(Schedule s){return new Content("EXAM_CLOSED","Kỳ thi đã đóng","Kỳ thi \""+s.examTitle()+"\" đã đóng và không nhận lượt bắt đầu mới.",meta(s));}
     public static Content reminder(Schedule s,int offsetMinutes){
         var m=meta(s);m.put("offsetMinutes",String.valueOf(offsetMinutes));
-        return new Content("EXAM_REMINDER","Sắp đến giờ thi","Còn "+duration(offsetMinutes)+" nữa kỳ thi \""+s.examTitle()+"\" bắt đầu. "+window(s),m);
+        // No "N minutes left": a late job or a retried email/push may be delivered well after the configured mark,
+        // so only the absolute start time (Exam timezone) is stated; offsetMinutes stays in metadata.
+        return new Content("EXAM_REMINDER","Sắp đến giờ thi","Nhắc lịch thi: kỳ thi \""+s.examTitle()+"\" sắp bắt đầu. "+window(s),m);
     }
 }
