@@ -21,17 +21,20 @@ public class DeliveryWorker {
     static final Duration LEASE=Duration.ofMinutes(2),MAX_BACKOFF=Duration.ofMinutes(30);
     static final int MAX_ATTEMPTS=8,PUSH_BODY_LIMIT=300;
     private final JdbcTemplate db;private final Clock clock;private final ObjectMapper json;
-    private final AuthContactClient contacts;private final EmailSender email;private final WebPushSender push;
+    private final AuthContactClient contacts;private final ExamRecipientClient exams;private final EmailSender email;private final WebPushSender push;
     private final String appBaseUrl;private final int batch;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(DeliveryWorker.class);
-    public DeliveryWorker(JdbcTemplate db,Clock clock,ObjectMapper json,AuthContactClient contacts,EmailSender email,WebPushSender push,
+    public DeliveryWorker(JdbcTemplate db,Clock clock,ObjectMapper json,AuthContactClient contacts,ExamRecipientClient exams,EmailSender email,WebPushSender push,
                           @Value("${notification.app-base-url}") String appBaseUrl,@Value("${notification.deliveries.batch-size:50}") int batch){
-        this.db=db;this.clock=clock;this.json=json;this.contacts=contacts;this.email=email;this.push=push;this.appBaseUrl=appBaseUrl.replaceAll("/+$","");
+        this.db=db;this.clock=clock;this.json=json;this.contacts=contacts;this.exams=exams;this.email=email;this.push=push;this.appBaseUrl=appBaseUrl.replaceAll("/+$","");
         // One Auth contact lookup per batch, bounded by its 100-ID limit.
         this.batch=Math.min(batch,AuthContactClient.MAX_IDS);
     }
 
-    record Row(UUID id,String channel,UUID userId,UUID subscriptionId,int attempts,Instant expiresAt,UUID notificationId,String type,String title,String message,String link){}
+    record Row(UUID id,String channel,UUID userId,UUID subscriptionId,int attempts,Instant expiresAt,UUID notificationId,String type,String title,String message,
+               UUID examId,Map<String,String> meta){
+        String link(){return meta.get("link");}
+    }
 
     public int runDue(){
         Instant now=clock.instant();
@@ -44,15 +47,67 @@ public class DeliveryWorker {
               WHERE id IN (SELECT id FROM notification_deliveries WHERE ((status='PENDING' AND next_attempt_at<=?) OR (status='SENDING' AND locked_until<?))
                            AND expires_at>? ORDER BY next_attempt_at LIMIT ? FOR UPDATE SKIP LOCKED)
               RETURNING id,channel,recipient_user_id,subscription_id,attempts,expires_at,notification_id)
-            SELECT c.id,c.channel,c.recipient_user_id,c.subscription_id,c.attempts,c.expires_at,n.id,n.type,n.title,n.message,n.metadata->>'link'
+            SELECT c.id,c.channel,c.recipient_user_id,c.subscription_id,c.attempts,c.expires_at,n.id,n.type,n.title,n.message,n.entity_id,n.metadata::text
             FROM claimed c JOIN notifications n ON n.id=c.notification_id""",
             (r,i)->new Row(r.getObject(1,UUID.class),r.getString(2),r.getObject(3,UUID.class),r.getObject(4,UUID.class),r.getInt(5),r.getTimestamp(6).toInstant(),
-                r.getObject(7,UUID.class),r.getString(8),r.getString(9),r.getString(10),r.getString(11)),
+                r.getObject(7,UUID.class),r.getString(8),r.getString(9),r.getString(10),r.getObject(11,UUID.class),meta(r.getString(12))),
             ts(now.plus(LEASE)),ts(now),ts(now),ts(now),ts(now),batch);
+        rows=stillAuthorized(rows);
         var emails=rows.stream().filter(r->r.channel().equals("EMAIL")).toList();
         if(!emails.isEmpty())sendEmails(emails);
         rows.stream().filter(r->r.channel().equals("PUSH")).forEach(this::sendPush);
         return rows.size();
+    }
+
+    /**
+     * Re-checks the current Exam authority (one snapshot per Exam per batch, public API only) before every send/retry:
+     * a delivery queued before an unassign/unfollow, reschedule, Close/Reopen or submission is skipped, not sent.
+     */
+    private List<Row> stillAuthorized(List<Row> rows){
+        var ok=new ArrayList<Row>();Instant now=clock.instant();
+        var byExam=new LinkedHashMap<UUID,List<Row>>();rows.forEach(r->byExam.computeIfAbsent(r.examId(),k->new ArrayList<>()).add(r));
+        byExam.forEach((exam,group)->{
+            ExamRecipientClient.Snapshot snap;
+            try{snap=exam==null?null:exams.recipients(exam);}
+            catch(ProviderException e){
+                if(e.kind()==ProviderException.Kind.NOT_FOUND)group.forEach(r->finish(r,"SKIPPED","EXAM_GONE",null,null));
+                else group.forEach(r->retry(r,e.getMessage(),null,null));
+                return;
+            }
+            for(Row r:group){
+                String stale=snap==null?"UNVERIFIABLE":staleReason(r,snap,now);
+                if(stale==null)ok.add(r);
+                else if(stale.equals("LAG"))retry(r,"waiting for schedule revision "+r.meta().get("scheduleRevision"),Duration.ofSeconds(30),null);
+                else finish(r,"SKIPPED",stale,null,null);
+            }
+        });
+        return ok;
+    }
+    /** Null when the delivery is still valid; otherwise the skip reason ("LAG" = authority older than the notification). */
+    static String staleReason(Row r,ExamRecipientClient.Snapshot snap,Instant now){
+        var m=r.meta();String audience=m.get("audience");
+        if(audience==null)return "UNVERIFIABLE";
+        boolean manager=audience.equals("MANAGER");
+        var rec=snap.recipients().stream().filter(x->x.userId().equals(r.userId())).findFirst();
+        if(rec.isEmpty() || rec.get().manager()!=manager)return "RECIPIENT_REMOVED";
+        if(!manager && (snap.status().equals("DRAFT") || (!r.type().equals("EXAM_OPENED") && rec.get().submitted())))return "RECIPIENT_REMOVED";
+        switch(r.type()){
+            case "EXAM_REMINDER" -> {
+                long revision=Long.parseLong(m.getOrDefault("scheduleRevision","0"));
+                if(snap.scheduleRevision()<revision)return "LAG";
+                Instant start=Instant.parse(m.get("startAt"));
+                // A later revision that kept startAt and this offset (e.g. endAt extended) leaves the reminder valid.
+                if(snap.status().equals("CLOSED") || !start.equals(snap.startAt()) || !snap.reminderOffsetsMinutes().contains(Integer.parseInt(m.get("offsetMinutes"))) || !now.isBefore(start))
+                    return "SCHEDULE_CHANGED";
+            }
+            case "EXAM_OPENED" -> {if(!snap.status().equals("OPEN"))return "SUPERSEDED";}
+            case "EXAM_CLOSED" -> {if(!snap.status().equals("CLOSED"))return "SUPERSEDED";}
+            default -> {}
+        }
+        return null;
+    }
+    private Map<String,String> meta(String s){
+        try{return json.readValue(s==null?"{}":s,new com.fasterxml.jackson.core.type.TypeReference<Map<String,String>>(){});}catch(Exception e){return Map.of();}
     }
 
     private void sendEmails(List<Row> rows){

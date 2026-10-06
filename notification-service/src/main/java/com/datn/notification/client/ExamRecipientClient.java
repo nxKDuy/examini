@@ -18,7 +18,7 @@ public class ExamRecipientClient {
         public boolean manager(){return relation.equals("OWNER") || relation.equals("MANAGER");}
     }
     public record Snapshot(UUID examId,String examTitle,String status,long scheduleRevision,long lifecycleRevision,long recipientRevision,Instant startAt,Instant endAt,
-                           String timezone,String deadlineRule,List<Recipient> recipients){}
+                           String timezone,String deadlineRule,List<Integer> reminderOffsetsMinutes,List<Recipient> recipients){}
 
     public Snapshot recipients(UUID examId){
         JsonNode r=ServiceHttp.call(json,"Exam",token,HttpRequest.newBuilder(ServiceHttp.uri(baseUrl,"/exams/"+examId+"/internal/notification-recipients")).GET());
@@ -34,8 +34,13 @@ public class ExamRecipientClient {
             if(!List.of("DRAFT","PUBLISHED","OPEN","CLOSED").contains(status))throw new IllegalArgumentException("status");
             return new Snapshot(UUID.fromString(r.path("examId").asText()),r.path("examTitle").asText(),status,count(r,"scheduleRevision"),count(r,"lifecycleRevision"),count(r,"recipientRevision"),
                 SchedulingEvents.optionalInstant(r,"startAt"),SchedulingEvents.optionalInstant(r,"endAt"),r.path("timezone").asText("UTC"),
-                r.path("deadlineRule").asText("FULL_DURATION"),List.copyOf(byUser.values()));
+                r.path("deadlineRule").asText("FULL_DURATION"),offsets(r),List.copyOf(byUser.values()));
         }catch(IllegalArgumentException e){throw new ProviderException(ProviderException.Kind.INVALID,"Exam recipients response invalid");}
+    }
+    private static List<Integer> offsets(JsonNode r){
+        var out=new ArrayList<Integer>();
+        for(JsonNode v:r.path("reminderOffsetsMinutes")){if(!v.isIntegralNumber() || !v.canConvertToInt())throw new IllegalArgumentException("offset");out.add(v.intValue());}
+        return List.copyOf(out);
     }
     private static String relation(String r){if(!RELATIONS.contains(r))throw new IllegalArgumentException("relation");return r;}
     private static boolean bool(JsonNode n,String f){if(!n.path(f).isBoolean())throw new IllegalArgumentException(f);return n.get(f).booleanValue();}

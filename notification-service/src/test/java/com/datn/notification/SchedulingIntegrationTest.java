@@ -24,6 +24,7 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
     static final Instant BASE=Instant.parse("2026-10-06T00:00:00Z");
     @Autowired NotificationService service;@Autowired SchedulingJobs jobs;@Autowired DeliveryWorker deliveries;@Autowired MutableClock clock;
     @Autowired JdbcTemplate db;@Autowired ObjectMapper json;@Autowired RabbitTemplate rabbit;
+    List<Integer> snapOffsets=List.of();
     UUID exam=UUID.randomUUID(),owner=UUID.randomUUID(),manager=UUID.randomUUID(),manager2=UUID.randomUUID(),student=UUID.randomUUID(),follower=UUID.randomUUID(),done=UUID.randomUUID();
 
     @BeforeEach void reset(){
@@ -39,7 +40,7 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         var s=new LinkedHashMap<String,Object>();
         s.put("examId",exam.toString());s.put("examTitle","Toán 12");s.put("status",status);s.put("scheduleRevision",scheduleRevision);s.put("lifecycleRevision",1);s.put("recipientRevision",1);
         s.put("startAt",start==null?null:start.toString());s.put("endAt",start==null?null:start.plus(Duration.ofHours(2)).toString());s.put("timezone","Asia/Ho_Chi_Minh");
-        s.put("deadlineRule","FULL_DURATION");s.put("reminderOffsetsMinutes",List.of());s.put("recipients",recipients);
+        s.put("deadlineRule","FULL_DURATION");s.put("reminderOffsetsMinutes",snapOffsets);s.put("recipients",recipients);
         String body;try{body=json.writeValueAsString(s);}catch(Exception e){throw new IllegalStateException(e);}
         ROUTES.put("/exams/"+exam+"/internal/notification-recipients",r->new Response(200,body));
     }
@@ -85,7 +86,8 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         assertEquals("EXAM_SCHEDULED",n.get("type"));assertEquals("/exams/"+exam,n.get("link"));
         assertTrue(n.get("message").toString().contains("07:00 08/10/2026 (GMT+07:00, Asia/Ho_Chi_Minh)"),n.get("message").toString());
 
-        snapshot("PUBLISHED",1,start,everyone());UUID published=lifecycle(1,"PUBLISHED",owner);drainJobs();
+        snapshot("PUBLISHED",1,start,everyone());lifecycle(1,"PUBLISHED",owner);drainJobs();
+        UUID published=SchedulingConsumer.studentScheduleKey(exam,1);
         assertEquals(Set.of(student,follower),recipientsOf(published));
         assertEquals("/exam/lobby/"+exam,db.queryForObject("SELECT metadata->>'link' FROM notifications WHERE source_event_id=? AND recipient_user_id=?",String.class,published,student));
         var channels=db.queryForList("SELECT channel||':'||status||':'||coalesce(skip_reason,'') FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.source_event_id=? AND n.recipient_user_id=? ORDER BY 1",String.class,published,student);
@@ -141,17 +143,74 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         assertEquals(List.of("CANCELLED","CANCELLED"),reminderStatuses(t,15),"reopen after the mark plans nothing");
     }
 
-    @Test void lateReminderWaitsForRevisionThenExpiresAtStart()throws Exception{
+    @Test void staleReminderCancelledLaggingSnapshotWaitsAndLateJobExpires()throws Exception{
         Instant t=BASE.plus(Duration.ofHours(1));
         schedule(1,"SCHEDULED",t,List.of(15),"PUBLISHED",owner);
         db.update("UPDATE scheduling_jobs SET status='DONE' WHERE kind='SCHEDULE'");
+        // Authority already at revision 2 (its event not consumed yet): the revision-1 job is stale; the newer event replans.
         snapshot("PUBLISHED",2,t,List.of(recipient(student,"ASSIGNED",false)));
         clock.set(t.minus(Duration.ofMinutes(15)));drainJobs();
-        var job=db.queryForMap("SELECT status,last_error,next_attempt_at FROM scheduling_jobs WHERE kind='REMINDER'");
+        assertEquals(List.of("CANCELLED"),reminderStatuses(t,15));
+        assertEquals("superseded by schedule revision 2",db.queryForObject("SELECT last_error FROM scheduling_jobs WHERE kind='REMINDER'",String.class));
+        assertEquals(0,notificationsFor(student,"EXAM_REMINDER"));
+        clock.set(BASE);schedule(2,"RESCHEDULED",t,List.of(15),"PUBLISHED",owner);
+        assertEquals(List.of("CANCELLED","PENDING"),reminderStatuses(t,15),"the newer event replans the same mark");
+        db.update("UPDATE scheduling_jobs SET status='DONE' WHERE kind='SCHEDULE'");
+        // Authority older than the job (replica lag): wait, never send on unverified data.
+        snapshot("PUBLISHED",1,t,List.of(recipient(student,"ASSIGNED",false)));
+        clock.set(t.minus(Duration.ofMinutes(15)));drainJobs();
+        var job=db.queryForMap("SELECT status,last_error,next_attempt_at FROM scheduling_jobs WHERE kind='REMINDER' AND status<>'CANCELLED'");
         assertEquals("PENDING",job.get("status"));assertEquals("waiting for schedule revision 2",job.get("last_error"));
         assertEquals(clock.instant().plusSeconds(30),((java.sql.Timestamp)job.get("next_attempt_at")).toInstant());
         clock.set(t.plusSeconds(1));drainJobs();
-        assertEquals(List.of("EXPIRED"),reminderStatuses(t,15));assertEquals(0,notificationsFor(student,"EXAM_REMINDER"));
+        assertEquals(List.of("CANCELLED","EXPIRED"),reminderStatuses(t,15));assertEquals(0,notificationsFor(student,"EXAM_REMINDER"));
+    }
+
+    @Test void publishProducerSequenceGivesStudentsOneScheduleNotice()throws Exception{
+        Instant t=BASE.plus(Duration.ofDays(2));snapOffsets=List.of(60);
+        // Exam producer: schedule saved in DRAFT, then Publish emits schedule.changed(SCHEDULED, PUBLISHED, same revision) + lifecycle PUBLISHED.
+        UUID draft=schedule(1,"SCHEDULED",t,List.of(60),"DRAFT",owner);
+        snapshot("PUBLISHED",1,t,everyone());
+        UUID pubSchedule=schedule(1,"SCHEDULED",t,List.of(60),"PUBLISHED",owner);UUID pubLifecycle=lifecycle(1,"PUBLISHED",owner);drainJobs();
+        assertEquals(Set.of(manager,manager2),recipientsOf(draft));assertEquals(Set.of(),recipientsOf(pubSchedule));
+        assertEquals(1,notificationsFor(student,"EXAM_SCHEDULED"));assertEquals(1,notificationsFor(follower,"EXAM_SCHEDULED"));
+        assertEquals(0,notificationsFor(done,"EXAM_SCHEDULED"));assertEquals(1,notificationsFor(manager,"EXAM_SCHEDULED"),"managers were told at DRAFT time only");
+        assertEquals(Set.of(student,follower),recipientsOf(SchedulingConsumer.studentScheduleKey(exam,1)));assertEquals(Set.of(),recipientsOf(pubLifecycle));
+    }
+
+    @Test void legacyExamWithoutEarlierEventsIsSeededAndNotifiedOnceInEitherOrder()throws Exception{
+        Instant t=BASE.plus(Duration.ofDays(2));snapOffsets=List.of(60,1440);
+        snapshot("PUBLISHED",3,t,everyone());
+        // Lifecycle first, then the schedule event of the same revision (reverse broker order).
+        lifecycle(1,"PUBLISHED",owner);drainJobs();
+        assertEquals(List.of("PENDING"),reminderStatuses(t,60),"reminders seeded from the Exam snapshot");assertEquals(List.of("PENDING"),reminderStatuses(t,1440));
+        schedule(3,"SCHEDULED",t,List.of(60,1440),"PUBLISHED",owner);drainJobs();
+        assertEquals(1,notificationsFor(student,"EXAM_SCHEDULED"));assertEquals(1,notificationsFor(follower,"EXAM_SCHEDULED"));
+        assertEquals(List.of("PENDING"),reminderStatuses(t,60));
+    }
+
+    @Test void queuedDeliveriesAreRecheckedAgainstCurrentAuthority()throws Exception{
+        Instant t=BASE.plus(Duration.ofDays(1));snapOffsets=List.of(30);
+        snapshot("PUBLISHED",1,t,List.of(recipient(student,"ASSIGNED",false),recipient(follower,"FOLLOWER",false)));
+        schedule(1,"SCHEDULED",t,List.of(30),"PUBLISHED",owner);drainJobs();UUID scheduled=SchedulingConsumer.studentScheduleKey(exam,1);
+        ROUTES.put("/auth/internal/contacts",r->new Response(503,"{}"));while(deliveries.runDue()>0){}
+        assertEquals("PENDING",emailStatus(scheduled,student));assertEquals("PENDING",emailStatus(scheduled,follower));
+        // follower unfollows; student was also following but stays ASSIGNED.
+        snapshot("PUBLISHED",1,t,List.of(recipient(student,"ASSIGNED",false)));
+        ROUTES.put("/auth/internal/contacts",r->new Response(200,"[{\"userId\":\""+student+"\",\"email\":\"s@example.test\",\"displayName\":\"S\"}]"));
+        clock.advance(Duration.ofMinutes(1));while(deliveries.runDue()>0){}
+        assertEquals("SENT",emailStatus(scheduled,student));
+        assertEquals("SKIPPED:RECIPIENT_REMOVED",db.queryForObject("SELECT d.status||':'||d.skip_reason FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.source_event_id=? AND n.recipient_user_id=? AND d.channel='EMAIL'",String.class,
+            SchedulingConsumer.studentScheduleKey(exam,1),follower));
+        // Reminder fanned out, email delivery fails, then the Exam is rescheduled: the queued reminder is skipped.
+        clock.set(t.minus(Duration.ofMinutes(30)));drainJobs();
+        UUID reminder=SchedulingConsumer.reminderKey(exam,t,30);
+        ROUTES.put("/auth/internal/contacts",r->new Response(503,"{}"));while(deliveries.runDue()>0){}
+        assertEquals("PENDING",emailStatus(reminder,student));
+        snapshot("PUBLISHED",2,t.plus(Duration.ofHours(1)),List.of(recipient(student,"ASSIGNED",false)));
+        clock.advance(Duration.ofMinutes(1));while(deliveries.runDue()>0){}
+        assertEquals("SKIPPED",emailStatus(reminder,student));
+        assertEquals("SCHEDULE_CHANGED",db.queryForObject("SELECT d.skip_reason FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.source_event_id=? AND d.channel='EMAIL'",String.class,reminder));
     }
 
     @Test void openReachesAllRelatedCloseOnlyUnsubmittedAndNeverTheActor()throws Exception{
@@ -219,7 +278,7 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         String to="hs-"+student.toString().substring(0,8)+"@example.test";
         Instant t=BASE.plus(Duration.ofDays(1));
         snapshot("PUBLISHED",1,t,List.of(recipient(student,"ASSIGNED",false),recipient(follower,"FOLLOWER",false)));
-        UUID scheduled=schedule(1,"SCHEDULED",t,List.of(),"PUBLISHED",owner);drainJobs();
+        UUID scheduled=SchedulingConsumer.studentScheduleKey(exam,1);schedule(1,"SCHEDULED",t,List.of(),"PUBLISHED",owner);drainJobs();
         ROUTES.put("/auth/internal/contacts",r->new Response(401,"{}"));
         while(deliveries.runDue()>0){}
         assertEquals(List.of("PENDING"),db.queryForList("SELECT DISTINCT status FROM notification_deliveries WHERE channel='EMAIL'",String.class),"Auth credential rejected: retry, never SENT");

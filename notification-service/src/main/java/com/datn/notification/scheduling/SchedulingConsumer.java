@@ -58,6 +58,27 @@ public class SchedulingConsumer {
         replan(e.examId(),s.scheduleRevision(),s.status(),s.startAt(),s.offsets());
     }
 
+    /**
+     * Seeds the schedule from the authoritative Exam snapshot when no newer schedule event was consumed (e.g. an Exam
+     * scheduled before the producer existed, published later). Never moves any revision backwards.
+     */
+    public void seedFromSnapshot(com.datn.notification.client.ExamRecipientClient.Snapshot s){
+        State st=lock(s.examId(),s.examTitle());
+        if(s.scheduleRevision()<=st.scheduleRevision())return;
+        String status=s.lifecycleRevision()>=st.lifecycleRevision()?s.status():st.status();
+        db.update("""
+            UPDATE exam_schedule_state SET exam_title=?,status=?,schedule_revision=?,start_at=?,end_at=?,timezone=?,deadline_rule=?,reminder_offsets=CAST(? AS jsonb),updated_at=?
+            WHERE exam_id=?""",s.examTitle(),status,s.scheduleRevision(),ts(s.startAt()),ts(s.endAt()),s.timezone(),s.deadlineRule(),write(s.reminderOffsetsMinutes()),ts(now()),s.examId());
+        replan(s.examId(),s.scheduleRevision(),status,s.startAt(),s.reminderOffsetsMinutes());
+    }
+    /**
+     * Students get one logical "schedule" notice per schedule revision, whether it comes from a schedule event of a
+     * published Exam or from the Publish lifecycle event (producers may emit both for the same revision).
+     */
+    public static UUID studentScheduleKey(UUID examId,long scheduleRevision){
+        return UUID.nameUUIDFromBytes(("student-schedule:"+examId+":"+scheduleRevision).getBytes(StandardCharsets.UTF_8));
+    }
+
     /** Serializes all processing of one Exam (row lock) so concurrent consumers cannot interleave revisions. */
     private State lock(UUID examId,String title){
         db.update("INSERT INTO exam_schedule_state(exam_id,exam_title) VALUES(?,?) ON CONFLICT(exam_id) DO NOTHING",examId,title);

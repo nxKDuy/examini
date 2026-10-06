@@ -22,10 +22,11 @@ public class SchedulingJobs {
     static final Duration LEASE=Duration.ofMinutes(2),WAIT_FOR_REVISION=Duration.ofSeconds(30),MAX_BACKOFF=Duration.ofMinutes(30);
     static final Set<String> EMAIL_TYPES=Set.of("EXAM_SCHEDULED","EXAM_RESCHEDULED","EXAM_UNSCHEDULED","EXAM_REMINDER");
     private final JdbcTemplate db;private final TransactionTemplate tx;private final ObjectMapper json;private final Clock clock;
-    private final ExamRecipientClient exams;private final int batch;
+    private final ExamRecipientClient exams;private final SchedulingConsumer consumer;private final int batch;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(SchedulingJobs.class);
-    public SchedulingJobs(JdbcTemplate db,TransactionTemplate tx,ObjectMapper json,Clock clock,ExamRecipientClient exams,@Value("${notification.jobs.batch-size:20}") int batch){
-        this.db=db;this.tx=tx;this.json=json;this.clock=clock;this.exams=exams;this.batch=batch;
+    public SchedulingJobs(JdbcTemplate db,TransactionTemplate tx,ObjectMapper json,Clock clock,ExamRecipientClient exams,SchedulingConsumer consumer,
+                          @Value("${notification.jobs.batch-size:20}") int batch){
+        this.db=db;this.tx=tx;this.json=json;this.clock=clock;this.exams=exams;this.consumer=consumer;this.batch=batch;
     }
 
     record Job(UUID id,String kind,UUID examId,UUID sourceId,long revision,Instant startAt,Integer offset,String payload,Instant expiresAt,int attempts){}
@@ -59,29 +60,34 @@ public class SchedulingJobs {
         Instant now=clock.instant();
         Snapshot snap=exams.recipients(job.examId());
         List<Target> targets;SchedulingMessages.Content content;Instant expires=now.plus(EVENT_JOB_TTL);
+        long revision=snap.scheduleRevision();UUID studentSource=job.sourceId();
         var facts=new SchedulingMessages.Schedule(snap.examTitle(),snap.startAt(),snap.endAt(),snap.timezone(),snap.deadlineRule());
         switch(job.kind()){
             case "REMINDER" -> {
                 if(!now.isBefore(job.startAt())){finish(job,"EXPIRED","startAt passed before delivery",null);return;}
                 if(snap.status().equals("CLOSED")){finish(job,"CANCELLED","exam closed",null);return;}
-                if(snap.scheduleRevision()!=job.revision()){retry(job,"waiting for schedule revision "+snap.scheduleRevision(),now.plus(WAIT_FOR_REVISION));return;}
+                // Newer authority: this job is stale (the newer event replans). Older snapshot: replication lag, wait.
+                if(snap.scheduleRevision()>job.revision()){finish(job,"CANCELLED","superseded by schedule revision "+snap.scheduleRevision(),null);return;}
+                if(snap.scheduleRevision()<job.revision()){retry(job,"waiting for schedule revision "+job.revision(),now.plus(WAIT_FOR_REVISION));return;}
                 if(!job.startAt().equals(snap.startAt())){finish(job,"CANCELLED","startAt changed",null);return;}
                 targets=targets(snap,null,!snap.status().equals("DRAFT"),true);
-                content=SchedulingMessages.reminder(facts,job.offset());expires=job.startAt();
+                content=SchedulingMessages.reminder(facts,job.offset());expires=job.startAt();studentSource=job.sourceId();
             }
             case "SCHEDULE" -> {
                 Schedule e=read(job.payload(),Schedule.class);
                 // Students learn about a DRAFT schedule only when the Exam is published (LIFECYCLE PUBLISHED).
                 targets=targets(snap,e.actorUserId(),!e.examStatus().equals("DRAFT"),true);
                 content=SchedulingMessages.scheduleChanged(e.changeType(),new SchedulingMessages.Schedule(e.examTitle(),e.startAt(),e.endAt(),e.timezone(),e.deadlineRule()));
+                revision=e.scheduleRevision();studentSource=SchedulingConsumer.studentScheduleKey(job.examId(),revision);
             }
             case "LIFECYCLE" -> {
                 Lifecycle e=read(job.payload(),Lifecycle.class);
+                consumer.seedFromSnapshot(snap);
                 switch(e.status()){
                     case "PUBLISHED" -> {
                         if(snap.startAt()==null && snap.endAt()==null){finish(job,"DONE",null,null);return;}
                         targets=targets(snap,e.actorUserId(),true,true).stream().filter(t->!t.manager()).toList();
-                        content=SchedulingMessages.scheduleChanged("SCHEDULED",facts);
+                        content=SchedulingMessages.scheduleChanged("SCHEDULED",facts);studentSource=SchedulingConsumer.studentScheduleKey(job.examId(),revision);
                     }
                     case "OPEN" -> {targets=targets(snap,e.actorUserId(),true,false);content=SchedulingMessages.opened(facts,now);}
                     default -> {targets=targets(snap,e.actorUserId(),true,true);content=SchedulingMessages.closed(facts);}
@@ -89,7 +95,7 @@ public class SchedulingJobs {
             }
             default -> throw new IllegalStateException("Unknown job kind");
         }
-        fanOut(job,snap.examId(),targets,content,expires);
+        fanOut(job,snap.examId(),targets,content,expires,revision,studentSource);
     }
 
     /** Managers (OWNER/MANAGER) except the manual actor; students (ASSIGNED/JOINED/FOLLOWER) when allowed, optionally only those who have not submitted. */
@@ -99,7 +105,7 @@ public class SchedulingJobs {
             .map(r->new Target(r.userId(),r.manager())).toList();
     }
 
-    private void fanOut(Job job,UUID examId,List<Target> targets,SchedulingMessages.Content c,Instant expires){
+    private void fanOut(Job job,UUID examId,List<Target> targets,SchedulingMessages.Content c,Instant expires,long revision,UUID studentSource){
         Instant now=clock.instant();
         tx.executeWithoutResult(status->{
             int done=db.update("UPDATE scheduling_jobs SET status='DONE',locked_until=NULL,last_error=NULL,updated_at=? WHERE id=? AND status='RUNNING'",ts(now),job.id());
@@ -107,10 +113,12 @@ public class SchedulingJobs {
             for(Target t:targets){
                 var meta=new HashMap<>(c.metadata());meta.put("examId",examId.toString());
                 meta.put("link",t.manager()?"/exams/"+examId:"/exam/lobby/"+examId);
+                // Used to re-check authority before each channel send/retry (DeliveryWorker).
+                meta.put("audience",t.manager()?"MANAGER":"STUDENT");meta.put("scheduleRevision",String.valueOf(revision));
                 List<UUID> inserted=db.queryForList("""
                     INSERT INTO notifications(id,recipient_user_id,type,title,message,entity_type,entity_id,metadata,source_event_id,source_event_type,created_at)
                     VALUES(?,?,?,?,?,'EXAM',?,CAST(? AS jsonb),?,?,?) ON CONFLICT(source_event_id,recipient_user_id) DO NOTHING RETURNING id""",UUID.class,
-                    UUID.randomUUID(),t.userId(),c.type(),c.title(),c.message(),examId,write(meta),job.sourceId(),"scheduling."+job.kind().toLowerCase(),ts(now));
+                    UUID.randomUUID(),t.userId(),c.type(),c.title(),c.message(),examId,write(meta),t.manager()?job.sourceId():studentSource,"scheduling."+job.kind().toLowerCase(),ts(now));
                 if(inserted.isEmpty())continue;
                 UUID id=inserted.getFirst();
                 if(EMAIL_TYPES.contains(c.type()))delivery(id,t.userId(),"EMAIL",null,"PENDING",null,now,expires);

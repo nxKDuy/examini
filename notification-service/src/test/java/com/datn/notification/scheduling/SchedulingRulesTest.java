@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SchedulingRulesTest {
     ObjectMapper json=new ObjectMapper();
     UUID owner=UUID.randomUUID(),manager=UUID.randomUUID(),assigned=UUID.randomUUID(),joined=UUID.randomUUID(),follower=UUID.randomUUID(),submitted=UUID.randomUUID();
-    Snapshot snap(){return new Snapshot(UUID.randomUUID(),"T","PUBLISHED",1,1,0,null,null,"UTC","FULL_DURATION",List.of(
+    Snapshot snap(){return new Snapshot(UUID.randomUUID(),"T","PUBLISHED",1,1,0,null,null,"UTC","FULL_DURATION",List.of(),List.of(
         new Recipient(owner,"OWNER",false,false),new Recipient(manager,"MANAGER",false,false),new Recipient(assigned,"ASSIGNED",false,false),
         new Recipient(joined,"JOINED",true,false),new Recipient(follower,"FOLLOWER",false,false),new Recipient(submitted,"ASSIGNED",true,true)));}
     Set<UUID> ids(List<SchedulingJobs.Target> t){var s=new HashSet<UUID>();t.forEach(x->s.add(x.userId()));assertEquals(s.size(),t.size(),"one notification per user");return s;}
