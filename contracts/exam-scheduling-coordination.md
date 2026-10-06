@@ -1,7 +1,8 @@
 # Scheduling — điều phối và review kỹ thuật MAIN
 
 Trạng thái: scope/domain đã duyệt; người dùng chốt PUBLIC flag kèm Notification
-ngày 2026-10-06. Các API/event dưới đây chưa được triển khai.
+ngày 2026-10-06. Auth contact đã triển khai và tích hợp; Exam/Notification
+Scheduling vẫn đang implementation, chưa được MAIN duyệt như contract hiện hành.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -87,6 +88,25 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
    permission/subscription và HTTPS/localhost thực, chưa được test.
 
 ## MAIN worktree và integration gates
+
+### Checkpoint implementation ngày 2026-10-06
+
+- Auth contact task_3177b12dab90 / ctx_6e2fcdd09639 succeeded; model thực tế
+  Claude Opus 5.5 theo report/terminal. Hai commit 779d9f4 + 4b0f902 đã được MAIN
+  review và merge tại 8fc83ad. Terminal mới được release sau settlement; worktree
+  và branch giữ nguyên. Contract hiện hành: notification-contact-api.md.
+- Gateway 035a0e4: internal-route isolation và strip service headers; 10 tests
+  đạt trên Docker JDK21. Shared config a643eb9: token riêng, placeholders SMTP.
+- Exam implementation task_9e746ba9558d / ctx_6e480f5adec9: start observed trên
+  terminal/worktree cũ. Attempt ctx_28bb99653a05 start_unknown được fenced sau
+  quan sát final agent turn chỉ xử lý inbox, không nhận implementation/worker_done;
+  retry cùng task không tạo worker/worktree hay sửa model.
+- Notification implementation task_49897a0178ea / ctx_4650178a9c97: start
+  observed; schema consumer đã route tới Exam. Chưa coi API/event là implemented.
+- Frontend chưa dispatch Scheduling: chờ backend MAIN review, sau đó UI/UX gate.
+- Toàn bộ dirty MAIN gồm untracked đã stash trước Auth merge, restore kiểm
+  SHA256 patch/file và status đúng nguyên trạng. Backup stash giữ nguyên;
+  original Phase1 stash vẫn hiện hữu. Không discard/push.
 
 MAIN còn dirty user work, gồm README/POM/start scripts và nhiều file bị xóa từ
 trước task. Không khôi phục/xóa/commit những file đó trong setup scope. Chỉ commit
