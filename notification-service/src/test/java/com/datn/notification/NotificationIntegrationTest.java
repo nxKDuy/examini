@@ -47,7 +47,7 @@ class NotificationIntegrationTest extends IntegrationTestSupport {
         publish(envelope(reviewed,"question.reviewed",Map.of("questionId",question.toString(),"questionVersion",3,"ownerUserId",alice.toString(),"decision","APPROVED",
             "correctAnswer","SECRET-KEY","reviewNote","private")),"question.reviewed");
         publish(envelope(graded,"grading.result.released",Map.of("sessionId",session.toString(),"examId",UUID.randomUUID().toString(),"examTitle","Toán 12",
-            "studentUserId",alice.toString(),"gradingMode","MANUAL","score",9.5)),"grading.result.released");
+            "studentUserId",alice.toString(),"gradingMode","MANUAL","score",987654.321)),"grading.result.released");
         await(()->count(reviewed)==1 && count(graded)==1);
         mvc.perform(get("/notifications").header("Authorization",bearer(alice))).andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(2))
@@ -61,7 +61,7 @@ class NotificationIntegrationTest extends IntegrationTestSupport {
             // Only whitelisted display fields are kept from event payloads.
             .andExpect(content().string(not(containsString("SECRET-KEY"))))
             .andExpect(content().string(not(containsString("private"))))
-            .andExpect(content().string(not(containsString("9.5"))));
+            .andExpect(content().string(not(containsString("987654"))));
     }
 
     @Test void duplicateDeliveryCreatesOneNotification()throws Exception{
