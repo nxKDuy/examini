@@ -283,6 +283,22 @@ services:
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      EXAM_SERVICE_URL: http://exam-service:8083
+      NOTIFICATION_CONTACT_TOKEN: ${NOTIFICATION_CONTACT_TOKEN:-}
+      EXAM_NOTIFICATION_TOKEN: ${EXAM_NOTIFICATION_TOKEN:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_STARTTLS_ENABLE: ${SMTP_STARTTLS_ENABLE:-true}
+      SMTP_STARTTLS_REQUIRED: ${SMTP_STARTTLS_REQUIRED:-true}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     depends_on:
       postgres:
         condition: service_healthy
