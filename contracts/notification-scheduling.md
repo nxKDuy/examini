@@ -2,8 +2,8 @@
 
 Notification implementation: `aa323710410469da676ab0f1a14423953f57afed`,
 đã tích hợp MAIN tại `13b5f28`. Auth contact API đã tích hợp; Exam producer và
-recipient API bên dưới là contract được duyệt để triển khai, **chưa có trong
-MAIN** ở checkpoint này. Release E2E và frontend vẫn chờ các gate tương ứng.
+recipient API đã áp độc lập vào MAIN `59c1017`. Release E2E và frontend vẫn
+chờ các gate tương ứng. API: [Exam Scheduling](exam-scheduling-api.md).
 Product/Domain authority: [scope locks](exam-scheduling-scope.md).
 
 ## Event transport
@@ -33,7 +33,7 @@ và notice Student đầu tiên; dedup theo examId/scheduleRevision. Consumer v�
 chấp nhận chuỗi cũ phát cả hai sự kiện lúc Publish. Recipients event chỉ cập nhật
 reminder authority, không tạo notice Join/Follow/assignment mới.
 
-## Provider Exam — REQUIRED, chưa MAIN-integrated
+## Provider Exam — CURRENT
 
 `GET /exams/{id}/internal/notification-recipients` chỉ dùng dedicated
 `EXAM_NOTIFICATION_TOKEN` qua `X-Service-Token`, không Bearer. Gateway chặn

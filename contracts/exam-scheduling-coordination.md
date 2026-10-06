@@ -150,6 +150,17 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
   không close/delete workspace. Gmail delivery, browser push và producer Exam
   E2E chưa được xác nhận; contracts/notification-scheduling.md phân loại rõ.
 - Frontend chưa dispatch Scheduling: chờ backend MAIN review, sau đó UI/UX gate.
+- Backend worker đã succeeded `92ddd2f`, Dispatch ctx_6e480f5adec9 settled;
+  MAIN đã release đúng authority, external terminal retained, không đóng agent.
+  MAIN thực tế đã có `59c1017` áp Scheduling độc lập; không merge toàn branch
+  Phase2/QB compatibility. Domain/API/migration review được tiếp tục trên chính
+  commit này; real Scheduling E2E vẫn pending, chưa claim feature PASS.
+  Bốn scratch wt2/base/ph2/full chỉ có port test cục bộ. HEAD đều reachable từ
+  main hoặc feature/exam-taking-domain; patch/file/Surefire được lưu riêng tại
+  .git/coordination/scheduling-scratch-retirement-20261007 trước khi gỡ theo
+  yêu cầu user. claude-pg-test/claude-rmq-test đã stop, auto-remove; không đụng
+  stack datn đang chạy. Dirty MAIN và stash gốc kiểm SHA256 vẫn nguyên.
+  Runtime/package dùng JDK21; không dùng JDK27 để kiểm Lombok.
 - Checkpoint ngày 2026-10-07: MAIN runtime Auth/Gateway/Notification riêng đạt
   43/43 checks, PostgreSQL Auth V1–V4/Notification V1–V2 thành công. Đây chỉ là
   API/component gate, chưa producer Scheduling, Gmail hoặc browser push thực.
