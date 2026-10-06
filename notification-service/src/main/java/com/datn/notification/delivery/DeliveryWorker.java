@@ -118,6 +118,7 @@ public class DeliveryWorker {
         for(Row r:rows){
             var c=found.get(r.userId());
             if(c==null){finish(r,"SKIPPED","NO_CONTACT",null,null);continue;}
+            if(expired(r))continue;
             try{
                 email.send(c.email(),"[EXAMINI] "+r.title(),r.message()+"\n\nXem chi tiết: "+url(r)+"\n\nEmail tự động từ EXAMINI, vui lòng không trả lời.");
                 finish(r,"SENT",null,null,null);
@@ -134,6 +135,7 @@ public class DeliveryWorker {
         var sub=db.query("SELECT endpoint,p256dh,auth_secret,revoked_at FROM push_subscriptions WHERE id=? AND user_id=?",
             (x,i)->new String[]{x.getString(1),x.getString(2),x.getString(3),x.getTimestamp(4)==null?null:"revoked"},r.subscriptionId(),r.userId());
         if(sub.isEmpty() || sub.getFirst()[3]!=null){finish(r,"SKIPPED","UNSUBSCRIBED",null,null);return;}
+        if(expired(r))return;
         String body=r.message().length()>PUSH_BODY_LIMIT?r.message().substring(0,PUSH_BODY_LIMIT-1)+"…":r.message();
         byte[] payload;
         try{payload=json.writeValueAsBytes(Map.of("notificationId",r.notificationId().toString(),"type",r.type(),"title",r.title(),"body",body,"url",url(r),"tag",r.notificationId().toString()));}
@@ -150,6 +152,12 @@ public class DeliveryWorker {
         }
         else if(s==-1 || s==429 || s>=500)retry(r,s==-1?"push service unreachable":"push service "+s,res.retryAfter(),s==-1?null:s);
         else finish(r,"FAILED","REJECTED",s,"push service rejected "+s);
+    }
+
+    /** Expiry guard at the side effect itself: a batch may cross startAt while sending; an expired row is never dispatched. */
+    private boolean expired(Row r){
+        if(clock.instant().isBefore(r.expiresAt()))return false;
+        finish(r,"EXPIRED",null,null,"expired before dispatch");return true;
     }
 
     /** Absolute SPA URL for email/push; the in-app inbox keeps the relative path. */

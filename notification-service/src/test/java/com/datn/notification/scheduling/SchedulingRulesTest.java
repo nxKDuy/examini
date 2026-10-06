@@ -68,7 +68,8 @@ class SchedulingRulesTest {
     @Test void strictRecipientsPayload(){
         var p=json.createObjectNode();p.put("examId",UUID.randomUUID().toString()).put("recipientRevision",4).put("cause","UNFOLLOWED").putNull("actorUserId");
         assertEquals(4,SchedulingEvents.recipients(p).recipientRevision());
-        for(var bad:List.<java.util.function.Consumer<ObjectNode>>of(x->x.put("recipientRevision",0),x->x.put("recipientRevision",4.5),x->x.put("cause","JOINED"),x->x.remove("actorUserId"),x->x.remove("examId"))){
+        var joined=p.deepCopy();joined.put("cause","JOINED");assertEquals("JOINED",SchedulingEvents.recipients(joined).cause());
+        for(var bad:List.<java.util.function.Consumer<ObjectNode>>of(x->x.put("recipientRevision",0),x->x.put("recipientRevision",4.5),x->x.put("cause","UNJOINED"),x->x.remove("actorUserId"),x->x.remove("examId"))){
             var c=p.deepCopy();bad.accept(c);assertThrows(IllegalArgumentException.class,()->SchedulingEvents.recipients(c));
         }
     }

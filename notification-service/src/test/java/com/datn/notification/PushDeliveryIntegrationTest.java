@@ -146,6 +146,37 @@ class PushDeliveryIntegrationTest extends IntegrationTestSupport {
         assertTrue(pushCalls("shared").isEmpty(),"previous owner's notification is never pushed to the new owner's browser");
     }
 
+    @Test void rowsCrossingExpiryDuringABatchAreNeverDispatched()throws Exception{
+        var a=PushTestKeys.browser();var b=PushTestKeys.browser();
+        UUID subA=subscribe(student,"x1",a),subB=subscribe(student,"x2",b);
+        pushRoute("x1",201);pushRoute("x2",201);
+        Instant start=BASE.plus(Duration.ofHours(1));
+        scheduleFor(1,start,List.of(student));drain();
+        int before=pushCalls("x1").size()+pushCalls("x2").size();
+        // The reminder is fanned out 15 minutes before start; the first push call takes the clock past startAt.
+        clock.set(start.minus(Duration.ofMinutes(15)));while(jobs.runDue()>0){}
+        for(String n:List.of("x1","x2"))ROUTES.put("/push/"+n,r->{clock.set(start.plusSeconds(1));return new Response(201,"");});
+        drain();
+        assertEquals(before+1,pushCalls("x1").size()+pushCalls("x2").size(),"only the row checked before startAt is dispatched");
+        var statuses=db.queryForList("""
+            SELECT d.status FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id
+            WHERE n.type='EXAM_REMINDER' AND d.channel='PUSH' AND d.recipient_user_id=? ORDER BY d.status""",String.class,student);
+        assertEquals(List.of("EXPIRED","SENT"),statuses);
+        assertEquals("expired before dispatch",db.queryForObject("SELECT d.last_error FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.type='EXAM_REMINDER' AND d.status='EXPIRED' AND d.recipient_user_id=?",String.class,student));
+    }
+
+    @Test void emailRowExpiringWhileContactsLoadIsNotSent()throws Exception{
+        Instant start=BASE.plus(Duration.ofHours(1));
+        scheduleFor(1,start,List.of(student));
+        db.update("UPDATE notification_deliveries SET status='SKIPPED' WHERE status='PENDING'");
+        clock.set(start.minus(Duration.ofMinutes(15)));while(jobs.runDue()>0){}
+        ROUTES.put("/auth/internal/contacts",r->{clock.set(start.plusSeconds(1));
+            return new Response(200,"[{\"userId\":\""+student+"\",\"email\":\"late@example.test\",\"displayName\":\"S\"}]");});
+        drain();
+        assertEquals("EXPIRED",db.queryForObject("SELECT d.status FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.type='EXAM_REMINDER' AND d.channel='EMAIL' AND d.recipient_user_id=?",String.class,student));
+        assertNull(db.queryForObject("SELECT d.sent_at FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.type='EXAM_REMINDER' AND d.channel='EMAIL' AND d.recipient_user_id=?",java.sql.Timestamp.class,student));
+    }
+
     @Test void concurrentWorkersSendEachDeliveryOnce()throws Exception{
         pushRoute("c",201);subscribe(student,"c",PushTestKeys.browser());
         for(int r=1;r<=20;r++)scheduleFor(r,BASE.plus(Duration.ofDays(1)).plusSeconds(r),List.of(student));

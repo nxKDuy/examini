@@ -229,9 +229,10 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         Instant t=BASE.plus(Duration.ofDays(1));
         schedule(1,"SCHEDULED",t,List.of(30),"PUBLISHED",owner);snapshot("PUBLISHED",1,t,everyone());drainJobs();
         long before=db.queryForObject("SELECT count(*) FROM notifications WHERE entity_id=?",Long.class,exam);
-        for(var cause:List.of("FOLLOWED","ASSIGNED","UNFOLLOWED"))deliver("exam.recipients.changed",Map.of("examId",exam.toString(),"recipientRevision",List.of("FOLLOWED","ASSIGNED","UNFOLLOWED").indexOf(cause)+1,"cause",cause,"actorUserId",owner.toString()));
+        var causes=List.of("FOLLOWED","ASSIGNED","JOINED","UNFOLLOWED");
+        for(var cause:causes)deliver("exam.recipients.changed",Map.of("examId",exam.toString(),"recipientRevision",causes.indexOf(cause)+1,"cause",cause,"actorUserId",owner.toString()));
         var stale=new HashMap<String,Object>(Map.of("examId",exam.toString(),"recipientRevision",2,"cause","UNASSIGNED"));stale.put("actorUserId",null);deliver("exam.recipients.changed",stale);
-        assertEquals(3L,db.queryForObject("SELECT recipient_revision FROM exam_schedule_state WHERE exam_id=?",Long.class,exam));
+        assertEquals(4L,db.queryForObject("SELECT recipient_revision FROM exam_schedule_state WHERE exam_id=?",Long.class,exam));
         drainJobs();
         assertEquals(before,db.queryForObject("SELECT count(*) FROM notifications WHERE entity_id=?",Long.class,exam),"assignment/follow changes send nothing");
         assertEquals(List.of("PENDING"),reminderStatuses(t,30));

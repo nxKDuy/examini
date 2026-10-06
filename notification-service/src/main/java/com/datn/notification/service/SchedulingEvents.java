@@ -34,7 +34,7 @@ public final class SchedulingEvents {
     public static Recipients recipients(JsonNode p){
         object(p);
         return new Recipients(EventCatalog.uuid(p,"examId"),EventCatalog.positive(p,"recipientRevision"),
-            EventCatalog.oneOf(p,"cause","ASSIGNED","UNASSIGNED","MEMBER_ADDED","MEMBER_REMOVED","FOLLOWED","UNFOLLOWED"),optionalUuid(p,"actorUserId"));
+            EventCatalog.oneOf(p,"cause","ASSIGNED","UNASSIGNED","JOINED","MEMBER_ADDED","MEMBER_REMOVED","FOLLOWED","UNFOLLOWED"),optionalUuid(p,"actorUserId"));
     }
     private static void object(JsonNode p){if(p==null || !p.isObject())throw new IllegalArgumentException("payload must be a JSON object");}
     /** Present-and-null means "no value"; a missing field is a contract violation. */
