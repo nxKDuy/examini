@@ -100,6 +100,14 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
 
 ### Quyết định migration và Web Push ngày 2026-10-06
 
+- MAIN trả lời CR msg_2b35d7a75f49: Draft create/update phát
+  `exam.schedule.changed`; Publish chỉ phát `exam.lifecycle.changed` với
+  `status=PUBLISHED`. Consumer đọc snapshot hiện hành để tạo reminder và thông
+  báo đầu tiên cho Student, dedup theo `(examId, scheduleRevision)`. Đây là
+  quyết định thay cho đề xuất producer phát cả hai sự kiện lúc Publish.
+  Consumer vẫn tương thích thứ tự cũ phát cả hai, nhưng phải kiểm thử chuỗi
+  producer thực tế mới. Draft chỉ thông báo OWNER/MANAGER, không Student.
+
 - MAIN trả lời CR msg_e7532333a903: Scheduling được dùng additive repeatable
   `R__` làm cầu nối MAIN chưa có migration Phase2 và branch đã có Phase2.
   Không sửa checksum/version Phase2, không bật outOfOrder hay reset DB.
