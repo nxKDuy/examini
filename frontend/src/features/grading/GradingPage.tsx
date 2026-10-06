@@ -43,7 +43,7 @@ export default function GradingPage() {
             </select>
           </Field>
         </div>
-        {examId && <div className="tabs" role="tablist" aria-label="Trạng thái chấm" style={{ padding: '0 12px' }}>
+        {examId && <div className="tabs" role="tablist" aria-label="Trạng thái chấm">
           {TABS.map(t => <button key={t.value} type="button" role="tab" className="tab" aria-selected={status === t.value} onClick={() => update('status', t.value)}>{t.label}</button>)}
         </div>}
       </section>
@@ -73,7 +73,7 @@ function SubmissionRow({ s, active, onSelect }: { s: Submission; active: boolean
   return (
     <button type="button" className="list-item" aria-current={active} onClick={onSelect}>
       <div className="spread">
-        <span className="mono small" style={{ color: 'var(--color-ink)', fontWeight: 600 }} title={s.studentId}>Thí sinh {shortId(s.studentId)}</span>
+        <span className="mono small" style={{ color: 'var(--color-ink)' }} title={s.studentId}>Thí sinh {shortId(s.studentId)}</span>
         <ResultStatusBadge status={s.status} />
       </div>
       <div className="spread xsmall muted" style={{ marginTop: 4 }}>
@@ -154,7 +154,7 @@ function AnswerCard({ a, n }: { a: SubmissionAnswer; n: number }) {
   return (
     <li className="card card-pad stack-sm" style={{ boxShadow: 'none' }}>
       <div className="spread">
-        <span className="small" style={{ fontWeight: 600 }}>Câu {n} · {QUESTION_TYPE_LABEL[a.questionType]}</span>
+        <span className="small">Câu {n} · {QUESTION_TYPE_LABEL[a.questionType]}</span>
         <span className="row">
           {a.isCorrect === true && <Badge tone="success" icon={<CheckCircle2 size={12} aria-hidden />}>Đúng</Badge>}
           {a.isCorrect === false && <Badge tone="danger" icon={<XCircle size={12} aria-hidden />}>Sai</Badge>}
@@ -163,7 +163,7 @@ function AnswerCard({ a, n }: { a: SubmissionAnswer; n: number }) {
         </span>
       </div>
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{a.questionContent}</p>
-      <div className="small" style={{ padding: '8px 10px', background: 'var(--color-subtle)', borderRadius: 8 }}>
+      <div className="small" style={{ padding: '8px 10px', background: 'var(--color-subtle)' }}>
         <span className="xsmall muted">Bài làm của thí sinh</span>
         <p className="prewrap">{response?.trim() ? response : <em className="muted">Không trả lời</em>}</p>
       </div>

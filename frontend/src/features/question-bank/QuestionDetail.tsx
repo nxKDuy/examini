@@ -18,7 +18,7 @@ export function QuestionBody({ question }: { question: Question }) {
       {question.options.length > 0 && (
         <ol className="stack-sm" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {question.options.map((o, i) => (
-            <li key={o.id ?? i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8,
+            <li key={o.id ?? i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start', padding: '8px 10px',
               background: o.correct ? 'var(--color-success-soft)' : 'var(--color-subtle)' }}>
               <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
               <span className="prewrap" style={{ flex: 1 }}>{o.content}</span>
@@ -30,7 +30,7 @@ export function QuestionBody({ question }: { question: Question }) {
       {question.expectedAnswer && (
         <div className="stack-sm" style={{ gap: 4 }}>
           <span className="field-label">{question.questionType === 'ESSAY' ? 'Hướng dẫn chấm' : 'Đáp án chuẩn'}</span>
-          <p className="prewrap small" style={{ padding: '8px 10px', background: 'var(--color-subtle)', borderRadius: 8 }}>{question.expectedAnswer}</p>
+          <p className="prewrap small" style={{ padding: '8px 10px', background: 'var(--color-subtle)' }}>{question.expectedAnswer}</p>
         </div>
       )}
       {question.sourceType && question.sourceType !== 'NONE' && (
@@ -127,7 +127,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
           {reviews.isError && <p className="field-error">Không tải được lịch sử duyệt.</p>}
           {reviews.data?.length === 0 && <p className="small muted">Chưa có quyết định duyệt.</p>}
           {reviews.data?.map(r => (
-            <div key={r.id} className="small" style={{ padding: '8px 10px', borderLeft: `3px solid ${r.decision === 'APPROVED' ? 'var(--color-success)' : 'var(--color-danger)'}`, background: 'var(--color-subtle)', borderRadius: 4 }}>
+            <div key={r.id} className="small" style={{ padding: '8px 10px', borderLeft: `3px solid ${r.decision === 'APPROVED' ? 'var(--color-success)' : 'var(--color-danger)'}`, background: 'var(--color-subtle)' }}>
               <strong>{r.decision === 'APPROVED' ? 'Phê duyệt' : 'Từ chối'}</strong> phiên bản {r.questionVersion} · {formatDateTime(r.reviewedAt)} · người duyệt {shortId(r.reviewerId)}
               {r.reviewNote && <p className="prewrap" style={{ marginTop: 4 }}>{r.reviewNote}</p>}
             </div>
@@ -139,7 +139,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
         <div className="stack-sm" style={{ marginTop: 10 }}>
           {versions.isError && <p className="field-error">Không tải được lịch sử phiên bản.</p>}
           {versions.data?.slice().reverse().map(v => (
-            <details key={v.versionNumber} style={{ padding: '8px 10px', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+            <details key={v.versionNumber} style={{ padding: '8px 10px', border: '1px solid var(--color-border)' }}>
               <summary className="small" style={{ cursor: 'pointer' }}>Phiên bản {v.versionNumber} · {formatDateTime(v.createdAt)} · bởi {shortId(v.changedBy)}</summary>
               <div style={{ marginTop: 10 }}><QuestionBody question={v.question} /></div>
             </details>

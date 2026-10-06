@@ -47,7 +47,7 @@ export default function ExamListPage() {
       )}
 
       <section className="card" style={{ overflow: 'hidden' }}>
-        <div className="tabs" role="tablist" aria-label="Lọc theo trạng thái" style={{ padding: '0 12px' }}>
+        <div className="tabs" role="tablist" aria-label="Lọc theo trạng thái">
           {FILTERS.map(f => (
             <button key={f.value} type="button" role="tab" className="tab" aria-selected={status === f.value} onClick={() => setStatus(f.value)}>
               {f.label}{list.data && <span className="count">{f.value ? list.data.content.filter(e => e.status === f.value).length : list.data.content.length}</span>}
@@ -66,7 +66,7 @@ export default function ExamListPage() {
               <tbody>{exams.map(e => (
                 <tr key={e.id} className="clickable" onClick={() => navigate(`/exams/${e.id}`)}>
                   <td style={{ minWidth: 220 }}>
-                    <Link to={`/exams/${e.id}`} onClick={ev => ev.stopPropagation()} style={{ fontWeight: 600, color: 'var(--color-ink)', textDecoration: 'none' }}>{e.title}</Link>
+                    <Link to={`/exams/${e.id}`} onClick={ev => ev.stopPropagation()} style={{ color: 'var(--color-ink)', textDecoration: 'none' }}>{e.title}</Link>
                     <div className="xsmall muted">{e.durationMinutes} phút · Mã <span className="mono">{e.code}</span></div>
                   </td>
                   <td><ExamStatusBadge status={e.status} /></td>

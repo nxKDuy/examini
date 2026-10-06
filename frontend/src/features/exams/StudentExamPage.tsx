@@ -200,7 +200,7 @@ export default function StudentExamPage() {
       <div className="sr-only" aria-live="assertive">{announcement}</div>
       <header className="take-bar">
         <div style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontWeight: 650, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
+          <div style={{ color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
           <div className="xsmall muted">Lượt {session.attemptNumber} · Đã trả lời {answeredCount}/{questions.length}</div>
         </div>
         <SaveIndicator online={online} errors={errors} busy={busy} lastSavedAt={lastSavedAt} />
@@ -249,8 +249,8 @@ export default function StudentExamPage() {
             ))}
           </div>
           <div className="xsmall muted stack-sm" style={{ gap: 4 }}>
-            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--color-accent-soft)', border: '1px solid var(--color-accent-border)' }} /> Đã trả lời</span>
-            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid var(--color-border-strong)' }} /> Chưa trả lời</span>
+            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, background: 'var(--color-accent)', border: '1px solid var(--color-accent)' }} /> Đã trả lời</span>
+            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, border: '1px solid #000' }} /> Chưa trả lời</span>
           </div>
         </aside>
       </div>

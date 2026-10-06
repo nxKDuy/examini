@@ -35,7 +35,7 @@ export default function ExamResultPage() {
         <Section title="Điểm của bạn">
           <div className="row" style={{ gap: 20, alignItems: 'flex-end' }}>
             <div>
-              <div className="stat-value" style={{ fontSize: '2.25rem' }}>{formatScore(r.score)}<span className="muted" style={{ fontSize: '1.125rem', fontWeight: 500 }}> / {formatScore(r.totalScore)}</span></div>
+              <div className="stat-value" style={{ fontSize: '2.25rem' }}>{formatScore(r.score)}<span className="muted" style={{ fontSize: '1.125rem' }}> / {formatScore(r.totalScore)}</span></div>
               {r.score !== null && r.totalScore ? <div className="small muted">{Math.round((r.score / r.totalScore) * 1000) / 10}% tổng điểm</div> : null}
             </div>
             {passed !== null && (passed

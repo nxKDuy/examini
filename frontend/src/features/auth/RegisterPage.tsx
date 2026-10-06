@@ -41,7 +41,7 @@ export default function RegisterPage() {
 
   return (
     <AuthCard title="Tạo tài khoản" subtitle="Tài khoản cá nhân cho học sinh, sinh viên hoặc giáo viên."
-      footer={<>Đã có tài khoản? <Link to="/login" style={{ fontWeight: 600 }}>Đăng nhập</Link></>}>
+      footer={<>Đã có tài khoản? <Link to="/login">Đăng nhập</Link></>}>
       <form onSubmit={handleSubmit} className="stack">
         <fieldset className="stack-sm">
           <legend className="field-label" style={{ marginBottom: 6 }}>Bạn sử dụng EXAMINI với vai trò</legend>

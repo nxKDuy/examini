@@ -55,7 +55,7 @@ export default function QuestionListPage() {
         </>} />
 
       <section className="card" aria-label="Bộ lọc câu hỏi">
-        <div className="tabs" role="tablist" aria-label="Trạng thái" style={{ padding: '0 12px' }}>
+        <div className="tabs" role="tablist" aria-label="Trạng thái">
           {TABS.map(t => (
             <button key={t.value} type="button" role="tab" className="tab" aria-selected={(filters.status ?? '') === t.value} onClick={() => set('status', t.value)}>{t.label}</button>
           ))}

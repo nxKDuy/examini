@@ -6,7 +6,7 @@ import { authApi } from '../../features/auth/authApi'
 import { AUDIENCE_LABEL, audienceOf, navigationFor } from './navigation'
 
 export function Brand() {
-  return <NavLink to="/dashboard" className="brand" aria-label="EXAMINI, về trang tổng quan"><span className="brand-mark" aria-hidden>E</span>EXAMINI</NavLink>
+  return <NavLink to="/dashboard" className="brand" aria-label="EXAMINI, về trang tổng quan"><span>EXAMINI</span><small>Phase / 01</small></NavLink>
 }
 
 export default function AppLayout() {
@@ -61,13 +61,13 @@ export default function AppLayout() {
           <div style={{ flex: 1 }} />
           <div className="row" style={{ gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
             <div style={{ textAlign: 'right', minWidth: 0, lineHeight: 1.3 }}>
-              <div className="small" style={{ fontWeight: 600, color: 'var(--color-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+              <div className="small" style={{ color: 'var(--color-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
                 {user?.fullName}
               </div>
               <div className="xsmall muted">{AUDIENCE_LABEL[audience]}</div>
             </div>
-            <span aria-hidden style={{ width: 34, height: 34, borderRadius: 999, background: 'var(--color-accent-soft)', color: 'var(--color-accent-hover)',
-              display: 'grid', placeItems: 'center', fontWeight: 650, flexShrink: 0 }}>
+            <span aria-hidden style={{ width: 34, height: 34, border: '1px solid #000', background: '#fff', color: '#000',
+              display: 'grid', placeItems: 'center', flexShrink: 0 }}>
               {user?.fullName?.trim().split(/\s+/).pop()?.[0]?.toUpperCase() ?? '?'}
             </span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()} title="Đăng xuất">

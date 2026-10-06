@@ -32,7 +32,7 @@ export default function LoginPage() {
 
   return (
     <AuthCard title="Đăng nhập" subtitle="Dùng tài khoản EXAMINI của bạn để tiếp tục."
-      footer={<>Chưa có tài khoản? <Link to="/register" style={{ fontWeight: 600 }}>Đăng ký</Link></>}>
+      footer={<>Chưa có tài khoản? <Link to="/register">Đăng ký</Link></>}>
       <form onSubmit={handleSubmit} className="stack" noValidate={false}>
         <Field label="Email" htmlFor="login-email">
           <input id="login-email" type="email" className="input" autoComplete="email" required autoFocus
