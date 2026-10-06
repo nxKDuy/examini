@@ -81,6 +81,11 @@ management:
     web:
       exposure:
         include: health, info
+  health:
+    # SMTP availability must not mark the whole service DOWN (and must not open an SMTP login per health probe);
+    # email failures are recorded per delivery instead.
+    mail:
+      enabled: false
 
 ---
 spring:

@@ -92,6 +92,11 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         assertEquals(List.of("EMAIL:PENDING:","PUSH:SKIPPED:NO_SUBSCRIPTION"),channels);
     }
 
+    @Autowired org.springframework.context.ApplicationContext context;
+    @Test void smtpStateDoesNotDriveServiceHealth(){
+        assertFalse(context.containsBean("mailHealthContributor"),"SMTP outage or missing config must not make /actuator/health DOWN");
+    }
+
     @Test void staleOutOfOrderAndDuplicateEventsSkipped()throws Exception{
         Instant start=BASE.plus(Duration.ofDays(1));
         var e2=envelope(UUID.randomUUID(),"exam.schedule.changed",schedulePayload(2,"RESCHEDULED",start,List.of(15),"PUBLISHED",owner));
