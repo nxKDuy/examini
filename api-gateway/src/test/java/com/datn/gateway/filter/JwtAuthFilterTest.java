@@ -147,6 +147,42 @@ class JwtAuthFilterTest {
         assertRejected(MockServerHttpRequest.get("/auth/login").build());
     }
 
+    @Test
+    void internalRoutesNeverReachDownstreamEvenWithSignedAdminAndServiceHeaders() {
+        for (String path : new String[]{"/auth/internal/contacts", "/auth/internal/contacts/",
+                "/auth-service/auth/internal/contacts", "/auth/%69nternal/contacts",
+                "/auth/%2569nternal/contacts", "/auth/internal;param=1/contacts",
+                "/auth/internal%2Fcontacts", "/auth//internal/contacts",
+                "/exams/123/internal/notification-recipients",
+                "/exam-service/exams/123/internal/grading", "/sessions/123/internal/answers"}) {
+            ServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.post(path)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(UUID.randomUUID().toString(),
+                            "ADMIN", null, "ADMIN", null, "access"))
+                    .header("X-Service-Token", "test-only-service-credential").build());
+            gatewayFilter.filter(exchange, next -> {
+                fail("internal path must not reach downstream: " + path);
+                return Mono.empty();
+            }).block();
+            assertEquals(HttpStatus.NOT_FOUND, exchange.getResponse().getStatusCode(), path);
+        }
+    }
+
+    @Test
+    void publicTrafficCannotForwardServiceCredentialsOrQuestionOwnerHeaders() {
+        for (String path : new String[]{"/auth/register", "/questions/batch"}) {
+            ServerWebExchange forwarded = forward(MockServerHttpRequest.post(path)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(UUID.randomUUID().toString(),
+                            "TEACHER", "TEACHER", "NONE", null, "access"))
+                    .header("X-Service-Token", "test-only-service-credential")
+                    .header("X-Question-Owner-Id", UUID.randomUUID().toString()).build());
+            assertNull(forwarded.getRequest().getHeaders().getFirst("X-Service-Token"));
+            assertNull(forwarded.getRequest().getHeaders().getFirst("X-Question-Owner-Id"));
+            if (path.startsWith("/questions")) {
+                assertEquals("NONE", forwarded.getRequest().getHeaders().getFirst("X-System-Privilege"));
+            }
+        }
+    }
+
     private ServerWebExchange forward(MockServerHttpRequest request) {
         AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
         ServerWebExchange exchange = MockServerWebExchange.from(request);

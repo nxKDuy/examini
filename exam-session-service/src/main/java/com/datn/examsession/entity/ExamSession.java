@@ -58,6 +58,8 @@ public class ExamSession {
     @Column(name="questions",columnDefinition="jsonb",nullable=false)
     @Builder.Default private java.util.List<com.datn.examsession.client.ExamClient.Question> questions = new java.util.ArrayList<>();
     @Column(name="exam_title",nullable=false) private String examTitle;
+    @Column(name="schedule_revision",nullable=false) @Builder.Default private long scheduleRevision=0;
+    @Column(name="start_admission_id") private UUID startAdmissionId;
     public enum Status {
         IN_PROGRESS, SUBMITTED, AUTO_SUBMITTED, CANCELLED
     }

@@ -42,6 +42,9 @@ auth:
   bootstrap:
     email: ${AUTH_BOOTSTRAP_EMAIL:}
     password: ${AUTH_BOOTSTRAP_PASSWORD:}
+  internal:
+    # Credential riêng cho Notification gọi POST /auth/internal/contacts; trống = từ chối mọi request.
+    notification-contact-token: ${NOTIFICATION_CONTACT_TOKEN:}
 
 springdoc:
   api-docs:

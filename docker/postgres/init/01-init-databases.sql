@@ -20,3 +20,4 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE DATABASE grading_db;
 CREATE DATABASE analytics_db;
+CREATE DATABASE notification_db;
