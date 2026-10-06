@@ -9,8 +9,6 @@ import org.junit.jupiter.api.*;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -20,13 +18,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.hamcrest.Matchers.*;
 
-/** Runs against real PostgreSQL and RabbitMQ (TEST_DB_URL / TEST_RABBIT_HOST). */
-@SpringBootTest(properties={"spring.datasource.url=${TEST_DB_URL:jdbc:postgresql://localhost:5432/notification_test}","spring.datasource.username=${TEST_DB_USER:postgres}","spring.datasource.password=${TEST_DB_PASSWORD:}",
-    "spring.rabbitmq.host=${TEST_RABBIT_HOST:localhost}","spring.rabbitmq.port=${TEST_RABBIT_PORT:5672}","spring.rabbitmq.username=guest","spring.rabbitmq.password=guest",
-    "spring.rabbitmq.listener.simple.retry.initial-interval=100ms","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret="+NotificationIntegrationTest.KEY})
-@AutoConfigureMockMvc
-class NotificationIntegrationTest {
-    static final String KEY="test-only-jwt-key-32-bytes-or-longer-never-production";
+/** Runs against real PostgreSQL and RabbitMQ (TEST_DB_URL / TEST_RABBIT_HOST); shares IntegrationTestSupport's context. */
+class NotificationIntegrationTest extends IntegrationTestSupport {
     @Autowired MockMvc mvc;@Autowired RabbitTemplate rabbit;@Autowired NotificationService service;@Autowired NotificationRepository repo;@Autowired ObjectMapper json;
     UUID alice=UUID.randomUUID(),bob=UUID.randomUUID();
 

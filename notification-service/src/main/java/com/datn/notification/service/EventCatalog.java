@@ -13,12 +13,16 @@ import java.util.*;
 public final class EventCatalog {
     public static final String QUESTION_REVIEWED="question.reviewed",EXAM_MEMBER_INVITED="exam.member.invited",
         EXAM_PARTICIPANT_ASSIGNED="exam.participant.assigned",SESSION_SUBMITTED="session.submitted",GRADING_RESULT_RELEASED="grading.result.released";
-    public static final List<String> EVENT_TYPES=List.of(QUESTION_REVIEWED,EXAM_MEMBER_INVITED,EXAM_PARTICIPANT_ASSIGNED,SESSION_SUBMITTED,GRADING_RESULT_RELEASED);
+    /** Exam-scoped Scheduling events: no recipient in the payload, fanned out by SchedulingJobs. */
+    public static final String EXAM_SCHEDULE_CHANGED="exam.schedule.changed",EXAM_LIFECYCLE_CHANGED="exam.lifecycle.changed",EXAM_RECIPIENTS_CHANGED="exam.recipients.changed";
+    public static final List<String> SCHEDULING_TYPES=List.of(EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED);
+    public static final List<String> EVENT_TYPES=List.of(QUESTION_REVIEWED,EXAM_MEMBER_INVITED,EXAM_PARTICIPANT_ASSIGNED,SESSION_SUBMITTED,GRADING_RESULT_RELEASED,
+        EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED);
     private static final int TITLE_LIMIT=150;
     private EventCatalog(){}
 
-    /** Validated version-1 envelope. */
-    public record Event(UUID eventId,String eventType,Instant occurredAt,Draft draft){}
+    /** Validated version-1 envelope. Scheduling events carry their validated payload instead of a single-recipient draft. */
+    public record Event(UUID eventId,String eventType,Instant occurredAt,Draft draft,Object scheduling){}
 
     /** Strict: eventVersion must be the JSON integer 1 and occurredAt an ISO-8601 instant; nothing is coerced. */
     public static Event envelope(JsonNode e){
@@ -29,7 +33,10 @@ public final class EventCatalog {
         Instant occurred;try{occurred=Instant.parse(text(e,"occurredAt"));}catch(DateTimeParseException x){throw new IllegalArgumentException("occurredAt must be an ISO-8601 instant");}
         JsonNode payload=e.get("payload");
         if(payload==null || !payload.isObject())throw new IllegalArgumentException("payload must be a JSON object");
-        return new Event(id,type,occurred,draft(type,payload));
+        if(type.equals(EXAM_SCHEDULE_CHANGED))return new Event(id,type,occurred,null,SchedulingEvents.schedule(payload));
+        if(type.equals(EXAM_LIFECYCLE_CHANGED))return new Event(id,type,occurred,null,SchedulingEvents.lifecycle(payload));
+        if(type.equals(EXAM_RECIPIENTS_CHANGED))return new Event(id,type,occurred,null,SchedulingEvents.recipients(payload));
+        return new Event(id,type,occurred,draft(type,payload),null);
     }
 
     public static Draft draft(String type,JsonNode p){
@@ -70,23 +77,23 @@ public final class EventCatalog {
     static UUID uuid(JsonNode p,String field){
         try{return UUID.fromString(text(p,field));}catch(IllegalArgumentException e){throw new IllegalArgumentException(field+" must be a UUID");}
     }
-    private static String text(JsonNode p,String field){
+    static String text(JsonNode p,String field){
         JsonNode v=p==null?null:p.get(field);
         if(v==null || !v.isTextual() || v.asText().isBlank())throw new IllegalArgumentException(field+" required");
         return v.asText().strip();
     }
-    private static String oneOf(JsonNode p,String field,String... allowed){
+    static String oneOf(JsonNode p,String field,String... allowed){
         String v=text(p,field);if(!Arrays.asList(allowed).contains(v))throw new IllegalArgumentException(field+" unsupported");return v;
     }
     /** JSON integer only: rejects 1.5, 1.0, "1", booleans and out-of-range values instead of coercing them. */
-    private static long integer(JsonNode p,String field){
+    static long integer(JsonNode p,String field){
         JsonNode v=p==null?null:p.get(field);
         if(v==null || !v.isIntegralNumber() || !v.canConvertToLong())throw new IllegalArgumentException(field+" must be an integer");return v.longValue();
     }
-    private static long positive(JsonNode p,String field){
+    static long positive(JsonNode p,String field){
         long v=integer(p,field);if(v<1)throw new IllegalArgumentException(field+" must be positive");return v;
     }
-    private static String title(JsonNode p){
+    static String title(JsonNode p){
         String t=text(p,"examTitle").replaceAll("\\p{Cntrl}"," ");
         return t.length()>TITLE_LIMIT?t.substring(0,TITLE_LIMIT-1)+"…":t;
     }

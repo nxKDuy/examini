@@ -2,6 +2,7 @@ package com.datn.notification.service;
 import com.datn.notification.config.RabbitMQConfig;
 import com.datn.notification.dto.NotificationDto.*;
 import com.datn.notification.repository.NotificationRepository;
+import com.datn.notification.scheduling.SchedulingConsumer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.*;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 @Service @RequiredArgsConstructor @Transactional
 public class NotificationService {
-    private final NotificationRepository notifications;private final ObjectMapper json;
+    private final NotificationRepository notifications;private final ObjectMapper json;private final SchedulingConsumer scheduling;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(NotificationService.class);
 
     /** Envelope: {eventId, eventType, eventVersion: 1, occurredAt, payload}. Malformed events are dead-lettered. */
@@ -29,7 +30,13 @@ public class NotificationService {
             throw new AmqpRejectAndDontRequeueException("Invalid notification event",invalid);
         }
         // Infrastructure failures escape: broker retries then dead-letters, never silently dropped.
-        record(event.eventId(),event.eventType(),event.draft());
+        // Same transaction as the listener, committed before the broker ack.
+        switch(event.scheduling()){
+            case SchedulingEvents.Schedule e -> scheduling.onSchedule(event.eventId(),e);
+            case SchedulingEvents.Lifecycle e -> scheduling.onLifecycle(event.eventId(),e);
+            case SchedulingEvents.Recipients e -> scheduling.onRecipients(e);
+            case null, default -> record(event.eventId(),event.eventType(),event.draft());
+        }
     }
     /** Idempotent: a redelivered event (same eventId) never creates a second notification. */
     public boolean record(UUID eventId,String eventType,Draft d){
