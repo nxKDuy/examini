@@ -33,10 +33,33 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
-        <!-- Scheduling email channel (version from Spring Boot BOM). Web Push uses JDK crypto only (RFC 8291/8292). -->
+        <!-- Scheduling email channel (version from Spring Boot BOM). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <!-- Web Push (RFC 8291 aes128gcm + RFC 8292 VAPID), MIT. Used only to encrypt/sign (PushService.preparePost);
+             transport is JDK HttpClient without redirects. CLI (jcommander) and async client (Netty) are not used.
+             Its optional BouncyCastle jdk15on 1.70 and pinned jose4j 0.7.9 are replaced by the versions below (MAIN-approved). -->
+        <dependency>
+            <groupId>nl.martijndwars</groupId>
+            <artifactId>web-push</artifactId>
+            <version>5.1.2</version>
+            <exclusions>
+                <exclusion><groupId>com.beust</groupId><artifactId>jcommander</artifactId></exclusion>
+                <exclusion><groupId>org.asynchttpclient</groupId><artifactId>async-http-client</artifactId></exclusion>
+                <exclusion><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk15on</artifactId></exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.86</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bitbucket.b_c</groupId>
+            <artifactId>jose4j</artifactId>
+            <version>0.9.7</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
