@@ -228,3 +228,21 @@ MAIN chấp nhận backend/API để giao Frontend clarification. Contract hiệ
 `exam-scheduling-api.md`, `exam-scheduling-scope.md`, `notification-scheduling.md`.
 Frontend phải dùng committed MAIN, giữ các commit Product UI hiện có, hỏi một
 lượt UI/UX có khuyến nghị qua Orca. Chưa có UI/UX Scope Lock thì không implement.
+
+### Frontend clarification đã giao
+
+Task `task_64a855e02cbf` / Dispatch `ctx_186d17bdb03e`, Run
+`run_3b1c99897538`, reused terminal `term_6f901d86-f6de-4ef5-ae1c-b7c4262295b8`
+tại worktree `frontend/app`. Orca receipt: ready/input_accepted,
+turnStart observed; không tạo agent/worktree mới hoặc thay model.
+Baseline giao worker: committed MAIN `de83ea1`; frontend HEAD ban đầu
+`bdf5239`, sạch, chín commit Product UI chưa merge phải giữ.
+Task cho phép safe merge đúng committed baseline trong checkout của worker,
+không copy dirty MAIN hay merge các domain Phase2 chưa duyệt.
+
+Frontend khảo sát design system và hai role trước; gửi một nhóm câu hỏi UI/UX
+có khuyến nghị bằng Orca ask để MAIN chuyển người dùng. Implementation chỉ sau
+câu trả lời rõ ràng và UI/UX Scope Lock. Runtime backend thật qua Gateway 18180
+có sẵn; login test riêng chỉ local, không chứa service/SMTP credentials.
+Sau tests/browser, worker dừng ở READY FOR MANUAL UI VALIDATION; user duyệt
+UI trước MAIN review/merge cuối. UI/UX và manual validation hiện **PENDING**.
