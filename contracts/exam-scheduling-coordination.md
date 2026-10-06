@@ -154,9 +154,10 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
   43/43 checks, PostgreSQL Auth V1–V4/Notification V1–V2 thành công. Đây chỉ là
   API/component gate, chưa producer Scheduling, Gmail hoặc browser push thực.
   Chi tiết tại notification-scheduling.md. Exam worker tiếp tục các phần độc
-  lập; câu hỏi `msg_4f5be95a5cb0` về `submitted` khi có nhiều attempt vẫn chờ
-  câu trả lời rõ ràng của người dùng. MAIN chưa chọn thay người dùng, chưa
-  trả lời/ACK câu hỏi, chưa giao frontend contract chưa ổn định.
+  lập. Người dùng đã trả lời A cho `msg_4f5be95a5cb0`: xét attempt hiện hành,
+  lượt 2 đang IN_PROGRESS vẫn nhận Close/extend dù lượt 1 đã nộp. MAIN đã reply
+  `msg_2f1b2e504497`, ACK delivery của câu hỏi và cập nhật scope/contract.
+  Frontend vẫn chờ review backend ổn định, không tự triển khai.
 - Toàn bộ dirty MAIN gồm untracked đã stash trước Auth merge, restore kiểm
   SHA256 patch/file và status đúng nguyên trạng. Backup stash giữ nguyên;
   original Phase1 stash vẫn hiện hữu. Không discard/push.

@@ -47,6 +47,11 @@ không PROCTOR. DRAFT có quản lý nhưng không Student. 404 hủy job; 401/4
 provider unavailable không giả thành thành công. Email lấy từ
 [Auth contact API](notification-contact-api.md), không từ event/DB copy.
 
+User chốt A ngày 2026-10-07: `started` phản ánh từng có durable attempt;
+`submitted=true` chỉ khi không còn attempt IN_PROGRESS và attempt mới nhất
+đã SUBMITTED/AUTO_SUBMITTED. Student đang làm lượt 2 vẫn nhận Close/extend
+dù đã nộp lượt 1. Provider xác định expiry theo server trước khi trả trạng thái.
+
 ## Ma trận gửi và reminder
 
 - In-app/push mọi event Scheduling; email chỉ schedule/reschedule/unschedule/

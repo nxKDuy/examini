@@ -136,6 +136,11 @@ Nguồn: người dùng trả lời các nhóm clarification của Exam và Noti
 - Student không nhận lịch/reminder ở DRAFT; khi Publish Exam đã có lịch mới gửi
   thông báo lịch. Open gửi cho Student liên quan; Close và extend endAt chỉ gửi
   Student chưa nộp (cùng người quản lý theo rule trên).
+- Người dùng chốt A ngày 2026-10-07: xét attempt hiện hành, không xét việc đã
+  từng nộp. `submitted=true` chỉ khi không còn attempt IN_PROGRESS và attempt
+  mới nhất đã SUBMITTED/AUTO_SUBMITTED. Đã nộp lượt 1 nhưng đang làm lượt 2 vẫn
+  nhận Close/extend notice. `started=true` nếu từng có durable attempt; expiry
+  phải do server xác định để không dùng trạng thái IN_PROGRESS đã quá hạn.
 - Không gửi bù mốc nhắc đã qua; job trễ chỉ gửi khi chưa đến startAt và đúng
   revision. Mốc Teacher cấu hình, mặc định 24h/15m; không giới hạn thành chỉ hai
   preset. Join không gửi thêm thông báo lịch; bỏ giao hủy reminder, không thông
