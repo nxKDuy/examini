@@ -171,10 +171,15 @@ services:
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
       QB_INTERNAL_TOKEN: ${QB_INTERNAL_TOKEN}
       EXAM_NOTIFICATION_TOKEN: ${EXAM_NOTIFICATION_TOKEN:-}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-datn}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
