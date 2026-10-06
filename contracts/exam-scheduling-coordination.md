@@ -95,6 +95,26 @@ MAIN duyệt capability tối thiểu sau khi inspect Auth; implementation phả
    PASS chỉ là prerequisite, chưa có bằng chứng delivery. Browser push cần UI
    permission/subscription và HTTPS/localhost thực, chưa được test.
 
+### Quyết định migration và Web Push ngày 2026-10-06
+
+- MAIN trả lời CR msg_e7532333a903: Scheduling được dùng additive repeatable
+  `R__` làm cầu nối MAIN chưa có migration Phase2 và branch đã có Phase2.
+  Không sửa checksum/version Phase2, không bật outOfOrder hay reset DB.
+  Legacy UTC backfill phải có guard transaction chạy một lần; lần chạy lại
+  không được ghi đè lịch/revision đã sửa, kể cả lịch bị bỏ về null hợp lệ.
+  Review yêu cầu PostgreSQL/Flyway thực: baseline MAIN → Scheduling;
+  Phase2 → Scheduling; MAIN Scheduling → Phase2; checksum repeatable thay đổi
+  vẫn giữ dữ liệu. Migration tương lai thông thường tiếp tục dùng versioned.
+- MAIN trả lời CR msg_480290ae5fed: dùng `web-push:5.1.2` cho RFC8291/VAPID,
+  `bcprov-jdk18on:1.86` và `jose4j:0.9.7`, loại transitive CLI/async Netty/
+  BC cũ. Đây là dependency mới có mục đích, không upgrade ngoài scope.
+  Xác minh bản phát hành bằng [BouncyCastle](https://www.bouncycastle.org/download/bouncy-castle-java/)
+  và Maven Central metadata trực tiếp ngày 2026-10-06. Worker phải kiểm thử
+  lại vector, ES256, round trip và cây dependency với tổ hợp này; báo MAIN
+  nếu có incompatibility trước khi thay bản. Không tự triển khai protocol crypto.
+  Transport dùng JDK HttpClient không redirect, kiểm endpoint cả lúc subscribe
+  và gửi; retry từng subscription, không coi provider accepted là browser display.
+
 ## MAIN worktree và integration gates
 
 ### Checkpoint implementation ngày 2026-10-06
