@@ -47,5 +47,12 @@ Không đưa sender email hoặc app password vào Git/handoff.
   gồm persistence thật/Flyway V1–V4. MAIN review source và XML Surefire đối chiếu.
 - Gateway MAIN: archive committed MAIN + exact Gateway patch, Docker JDK21,
   `mvn -B -pl api-gateway -am test`: 10 tests, 0 lỗi, 0 skipped.
-- Chưa có E2E Notification → Auth hoặc Gmail delivery. SMTP TLS/login PASS
-  không chứng minh email đã gửi; chưa xác nhận release Scheduling.
+- MAIN real smoke: JAR từ committed MAIN ad81a84, Auth/Gateway/Redis/PostgreSQL
+  riêng, 23 checks PASS: register Student/Teacher, signed identity dù spoof headers,
+  Admin bootstrap/login, ADMIN/SYSTEM_ADMIN registration denied, privilege injection
+  không cấp ADMIN, refresh rejected, private contact minimal response/credential,
+  Gateway deny encoded/internal/discovery-prefix variants và Flyway V1–V4.
+  Không fixture backend, không dùng dữ liệu service đang chạy. Cấu hình route test
+  cô lập đã sửa trước lượt PASS; không đổi runtime config production để test qua.
+- Chưa có E2E Notification → Auth, Scheduling hoặc Gmail delivery. SMTP TLS/login
+  PASS không chứng minh email đã gửi; chưa xác nhận release Scheduling.
