@@ -1,8 +1,10 @@
 # Scheduling — điều phối và review kỹ thuật MAIN
 
-Trạng thái: scope/domain đã duyệt; người dùng chốt PUBLIC flag kèm Notification
-ngày 2026-10-06. Auth contact đã triển khai và tích hợp; Exam/Notification
-Scheduling vẫn đang implementation, chưa được MAIN duyệt như contract hiện hành.
+Trạng thái: Product/Domain Scope Lock đã duyệt, gồm PUBLIC flag kèm Notification
+và lựa chọn A cho attempt hiện hành. Auth contact, Exam/Session Scheduling và
+Notification đã tích hợp vào MAIN. Backend E2E qua Gateway thật đạt 34/34 checks
+ngày 2026-10-07. Frontend Calendar chưa triển khai: tiếp theo là khảo sát và hỏi
+người dùng UI/UX trước khi code; chưa có manual UI/browser release approval.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -182,3 +184,47 @@ Backend phải MAIN review trước Frontend clarification/implementation. Front
 đến READY FOR MANUAL UI VALIDATION; người dùng duyệt trước merge cuối. Merge
 backend rồi frontend, Graphify cho code đã duyệt, regression và Gateway E2E.
 Không push remote và không tự bắt đầu feature kế tiếp.
+
+## Backend runtime gate ngày 2026-10-07
+
+- MAIN Scheduling `59c1017` được review theo Product/Domain Scope Lock, không
+  mang theo các commit Browser Integrity/Question Bank compatibility chưa duyệt.
+- Runtime phát hiện Jackson chuyển offset request về UTC trước khi kiểm IANA
+  timezone. Worker Exam sửa riêng hai field trong `ScheduleDto.Update` bằng
+  `@JsonFormat(without = ADJUST_DATES_TO_CONTEXT_TIME_ZONE)`, không thay Jackson
+  toàn cục. Commit provider `c5ac78fb1924ed2815a8d16f9ea1edf3549ad436` được
+  cherry-pick vào MAIN tại `58bbd76c4c2c953f39c18decac301b75243ef3ac`.
+- Task `task_99897fc5c794` / Dispatch `ctx_f97f826d7518` succeeded, report
+  `/tmp/examini-scheduling-timezone-fix-result.md`. MAIN review toàn diff và
+  Surefire: branch 24 executed PASS + 1 skipped; MAIN archive 19 executed PASS
+  + 1 `OutboxContractTest` skipped vì chưa bật cờ RabbitMQ trong lượt unit test.
+  JDK 21 + PostgreSQL 16 thật; không dùng JDK 27. Dispatch đã release đúng
+  settlement, terminal bên ngoài retained, không đóng hay tạo worker trùng.
+- MAIN E2E: `python3 /tmp/examini-scheduling-api-e2e.py` — **34/34 PASS**.
+  Bằng chứng `/tmp/examini-scheduling-api-e2e-result.json`; nguồn Exam là
+  `58bbd76`, các service còn lại từ `59c1017`. Stack riêng loopback Gateway
+  `http://127.0.0.1:18180`; không thay stack `datn` hoặc đưa dirty MAIN vào build.
+  Java 21/Maven 3.9, PostgreSQL 16, Redis 7, RabbitMQ 3.13, Mailpit; bảy service
+  Auth/QB/Exam/Session/Grading/Notification/Gateway health UP.
+- E2E thật xác nhận +07:00 → UTC, offset sai/DST gap bị từ chối, DST overlap;
+  authorization OWNER/MANAGER/PROCTOR/unrelated Teacher; PUBLIC Follow không
+  tạo Participant; preview trước giờ, Join/Start bị chặn sớm; reschedule và
+  stale revision; manual Open không bypass; đủ ba deadline rules; auto Open/Close;
+  resume/answer persistence; snapshot không đổi sau sửa Question; submit lặp
+  idempotent, RabbitMQ grading/result dùng snapshot; Close vẫn cho active Session
+  hoàn thành; Reopen/Unfollow; lượt 2 IN_PROGRESS nhận Close dù lượt 1 đã nộp.
+  Flyway cả sáu database Auth/QB/Exam/Session/Grading/Notification thành công.
+- Outbox → RabbitMQ → recipient/Auth API → in-app Scheduled/Rescheduled và
+  SMTP Mailpit PASS. Harness đã sửa để đợi notice trước khi nộp bài; assertion
+  cũ đợi thông báo cho Student đã submitted không phù hợp authority hiện hành.
+  Failure ban đầu được giữ riêng trong `/tmp`, không thay business rule để làm
+  test xanh. Mailpit không chứng minh Gmail delivery; browser push/display,
+  browser Calendar và manual UI validation vẫn chưa chạy.
+- Dirty MAIN restored kiểm SHA256 đúng nguyên trạng sau cherry-pick; manifest
+  `.git/coordination/scheduling-timezone-merge-preservation.json`. Backup stash
+  riêng và original Phase1 stash vẫn giữ; không discard hay push.
+
+MAIN chấp nhận backend/API để giao Frontend clarification. Contract hiện hành:
+`exam-scheduling-api.md`, `exam-scheduling-scope.md`, `notification-scheduling.md`.
+Frontend phải dùng committed MAIN, giữ các commit Product UI hiện có, hỏi một
+lượt UI/UX có khuyến nghị qua Orca. Chưa có UI/UX Scope Lock thì không implement.

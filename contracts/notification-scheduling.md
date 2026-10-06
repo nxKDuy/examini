@@ -104,8 +104,8 @@ cần tạo DB riêng trước startup, không reset volume.
 
 Evidence component: archive aa32371, 52/52 tests trên PostgreSQL 16/RabbitMQ 3.13/
 Mailpit; RFC8291 vector, ES256, independent decrypt, ownership/SSRF/retry/dedup/
-expiry và late wording. **Chưa claim producer Exam E2E, Gmail inbox hay browser
-push thực**, đây là release gates còn phải xác minh.
+expiry và late wording. Component tests tự chúng không chứng minh producer
+Exam E2E, Gmail inbox hay browser push thực; xem checkpoint riêng bên dưới.
 
 ### MAIN runtime checkpoint ngày 2026-10-07
 
@@ -123,3 +123,20 @@ Harness/result local tại `/tmp/examini-scheduling-notification-api-runtime.py`
 và `/tmp/examini-scheduling-notification-api-runtime-result.json`; credentials
 test sinh ngẫu nhiên, không ghi vào report. Container/network của harness được
 dọn sau test; stack và worktree hiện hữu giữ nguyên.
+
+### Scheduling producer runtime sau tích hợp
+
+MAIN Exam `58bbd76` (Scheduling `59c1017` + HTTP timezone fix) và sáu service
+Auth/QB/Session/Grading/Notification/Gateway thật chạy cùng PostgreSQL 16,
+Redis 7, RabbitMQ 3.13, Mailpit: **34/34 Gateway E2E checks PASS**.
+Producer outbox → RabbitMQ → Exam recipient/Auth contact APIs → in-app
+Scheduled/Rescheduled PASS. Close tới Student đang làm lượt 2 sau khi đã nộp
+lượt 1 PASS theo lựa chọn A. SMTP gửi thật được Mailpit chấp nhận; không đổi
+SMTP của stack hiện hữu hay gửi các địa chỉ fixture qua Gmail.
+
+Harness `/tmp/examini-scheduling-api-e2e.py`, result
+`/tmp/examini-scheduling-api-e2e-result.json`; bảy service health UP và sáu
+database Flyway thành công. Đây là real backend API E2E, chưa là browser
+Calendar/manual UI E2E. **Gmail delivery/inbox và browser push subscription/
+provider/display vẫn chưa xác nhận**; frontend phải hoàn thành opt-in/service
+worker theo UI/UX Scope Lock để chạy gate push thực.

@@ -2,9 +2,11 @@
 
 Backend domain `92ddd2f62f74d5e1f37a7336ad93fdf084d38f6c`; bản áp độc lập
 MAIN `59c10172378d8bba550feee0856b311be8ed602c`. Không kéo Browser Integrity
-Phase 2 hoặc QB compatibility chưa tích hợp. Business authority:
+Phase 2 hoặc QB compatibility chưa tích hợp. Bản sửa HTTP timezone provider
+`c5ac78f`, MAIN `58bbd76c4c2c953f39c18decac301b75243ef3ac` giữ nguyên offset
+request trước validation. Business authority:
 [Product/Domain Scope Lock](exam-scheduling-scope.md). Frontend chưa triển khai;
-UI/UX và real Scheduling E2E vẫn là gate riêng.
+backend Gateway E2E đạt 34/34 checks; UI/UX và browser E2E vẫn là gate riêng.
 
 ## Teacher: đọc và chỉnh lịch
 
@@ -124,3 +126,11 @@ Cây MAIN-based: Exam 15, Session 8, Grading 2 PASS. Một số client trong tes
 mock; đây không là real cross-domain E2E. Flyway 10.10.0 bridge được worker kiểm
 MAIN→R, Phase2→R, MAIN→R→Phase2 và full set; không sửa checksum migration cũ.
 MAIN runtime và frontend/manual/browser gates phải báo độc lập.
+
+Sau sửa timezone: MAIN-based Exam có 19 executed PASS và 1 Outbox contract
+skipped trong unit test; real Gateway E2E 34/34 PASS trên bảy service thật,
+PostgreSQL/Redis/RabbitMQ/Mailpit. E2E kiểm +07:00, offset sai, DST gap/overlap,
+cả ba deadline rules, auto/manual lifecycle, Follow, resume, grading/snapshot,
+attempt hiện hành và in-app/SMTP. Chi tiết và đường dẫn evidence nằm trong
+`exam-scheduling-coordination.md`. Gmail, browser push, Frontend Calendar và
+manual UI approval chưa được xác nhận; không coi backend gate là feature final.
