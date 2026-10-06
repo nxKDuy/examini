@@ -15,7 +15,7 @@ def git(*args, cwd=None):
     return subprocess.check_output(["git", *args], cwd=cwd, text=True).strip()
 
 
-def build(shared):
+def build(shared, branch_filter=None):
     from graphify.extract import extract
     from graphify.build import build_from_json
     from graphify.cluster import cluster, score_all
@@ -36,6 +36,8 @@ def build(shared):
             continue
         root = Path(fields["worktree"])
         branch = fields["branch"].removeprefix("refs/heads/")
+        if branch_filter and branch != branch_filter:
+            continue
         key = branch.replace("/", "--")
         commit = git("rev-parse", "HEAD", cwd=root)
         dirty = bool(git("status", "--porcelain", cwd=root))
@@ -72,11 +74,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["build", "path", "query"])
     parser.add_argument("term", nargs="?", default="")
+    parser.add_argument("--branch", help="Chỉ refresh branch đã review, ví dụ main")
     args = parser.parse_args()
     common = Path(git("rev-parse", "--git-common-dir")).resolve()
     shared = common / "graphify"
     if args.command == "build":
-        build(shared)
+        build(shared, args.branch)
     elif args.command == "path":
         print(shared / "out")
     else:

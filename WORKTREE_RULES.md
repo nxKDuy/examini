@@ -84,9 +84,14 @@ Question lifecycle is owned by Question Bank. Exam, Session and Grading each own
 their lifecycle. Do not introduce one global `Status` enum. See the current and
 required statuses in `contracts/exam-integration.md`.
 
-Official (`EXAM` in current backend) publication requires APPROVED questions
-only, and a published exam must remain immutable against later Question Bank
-edits. These are required invariants, not guarantees of the current code.
+Question lifecycle and bank publication/review lifecycle are separate. Personal
+questions use DRAFT/ACTIVE/ARCHIVED and require no review. Public publication is
+direct and does not require verification. Organization contributions require
+review; System management requires explicit system authority, never TEACHER
+persona alone. Exam eligibility is bank-aware: active accessible Personal/System,
+published accessible Public, or approved accessible Organization publication.
+The provider must verify access and eligibility; a published exam must remain
+immutable against later Question Bank edits. See contracts/question-bank-lifecycle.md.
 
 ## Communication and blockers
 
