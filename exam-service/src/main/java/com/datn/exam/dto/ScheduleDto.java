@@ -1,5 +1,6 @@
 package com.datn.exam.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.datn.exam.entity.Exam;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -9,7 +10,8 @@ import java.util.UUID;
 public final class ScheduleDto {
     private ScheduleDto() {}
 
-    public record Update(OffsetDateTime startAt,OffsetDateTime endAt,String timezone,
+    public record Update(@JsonFormat(without=JsonFormat.Feature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE) OffsetDateTime startAt,
+                         @JsonFormat(without=JsonFormat.Feature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE) OffsetDateTime endAt,String timezone,
                         Exam.DeadlineRule deadlineRule,boolean autoOpen,boolean autoClose,
                         List<Integer> reminderOffsetsMinutes,long expectedRevision,String reason) {}
     public record ScheduleState(Instant startAt,Instant endAt,String timezone,Exam.DeadlineRule deadlineRule,

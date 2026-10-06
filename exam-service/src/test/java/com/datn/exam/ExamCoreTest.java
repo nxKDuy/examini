@@ -72,9 +72,13 @@ class ExamCoreTest {
 
     @Test void scheduleUpdateUsesOffsetAndRevisionAndPublicPreviewWaitsForStartAt()throws Exception {
         UUID id=create();core.policy(id,owner,new ExamCore.Policy(Exam.AccessMode.PUBLIC,10,5,2));
-        String schedule="{\"startAt\":\"2030-01-01T10:00:00Z\",\"endAt\":\"2030-01-01T11:00:00Z\",\"timezone\":\"UTC\",\"deadlineRule\":\"REQUIRE_FULL_WINDOW\",\"autoOpen\":false,\"autoClose\":true,\"reminderOffsetsMinutes\":[1440,15],\"expectedRevision\":0}";
+        String schedule="{\"startAt\":\"2030-01-01T17:00:00+07:00\",\"endAt\":\"2030-01-01T18:00:00+07:00\",\"timezone\":\"Asia/Ho_Chi_Minh\",\"deadlineRule\":\"REQUIRE_FULL_WINDOW\",\"autoOpen\":false,\"autoClose\":true,\"reminderOffsetsMinutes\":[1440,15],\"expectedRevision\":0}";
         mvc.perform(put("/exams/"+id+"/schedule").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(schedule))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.scheduleRevision").value(1));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.scheduleRevision").value(1))
+            .andExpect(jsonPath("$.startAt").value("2030-01-01T10:00:00Z"))
+            .andExpect(jsonPath("$.endAt").value("2030-01-01T11:00:00Z"));
+        assertEquals(java.time.Instant.parse("2030-01-01T10:00:00Z"),exams.findById(id).orElseThrow().getStartAt());
+        assertEquals(java.time.Instant.parse("2030-01-01T11:00:00Z"),exams.findById(id).orElseThrow().getEndAt());
         core.transition(id,owner,Exam.Status.PUBLISHED);
         when(sessions.availability(eq(id),eq(student),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Availability(0,false,null,0,null,null));
         mvc.perform(get("/exams/"+id+"/availability").header("Authorization",token(student,"STUDENT")))
@@ -84,6 +88,25 @@ class ExamCoreTest {
         assertEquals(2,related.size());assertEquals(1,related.stream().filter(event->event.getEventType().equals("exam.schedule.changed")).count());
         assertEquals(1,related.stream().filter(event->event.getEventType().equals("exam.lifecycle.changed")).count());
         assertEquals(409,assertThrows(org.springframework.web.server.ResponseStatusException.class,()->core.join(id,student,null)).getStatusCode().value());
+    }
+
+    @Test void scheduleHttpValidatesOriginalOffsetIncludingDstGapAndOverlap()throws Exception {
+        UUID invalidOffset=create();
+        String mismatched="{\"startAt\":\"2030-01-01T17:00:00+08:00\",\"endAt\":\"2030-01-01T18:00:00+08:00\",\"timezone\":\"Asia/Ho_Chi_Minh\",\"deadlineRule\":\"FULL_DURATION\",\"autoOpen\":false,\"autoClose\":false,\"reminderOffsetsMinutes\":[],\"expectedRevision\":0}";
+        mvc.perform(put("/exams/"+invalidOffset+"/schedule").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(mismatched))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.detail").value("startAt offset does not match timezone"));
+
+        UUID gap=create();
+        String dstGap="{\"startAt\":\"2030-03-10T02:30:00-08:00\",\"endAt\":\"2030-03-10T04:00:00-07:00\",\"timezone\":\"America/Los_Angeles\",\"deadlineRule\":\"FULL_DURATION\",\"autoOpen\":false,\"autoClose\":false,\"reminderOffsetsMinutes\":[],\"expectedRevision\":0}";
+        mvc.perform(put("/exams/"+gap+"/schedule").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(dstGap))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.detail").value("startAt falls in a daylight-saving gap"));
+
+        UUID overlap=create();
+        String dstOverlap="{\"startAt\":\"2030-11-03T01:30:00-07:00\",\"endAt\":\"2030-11-03T01:30:00-08:00\",\"timezone\":\"America/Los_Angeles\",\"deadlineRule\":\"FULL_DURATION\",\"autoOpen\":false,\"autoClose\":false,\"reminderOffsetsMinutes\":[],\"expectedRevision\":0}";
+        mvc.perform(put("/exams/"+overlap+"/schedule").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(dstOverlap))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.startAt").value("2030-11-03T08:30:00Z"))
+            .andExpect(jsonPath("$.endAt").value("2030-11-03T09:30:00Z"));
     }
 
     @Test void publicFollowCanBeRemovedAfterCloseAndDraftRecipientsExcludeStudents()throws Exception {
