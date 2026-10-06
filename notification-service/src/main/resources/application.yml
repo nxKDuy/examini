@@ -1,0 +1,109 @@
+jwt:
+  secret: ${JWT_SECRET:}
+
+# Scheduling notifications. Secrets come only from the local environment; blank values fail closed
+# (jobs/deliveries stay PENDING with a recorded error until they expire; nothing is marked SENT).
+notification:
+  app-base-url: ${APP_BASE_URL:http://localhost:5173}
+  exam:
+    base-url: ${EXAM_SERVICE_URL:http://localhost:8083}
+    token: ${EXAM_NOTIFICATION_TOKEN:}
+  auth:
+    base-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+    token: ${NOTIFICATION_CONTACT_TOKEN:}
+  mail:
+    from: ${SMTP_FROM:}
+  push:
+    vapid-public-key: ${VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${VAPID_PRIVATE_KEY:}
+    vapid-subject: ${VAPID_SUBJECT:}
+    # SSRF guard: only these browser push services (and their subdomains) are ever contacted.
+    allowed-host-suffixes: ${PUSH_ALLOWED_HOST_SUFFIXES:fcm.googleapis.com,push.services.mozilla.com,notify.windows.com,push.apple.com}
+
+server:
+  port: 8087
+
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/notification_db
+    username: datn
+    password: ${POSTGRES_PASSWORD:datn_secret}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    web:
+      pageable:
+        max-page-size: 50
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS_ENABLE:true}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS_REQUIRED:true}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 15000
+      mail.smtp.writetimeout: 15000
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # Poison/exhausted messages go to the dead-letter queue instead of looping.
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  health:
+    # SMTP availability must not mark the whole service DOWN (and must not open an SMTP login per health probe);
+    # email failures are recorded per delivery instead.
+    mail:
+      enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/notification_db
+  rabbitmq:
+    host: rabbitmq
+
+notification:
+  exam:
+    base-url: ${EXAM_SERVICE_URL:http://exam-service:8083}
+  auth:
+    base-url: ${AUTH_SERVICE_URL:http://auth-service:8081}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/

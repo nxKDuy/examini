@@ -267,6 +267,35 @@ services:
       eureka-server:
         condition: service_healthy
 
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: datn-notification
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/notification_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-datn}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-datn_secret}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-datn}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8087/actuator/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:

@@ -26,6 +26,7 @@
         <module>exam-session-service</module>
         <module>grading-service</module>
         <module>analytics-service</module>
+        <module>notification-service</module>
     </modules>
 
     <properties>
