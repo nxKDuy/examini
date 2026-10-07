@@ -1,8 +1,11 @@
 # BACKEND CONTRACT LOCK — MANUAL GRADING
 
 MAIN focused review: PASS sau các task commit `a8ae421` và
-`e91849325a6036013003149cb86edfffd470fbc2`. Đây là contract đã duyệt, chưa phải
-release-gate PASS hoặc xác nhận đã merge. Business scope:
+`e91849325a6036013003149cb86edfffd470fbc2`. Backend đã tích hợp vào MAIN qua
+`8c6af2f` và `2642235` bằng cherry-pick riêng hai task commit, không kéo theo
+Browser Integrity ngoài scope. Frontend `63cd277` + `6ffa405` đã review focused
+PASS, đang chờ gate UI thủ công trước merge cuối. Đây chưa phải release-gate PASS.
+Business scope:
 [manual-grading-scope.md](manual-grading-scope.md).
 
 ## Quyền và timestamps
@@ -92,6 +95,10 @@ Own answer vẫn được xem sau publication; showQuestionBreakdown điều khi
 awardedPoints, showFeedback điều khiển feedback, showScore điều khiển total/max.
 Correct answers chỉ khi showCorrectAnswers=true và Exam CLOSED, lấy frozen key.
 History: resultRevision/releasedAt/score/totalScore/publicReason theo policy.
+
+Các thiếu sót frozen explanation, safe answer label và studentDisplayName là
+[Contract Requests không chặn](manual-grading-contract-requests.md); frontend
+tiếp tục dùng fallback đã được người dùng duyệt, không lấy live QB để bù snapshot.
 
 **Giới hạn thật:** frozen snapshot chưa có explanation nên backend chưa trả
 explanation dù policy có field. Không hiển thị toggle như capability hoạt động,
