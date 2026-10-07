@@ -4,7 +4,9 @@ MAIN focused review: PASS sau các task commit `a8ae421` và
 `e91849325a6036013003149cb86edfffd470fbc2`. Backend đã tích hợp vào MAIN qua
 `8c6af2f` và `2642235` bằng cherry-pick riêng hai task commit, không kéo theo
 Browser Integrity ngoài scope. Frontend `63cd277` + `6ffa405` đã review focused
-PASS, đang chờ gate UI thủ công trước merge cuối. Đây chưa phải release-gate PASS.
+PASS; người dùng đã duyệt UI thủ công. Backend, frontend, Notification và
+Analytics đã tích hợp vào MAIN. Validation tích hợp thực tế và giới hạn môi trường
+được ghi tại [manual-grading-integration-result.md](manual-grading-integration-result.md).
 Business scope:
 [manual-grading-scope.md](manual-grading-scope.md).
 
