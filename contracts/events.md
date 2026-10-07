@@ -47,11 +47,19 @@ session/exam identity; that would change the current plain-string consumer.
 Negotiate migration and compatibility through MAIN before changing its payload
 or queue. Do not assume one domain's status enum is an event schema shared by all.
 
-## PROPOSED: grading result recorded (Analytics request ANALYTICS-GRADING-RESULT-EVENTS)
+## CURRENT: grading result recorded (Analytics request ANALYTICS-GRADING-RESULT-EVENTS)
 
-Requested by Analytics; provider is Grading (Exam Taking). Not implemented by
-Grading yet. The Analytics consumer is implemented on `feature/reporting`
-(`analytics-service/ANALYTICS.md`). The current `exam.submitted.queue` is a
+MAIN đã duyệt và tích hợp producer Grading `a8ae421` + `e918493`, consumer
+Analytics `d03730c` và Notification `0650a55`. `grading.result.recorded.v1`
+truyền current grading state; publication Student là một boundary riêng, nên
+Analytics có thể nhận trạng thái nháp/regrade trước khi Student thấy publication mới.
+Dedup theo session/result identity và revision tăng, không tăng số logical result
+khi release/regrade hoặc redelivery. Xem `manual-grading-api.md` cho visibility,
+revision và Notification contract; ba frozen snapshot/identity Contract Requests
+vẫn không chặn tích hợp.
+
+Requested by Analytics; provider is Grading (Exam Taking). Producer and consumer
+đã tích hợp trong MAIN (`analytics-service/ANALYTICS.md`). The current `exam.submitted.queue` is a
 point-to-point queue consumed by Grading and must not gain a second consumer.
 
 ```text
@@ -86,9 +94,10 @@ State-carried payload; each event is the complete current state of one result:
   snapshot used for grading, never from live Question Bank data.
 - `awardedPoints` is null while `needsReview`; `totalScore` is required for `GRADED`;
   `gradedAt` is when the result became `GRADED` (null otherwise).
-- `attemptNumber` may be null until Session's internal answers DTO exposes it.
+- `attemptNumber` lấy từ Session internal answers DTO đã triển khai; legacy
+  consumer vẫn chấp nhận nullable theo v1.
 - Never include answer content, option IDs, correct answers or grading keys.
-- Provide a one-time replay of existing results (safe because consumers are idempotent).
-- Known semantic gap: manual grading currently overrides only the total; item-level
-  NEEDS_REVIEW questions stay pending in item analytics until Grading records
-  per-question manual scores (non-blocking follow-up).
+- Historical replay trước khi consumer chạy là follow-up riêng, không tự phát lại
+  thông báo Student. Grading outbox không replay các event đã đánh dấu published.
+- Manual grading hiện lưu score từng item và phát outcomes tương ứng revision mới;
+  không còn dùng total-only override cho workflow mới.
