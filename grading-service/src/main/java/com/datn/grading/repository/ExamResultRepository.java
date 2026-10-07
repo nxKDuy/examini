@@ -17,6 +17,10 @@ public interface ExamResultRepository extends JpaRepository<ExamResult, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from ExamResult r where r.id=:id") Optional<ExamResult> lockById(@Param("id")UUID id);
 
-    @Query("SELECT r FROM ExamResult r WHERE (:examId IS NULL OR r.examId = :examId) AND (:status IS NULL OR r.status = :status)")
-    Page<ExamResult> searchResults(@Param("examId") UUID examId, @Param("status") ExamResult.Status status, Pageable pageable);
+    @Query("SELECT r FROM ExamResult r WHERE r.examId=:examId AND (:status IS NULL OR r.status=:status) AND (:released IS NULL OR (:released=true AND r.releasedRevision IS NOT NULL) OR (:released=false AND r.releasedRevision IS NULL))")
+    Page<ExamResult> searchResults(@Param("examId") UUID examId,@Param("status") ExamResult.Status status,@Param("released")Boolean released,Pageable pageable);
+    long countByExamId(UUID examId);
+    long countByExamIdAndStatus(UUID examId,ExamResult.Status status);
+    long countByExamIdAndReleasedRevisionIsNotNull(UUID examId);
+    @Query("select coalesce(sum(r.pendingManualItemCount),0) from ExamResult r where r.examId=:examId") long sumPendingManualItems(@Param("examId")UUID examId);
 }

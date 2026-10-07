@@ -50,9 +50,12 @@ public class ExamResult {
     @Column(columnDefinition="TEXT") private String feedback;
     private Instant submittedAt;
     private Integer durationSeconds;
+    @Column(nullable=false) @Builder.Default private int attemptNumber=1;
+    @Column(nullable=false) @Builder.Default private int pendingManualItemCount=0;
     private UUID gradedBy;
     @Column(nullable=false) @Builder.Default private long resultRevision=1;
     private Long releasedRevision;
+    private Float releasedScore;
     @Column(columnDefinition="TEXT") private String pendingPublicReason;
     @Column(columnDefinition="TEXT") private String pendingPrivateAuditNote;
     @Column(nullable=false,length=16) @Builder.Default private String gradingMode="AUTO";

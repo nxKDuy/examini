@@ -57,17 +57,34 @@ class GradingCoreTest {
         var q=question("SHORT_ANSWER","Café au lait",0);assertEquals(2.5f,ObjectiveScoring.score(q,"  Cafe\u0301\u00a0au\t lait  "));assertEquals(0,ObjectiveScoring.score(q,"café au lait"));assertEquals(0,ObjectiveScoring.score(q,"Cafe au lait"));
     }
 
+    @Test void studentStatusTracksSessionBeforeAResultExists(){
+        var now=LocalDateTime.now();
+        when(sessions.get(session,"test-internal")).thenReturn(new ExamSessionClient.SessionDetailDto(session,exam,user,"IN_PROGRESS","Exam",2,now,null,List.of()));
+        var active=service.student(session,user);assertEquals("IN_PROGRESS",active.status());assertEquals(exam,active.examId());assertEquals(2,active.attemptNumber());assertNull(active.submittedAt());
+        when(sessions.get(session,"test-internal")).thenReturn(new ExamSessionClient.SessionDetailDto(session,exam,user,"SUBMITTED","Exam",2,now,now.plusMinutes(10),List.of()));
+        var submitted=service.student(session,user);assertEquals("SUBMITTED",submitted.status());assertNotNull(submitted.submittedAt());assertNull(submitted.score());
+    }
+
     @Test void duplicateEventsEssayFallbackAndOutboxAreIdempotent()throws Exception{
         var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);var now=LocalDateTime.now();
         when(sessions.get(session,"test-internal")).thenReturn(new ExamSessionClient.SessionDetailDto(session,exam,user,"SUBMITTED","Exam",1,now.minusMinutes(5),now,List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Essay"))));
         when(exams.key(exam,"test-internal")).thenReturn(List.of(objective,essay));when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
         var pool=Executors.newFixedThreadPool(2);try{var a=pool.submit(()->service.processSubmittedExam(session.toString()));var b=pool.submit(()->service.processSubmittedExam(session.toString()));a.get();b.get();}finally{pool.shutdownNow();}
-        var result=results.findBySessionId(session).orElseThrow();assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2.5f,result.getTotalScore());assertEquals(5,result.getMaxScore());assertNull(result.getGradedAt());
+        var result=results.findBySessionId(session).orElseThrow();assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2.5f,result.getTotalScore());assertEquals(5,result.getMaxScore());assertNull(result.getGradedAt());assertEquals(1,result.getPendingManualItemCount());
         assertEquals(1,results.findAll().size());assertEquals(Set.of("grading.result.recorded.v1","grading.review.required"),outbox.findAll().stream().map(GradingOutboxEvent::getRoutingKey).collect(java.util.stream.Collectors.toSet()));
         assertTrue(outbox.findAll().stream().filter(e->e.getRoutingKey().startsWith("grading.review")).noneMatch(e->e.getPayload().contains("score")||e.getPayload().contains("answer")));
         assertTrue(outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.recorded.v1")).noneMatch(e->e.getPayload().contains("answerContent")||e.getPayload().contains("expectedAnswer")));
         var recorded=json.readTree(outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.recorded.v1")).findFirst().orElseThrow().getPayload());
         assertEquals(1,recorded.path("attemptNumber").asInt());assertTrue(recorded.path("questions").findValuesAsText("questionVersion").contains("3"));assertTrue(recorded.path("questions").findValuesAsText("position").contains("1"));assertTrue(recorded.path("questions").findValuesAsText("pointValue").contains("2.5"));
+        var studentResult=service.student(session,user);assertEquals("NEEDS_REVIEW",studentResult.status());assertNull(studentResult.score());assertEquals(exam,studentResult.examId());assertEquals(1,studentResult.attemptNumber());
+    }
+
+    @Test void aiEssayScoreIsSuggestionAndTeacherMustResolve(){
+        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenReturn(new GeminiClient.GeminiGradeResponse(.8f,"AI suggestion"));
+        submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
+        var result=results.findBySessionId(session).orElseThrow();var item=service.detail(result.getId(),teacher).items().getFirst();
+        assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2f,item.autoScore());assertNull(item.awardedPoints());assertTrue(item.needsReview());assertNull(result.getReleasedRevision());assertEquals("NEEDS_REVIEW",service.student(session,user).status());
+        var reviewed=service.saveDraft(result.getId(),new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(essay.questionId(),2f,"Teacher decision"))),teacher);assertEquals("PENDING",reviewed.status());
     }
 
     @Test void manualDraftFinalizeRegradeHistoryAndVisibilityPolicy()throws Exception{
@@ -76,16 +93,19 @@ class GradingCoreTest {
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();
         assertEquals(400,assertThrows(ResponseStatusException.class,()->service.finalizeResult(resultId,1,teacher)).getStatusCode().value());
         assertEquals(400,assertThrows(ResponseStatusException.class,()->service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(essay.questionId(),3f,null))),teacher)).getStatusCode().value());
-        var draft=service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,"Overall",List.of(new SubmissionDto.ItemGrade(objective.questionId(),1.5f,"Override objective"),new SubmissionDto.ItemGrade(essay.questionId(),2f,"Essay feedback"))),teacher);
-        assertEquals(2,draft.resultRevision());assertEquals("PENDING",draft.status());assertEquals(3.5f,draft.score());assertEquals(2.5f,draft.items().get(0).autoScore());assertEquals(1.5f,draft.items().get(0).manualScore());
-        var finalized=service.finalizeResult(resultId,2,teacher);assertEquals(3,finalized.resultRevision());assertEquals("GRADED",finalized.status());assertNotNull(finalized.gradedAt());assertEquals(3L,finalized.releasedRevision());
+        assertEquals(400,assertThrows(ResponseStatusException.class,()->service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(objective.questionId(),0f,null))),teacher)).getStatusCode().value());
+        var draft=service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,"Overall",List.of(new SubmissionDto.ItemGrade(objective.questionId(),1.5f,"Override objective","Manual correction"),new SubmissionDto.ItemGrade(essay.questionId(),2f,"Essay feedback"))),teacher);
+        assertEquals(2,draft.resultRevision());assertEquals("PENDING",draft.status());assertEquals(3.5f,draft.score());assertEquals(2.5f,draft.items().get(0).autoScore());assertEquals(1.5f,draft.items().get(0).manualScore());assertEquals(0,draft.pendingManualItemCount());assertEquals(2,draft.attemptNumber());
+        var finalized=service.finalizeResult(resultId,2,teacher);assertEquals(3,finalized.resultRevision());assertEquals("GRADED",finalized.status());assertNotNull(finalized.gradedAt());assertEquals(3L,finalized.publishedRevision());
         var first=service.student(session,user);assertEquals(3,first.resultRevision());assertEquals(3.5f,first.score());assertEquals(2,first.questions().size());assertEquals(1,first.history().size());assertThrows(ResponseStatusException.class,()->service.student(session,UUID.randomUUID()));
         assertEquals(400,assertThrows(ResponseStatusException.class,()->service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3," ","private"),teacher)).getStatusCode().value());
-        var regrade=service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3,"Điều chỉnh đáp án","private audit only"),teacher);assertEquals(4,regrade.resultRevision());assertEquals(3L,service.student(session,user).resultRevision());
-        service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(4,"Updated",List.of(new SubmissionDto.ItemGrade(objective.questionId(),0f,"Changed"))),teacher);
-        var refinalized=service.finalizeResult(resultId,5,teacher);assertEquals(6,refinalized.resultRevision());assertEquals(6L,refinalized.releasedRevision());
+        var regrade=service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3,"Điều chỉnh đáp án","private audit only"),teacher);assertEquals(4,regrade.resultRevision());assertEquals(3L,service.student(session,user).resultRevision());assertEquals(3.5f,regrade.publishedScore());
+        service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(4,"Updated",List.of(new SubmissionDto.ItemGrade(objective.questionId(),0f,"Changed","Second correction"))),teacher);
+        var refinalized=service.finalizeResult(resultId,5,teacher);assertEquals(6,refinalized.resultRevision());assertEquals(6L,refinalized.publishedRevision());
         var latest=service.student(session,user);assertEquals(2,latest.history().size());assertEquals("Điều chỉnh đáp án",latest.history().get(1).publicReason());assertFalse(json.writeValueAsString(latest).contains("private audit only"));
         assertTrue(audits.findByResultIdOrderByCreatedAtAsc(resultId).stream().anyMatch(a->"private audit only".equals(a.getPrivateNote())));
+        assertTrue(audits.findByResultIdOrderByCreatedAtAsc(resultId).stream().anyMatch(a->objective.questionId().equals(a.getQuestionId())&&Objects.equals(2.5f,a.getOldScore())&&Objects.equals(1.5f,a.getNewScore())&&"OBJECTIVE_SCORE_OVERRIDDEN".equals(a.getAction())&&"Manual correction".equals(a.getReason())));
+        assertTrue(audits.findByResultIdOrderByCreatedAtAsc(resultId).stream().anyMatch(a->"OVERALL_FEEDBACK_UPDATED".equals(a.getAction())&&"Overall".equals(a.getNewFeedback())));
         assertTrue(outbox.findAll().stream().anyMatch(e->e.getRoutingKey().equals("grading.result.regraded")));
         assertTrue(outbox.findAll().stream().filter(e->e.getExchangeName().equals("examini.events")).noneMatch(e->e.getPayload().contains("score")||e.getPayload().contains("answer")||e.getPayload().contains("private audit")));
         var released=json.readTree(outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.released")).findFirst().orElseThrow().getPayload()).path("payload");assertEquals(resultId.toString(),released.path("resultId").asText());assertEquals(3,released.path("resultRevision").asLong());
@@ -99,7 +119,7 @@ class GradingCoreTest {
     @Test void explicitReleaseAndRoleIsolation()throws Exception{
         var objective=question("TRUE_FALSE",null,0);when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(false,true,true,true,false,false,"OPEN"));
         submitted(List.of(objective),List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString())));
-        var result=results.findBySessionId(session).orElseThrow();assertEquals("GRADING",service.student(session,user).status());assertNull(result.getReleasedRevision());
+        var result=results.findBySessionId(session).orElseThrow();assertEquals("GRADED_UNRELEASED",service.student(session,user).status());assertNull(result.getReleasedRevision());assertNull(service.student(session,user).score());
         UUID owner=UUID.randomUUID(),manager=UUID.randomUUID(),proctor=UUID.randomUUID(),unrelated=UUID.randomUUID();
         when(exams.permission(eq(exam),any(),eq(true),eq("test-internal"))).thenAnswer(call->{UUID actor=call.getArgument(1);if(actor.equals(owner))return "OWNER";if(actor.equals(manager))return "MANAGER";throw new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,"Denied");});
         assertNotNull(service.detail(result.getId(),owner));assertNotNull(service.detail(result.getId(),manager));assertThrows(ResponseStatusException.class,()->service.detail(result.getId(),proctor));assertThrows(ResponseStatusException.class,()->service.detail(result.getId(),unrelated));
@@ -109,7 +129,9 @@ class GradingCoreTest {
         mvc.perform(get("/submissions/"+result.getId()).header("Authorization",token(unrelated,"ADMIN"))).andExpect(status().isForbidden());
         mvc.perform(get("/submissions/"+result.getId()).header("Authorization",token(user,"STUDENT"))).andExpect(status().isForbidden());
         mvc.perform(get("/grades/session/"+session).header("Authorization",token(UUID.randomUUID(),"STUDENT"))).andExpect(status().isForbidden());
-        var released=service.release(result.getId(),1,owner);assertEquals(2,released.resultRevision());assertEquals(2L,released.releasedRevision());assertEquals("GRADED",service.student(session,user).status());
+        var before=service.overview(exam,owner);assertEquals(1,before.totalSubmissions());assertEquals(1,before.graded());assertEquals(0,before.released());assertEquals(1,service.getSubmissions(exam,null,false,org.springframework.data.domain.PageRequest.of(0,10),owner).getTotalElements());
+        var released=service.release(result.getId(),1,owner);assertEquals(2,released.resultRevision());assertEquals(2L,released.publishedRevision());assertEquals("GRADED",service.student(session,user).status());
+        assertEquals(1,service.overview(exam,owner).released());assertEquals(1,service.getSubmissions(exam,null,true,org.springframework.data.domain.PageRequest.of(0,10),owner).getTotalElements());
     }
 
     @Test void concurrentDraftUsesOptimisticRevisionAndReturnsOneConflict()throws Exception{

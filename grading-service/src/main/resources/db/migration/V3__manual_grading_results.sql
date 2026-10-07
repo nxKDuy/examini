@@ -7,6 +7,9 @@ ALTER TABLE exam_results ADD COLUMN released_revision BIGINT;
 ALTER TABLE exam_results ADD COLUMN pending_public_reason TEXT;
 ALTER TABLE exam_results ADD COLUMN pending_private_audit_note TEXT;
 ALTER TABLE exam_results ADD COLUMN grading_mode VARCHAR(16) NOT NULL DEFAULT 'AUTO';
+ALTER TABLE exam_results ADD COLUMN attempt_number INT NOT NULL DEFAULT 1;
+ALTER TABLE exam_results ADD COLUMN pending_manual_item_count INT NOT NULL DEFAULT 0;
+ALTER TABLE exam_results ADD COLUMN released_score REAL;
 ALTER TABLE exam_results ADD CONSTRAINT ck_exam_result_revision CHECK(result_revision > 0 AND (released_revision IS NULL OR released_revision > 0));
 ALTER TABLE exam_results ADD CONSTRAINT ck_exam_result_mode CHECK(grading_mode IN('AUTO','MANUAL'));
 
@@ -25,6 +28,7 @@ ALTER TABLE question_grades ADD CONSTRAINT ck_question_grade_scores CHECK(
   (score IS NULL OR score >= 0 AND score <= point_value) AND
   (auto_score IS NULL OR auto_score >= 0 AND auto_score <= point_value) AND
   (manual_score IS NULL OR manual_score >= 0 AND manual_score <= point_value));
+UPDATE exam_results r SET pending_manual_item_count=(SELECT count(*) FROM question_grades q WHERE q.result_id=r.id AND (q.needs_review OR q.score IS NULL));
 
 CREATE TABLE result_publications(
   id UUID PRIMARY KEY,
@@ -35,19 +39,20 @@ CREATE TABLE result_publications(
   public_reason TEXT,
   grading_mode VARCHAR(16) NOT NULL CHECK(grading_mode IN('AUTO','MANUAL')),
   released_at TIMESTAMPTZ NOT NULL,
+  graded_at TIMESTAMPTZ NOT NULL,
   items JSONB NOT NULL,
   CONSTRAINT uq_result_publication_revision UNIQUE(result_id,result_revision)
 );
 CREATE INDEX idx_result_publications_result ON result_publications(result_id,result_revision);
 
-INSERT INTO result_publications(id,result_id,result_revision,total_score,feedback,public_reason,grading_mode,released_at,items)
-SELECT gen_random_uuid(),r.id,1,r.total_score,r.feedback,NULL,'AUTO',COALESCE(r.graded_at,now()),
+INSERT INTO result_publications(id,result_id,result_revision,total_score,feedback,public_reason,grading_mode,released_at,graded_at,items)
+SELECT gen_random_uuid(),r.id,1,r.total_score,r.feedback,NULL,'AUTO',COALESCE(r.graded_at,now()),COALESCE(r.graded_at,now()),
        COALESCE(jsonb_agg(jsonb_build_object('questionId',q.question_id,'score',q.score,'feedback',q.feedback) ORDER BY q.position)
                 FILTER(WHERE q.id IS NOT NULL),'[]'::jsonb)
 FROM exam_results r LEFT JOIN question_grades q ON q.result_id=r.id
 WHERE r.status='GRADED' AND r.total_score IS NOT NULL
 GROUP BY r.id;
-UPDATE exam_results SET released_revision=1 WHERE status='GRADED' AND total_score IS NOT NULL;
+UPDATE exam_results SET released_revision=1,released_score=total_score WHERE status='GRADED' AND total_score IS NOT NULL;
 
 CREATE TABLE grading_audit(
   id UUID PRIMARY KEY,
@@ -55,6 +60,12 @@ CREATE TABLE grading_audit(
   actor_user_id UUID,
   action VARCHAR(40) NOT NULL,
   result_revision BIGINT NOT NULL,
+  question_id UUID,
+  old_score REAL,
+  new_score REAL,
+  old_feedback TEXT,
+  new_feedback TEXT,
+  reason TEXT,
   public_reason TEXT,
   private_note TEXT,
   created_at TIMESTAMPTZ NOT NULL
