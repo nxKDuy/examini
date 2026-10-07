@@ -5,8 +5,12 @@ và lựa chọn A cho attempt hiện hành. Auth contact, Exam/Session Scheduli
 Notification đã tích hợp vào MAIN. Backend E2E qua Gateway thật đạt 34/34 checks
 ngày 2026-10-07. Frontend đã sync/khảo sát và user duyệt toàn bộ khuyến nghị
 UI/UX; Frontend đã hoàn tất và MAIN technical review PASS theo
-`exam-calendar-ui-scope.md`. Manual UI approval vẫn chưa có; trạng thái hiện tại
-là READY FOR MANUAL UI VALIDATION, chưa merge Frontend hoặc coi feature là final.
+`exam-calendar-ui-scope.md`. Người dùng đã trả lời “Duyệt UI để MAIN merge”
+ngày 2026-10-07. Candidate `30cb232` đã merge vào MAIN tại `08ec23a`;
+unified frontend regression và real Gateway E2E PASS. Kết quả cuối:
+SCHEDULING FEATURE INTEGRATED WITH FOLLOW-UPS, còn kiểm push vật lý/Gmail Inbox.
+Follow-up UI user trực tiếp: `35ea5cc` (lịch tháng/popup) đã review và merge
+tại `035c586`, thay bốn tab theo amendment trong UI/UX Scope Lock.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -316,3 +320,82 @@ chưa verify; không gửi lặp tự động hoặc coi SMTP ACK là release UI
   trước merge Frontend. Sau duyệt: bảo toàn dirty MAIN/stashes, merge candidate,
   refresh canonical Graphify, chạy unified regression/E2E rồi báo cáo cuối.
   Canonical graph hiện phản ánh backend MAIN đã duyệt; chưa index UI chưa merge.
+
+
+## Tích hợp cuối và sửa runtime mặc định ngày 2026-10-07
+
+- Manual UI gate #28 đã được user duyệt rõ ràng; không coi lần duyệt scope trước
+  là approval bản UI. MAIN merge `frontend/app@30cb232` bằng `--no-ff` tại
+  `08ec23a1ecffdbd372438f6cccb905d40de87595`, không có branch conflict. Không
+  merge toàn bộ Exam Phase2/QB Phase2, không push và không mở feature tiếp theo.
+- Dirty MAIN mới nhất gồm 20 mục đã backup private và `git stash push -u` trước
+  merge. Restore có modify/delete conflict ở browser-smoke.py, fixture-server.mjs,
+  validate-shared.sh: bản đã review vẫn lưu trong committed HEAD; giữ nguyên
+  việc xóa của user ở working tree. Kiểm SHA256 xác nhận đủ 20 trạng thái/file
+  gốc được bảo toàn trước bước sửa startup mà user yêu cầu. Original Phase1
+  stash `18469bd` và mọi stash trước task vẫn còn.
+- Sau merge, Git archive committed MAIN `08ec23a`: `npm ci`, `npm exec -- tsc -b
+  --pretty false`, `npm run build`, `bash tests/validate-shared.sh` (83/83,
+  không skip), `npm run lint` PASS. Không phục hồi test user đã xóa chỉ để chạy
+  gate. Evidence `/tmp/examini-scheduling-main-frontend-gate-result.json`.
+- `python3 /tmp/examini-scheduling-main-api-e2e.py`: 34/34 PASS sau merge trên
+  Gateway thật 18180, Auth/QB/Exam/Session/Grading/Notification thật, PostgreSQL/
+  Redis/RabbitMQ/Mailpit. Backend binaries không đổi so với baseline đã test;
+  frontend tree của MAIN bằng candidate được duyệt. Đây là API E2E, tách biệt
+  với browser; không gọi fixture smoke hoặc SMTP ACK là browser/physical push.
+- Canonical Graphify clean MAIN `08ec23a`: 238 code files, 2541 nodes, 7887 edges;
+  Calendar/Notification frontend đã nằm trong graph. Graph chỉ là AST/document
+  inventory, không chứng minh business invariant. Refresh cuối ghi HEAD ở
+  `.git/graphify/out/main/snapshot.json`; xem http://127.0.0.1:8765/main/graph.html.
+- User báo start.bat/start.sh mở giao diện khác ở 3000: xác minh PID phục vụ
+  MAIN/frontend cũ, còn frontend/app tại 13100 chưa merge. Sau approval/merge,
+  3000 phục vụ đúng UI đã duyệt. Đồng thời Docker 8080 là backend cũ: calendar
+  400 (parse UUID), notifications 404; đã rebuild/recreate bằng startup thật.
+- Commit shared runtime riêng `ae7b2db`: giữ logic tài khoản dev hiện có, chạy
+  từ thư mục frontend của checkout, cố định 3000/strictPort, chờ Compose health,
+  bổ sung Docker Desktop PATH cho macOS và tạo notification_db còn thiếu trên
+  volume cũ bằng SQL idempotent. Không xóa volume/tables/dữ liệu. Chỉ hai script
+  startup liên quan và SQL được commit; README/POM/deletions user không bị commit.
+- `bash -n start.sh`, chạy `bash start.sh`, SQL lần hai không tạo DB lại và
+  diff-check PASS. Docker datn core + Notification đã healthy; Flyway sáu DB
+  thành công (Auth 4, QB 2, Exam 4 gồm repeatable, Session 3 gồm repeatable,
+  Grading 2, Notification 2; không migration failed). Windows BAT đã review,
+  chưa chạy trên Windows trong môi trường macOS này.
+- Browser ROOT sau merge tại 3000 → Gateway8080: Teacher/Student login, đủ
+  Agenda/Month/Week/Day, đúng menu từng persona và trang Notification PASS;
+  sáu API me/calendar/unread-count PASS. Runtime giữ ở terminal Orca
+  `MAIN Frontend :3000`, không dừng Vite 13100 của worker. Evidence
+  `/tmp/examini-scheduling-main-default-browser-result.json` và
+  `/tmp/examini-scheduling-main-default-runtime-result.json`.
+- Push subscription/provider/OS display thật và Gmail Inbox placement vẫn
+  chưa verify; implementation đã tích hợp, không claim toàn bộ kênh release
+  E2E PASS. Báo cáo: `contracts/exam-scheduling-result.md`.
+
+
+### Follow-up lịch một tháng — user yêu cầu trực tiếp
+
+- Handoff `msg_c8fa4391b6bd`, delivery `delivery_e3a5680198b2`, user nói
+  “gửi lên main để merge đi” sau khi worker implement lưới tháng + popup ngày.
+  MAIN xác minh terminal hiện hữu; đã xử lý toàn message và ACK delivery.
+  Không làm mất draft trong terminal, không tạo agent/Dispatch mới hoặc ép
+  worker_done bằng authority đã settled. Status phản hồi qua mailbox hiện hữu.
+- Candidate `35ea5cc4bd1092da24f31f3b6fea7cfa241762ae`, sạch, đúng 5 frontend files; không backend/API
+  change. Bỏ tab Agenda/Week/Day trên calendar page là user amendment rõ ràng,
+  không tự chọn thay product owner. Dashboard Today/Upcoming/unscheduled,
+  permission, clock-boundary, timezone và Notification vẫn giữ.
+- MAIN kiểm độc lập archive candidate: npm ci/tsc -b/build/lint và 83/83 tests
+  PASS. Test các helper view cũ vẫn còn, không gọi chúng là UI test của lưới mới.
+- MAIN browser Student thật trên Gateway18180: 35 ô/no tabs, popup đủ 3 Exam
+  gồm overflow, Student không có Teacher actions; desktop/mobile, focus,
+  Tab/Shift+Tab, sheet transition, Escape/unlock/day-focus và không tràn ngang.
+  Lượt CLI waiter đầu timeout và làm session bị kẹt; giữ artifact FAIL, đóng
+  đúng browser ROOT rồi kiểm lại với DOM observations có timeout. Sáu checks
+  trong browser mới PASS, không sửa code/fixture để che lỗi.
+- Merge --no-ff tại `035c5862980157a01a50e9e9b27d2b760f217c0c`, không conflict. Stash/backup giữ cả dirty user
+  và report đang soạn; restore đủ 21 paths đúng SHA256, original stash giữ.
+  MAIN frontend tree bằng candidate, các backend trees không đổi. Bản tháng
+  được kiểm thêm trên runtime MAIN3000 sau merge, không chỉ Vite13100.
+- Evidence: `/tmp/examini-month-calendar-frontend-gate-result.json`,
+  `/tmp/examini-month-calendar-browser-review.json` (giữ checkpoint timeout),
+  `/tmp/examini-month-calendar-mobile-close-review.json`,
+  `/tmp/examini-month-calendar-main-browser-result.json`.

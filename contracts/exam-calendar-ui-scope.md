@@ -6,6 +6,24 @@ Người dùng trả lời **“duyệt”** ngày 2026-10-07 cho toàn bộ khu
 Business authority vẫn là `exam-scheduling-scope.md`; API authority là
 `exam-scheduling-api.md` và `notification-scheduling.md`.
 
+## Điều chỉnh trực tiếp của user ngày 2026-10-07 — ưu tiên so với scope view cũ
+
+Sau bản `30cb232`, user yêu cầu Frontend gom `/calendar` thành **một lưới tháng**
+kẻ ô theo ảnh tham chiếu; bấm ngày mở popup liệt kê kỳ thi, bấm kỳ thi mở detail
+panel/bottom sheet. Sau worker report, user nói **“gửi lên main để merge đi”**.
+MAIN xác minh câu này qua terminal hiện hữu; handoff Orca `msg_c8fa4391b6bd`,
+commit `35ea5cc`. Đây là yêu cầu/approval mới, không suy diễn từ approval cũ.
+
+Điều chỉnh này thay các tab Agenda/Tháng/Tuần/Ngày trên `/calendar` cho cả role:
+chỉ còn Tháng, mũi tên trước/sau, Hôm nay, weekend shading/status bars; mobile
+hiện chấm và bấm ngày mở list popup. “Chưa có lịch” nằm dưới grid; Dashboard
+Today/Upcoming vẫn giữ. Popup dùng keyboard/focus management hiện có.
+
+Các mục cũ dưới đây là lịch sử scope đã implement/test ở `30cb232`; yêu cầu view
+mới ưu tiên cho presentation. Không đổi scheduling/eligibility/timezone,
+permission, Notification, snapshot hoặc rule backend. MAIN vẫn review/test
+candidate mới trước merge; không push hoặc tự mở feature tiếp theo.
+
 ## 1. Vị trí và view
 
 - Menu Lịch cho Teacher và Student tại `/calendar`, nhãn theo role.
