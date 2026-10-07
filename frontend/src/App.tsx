@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { RouterProvider, createBrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './features/auth/LoginPage'
 import RegisterPage from './features/auth/RegisterPage'
 import AppLayout from './components/layout/AppLayout'
@@ -18,9 +18,9 @@ import ExamLobbyPage from './features/exams/ExamLobbyPage'
 import StudentExamPage from './features/exams/StudentExamPage'
 import ExamResultPage from './features/exams/ExamResultPage'
 
-export default function App() {
+function AppRoutes() {
   return (
-    <BrowserRouter>
+    <>
       <Suspense fallback={<LoadingState rows={4} label="Đang tải trang…" />}>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -58,6 +58,13 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       </Suspense>
-    </BrowserRouter>
+    </>
   )
+}
+
+// A data router (one splat route over the same <Routes> tree) so pages can block navigation with useBlocker while a draft is unsaved.
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }])
+
+export default function App() {
+  return <RouterProvider router={router} />
 }

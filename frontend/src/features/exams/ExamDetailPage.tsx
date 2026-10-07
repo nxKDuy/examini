@@ -11,6 +11,7 @@ import { ExamStatusBadge, QuestionStatusBadge, SessionStatusBadge } from '../../
 import { EXAM_STATUS, QUESTION_STATUS } from '../../components/statusDefs'
 import { ConfirmDialog } from '../../components/Dialog'
 import { calendarApi, type Schedule } from '../calendar/calendarApi'
+import { gradingApi } from '../grading/gradingApi'
 import { ruleLabel, RULE_HELP, windowText, toMs } from '../calendar/calendarModel'
 import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
 import ScheduleDialog from '../calendar/ScheduleDialog'
@@ -54,6 +55,12 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   const nowMs = useNow(schedule.data?.clockOffset ?? 0, 15_000)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const manage = role === 'OWNER' || role === 'MANAGER'
+  // Badge on the Grading button: this Exam's own count of submissions that need a manual score (server-side overview, not a guess).
+  const gradingOverview = useQuery({
+    queryKey: ['grading', 'overview', exam.id], queryFn: () => gradingApi.overview(exam.id), retry: false, staleTime: 30_000,
+    enabled: manage && (exam.status === 'OPEN' || exam.status === 'CLOSED'),
+  })
+  const gradingBadge = gradingOverview.data?.needsReview ?? 0
   const questions = useQueries({
     queries: exam.questionIds.map(qid => ({ queryKey: ['question', qid, false], queryFn: () => questionBankApi.getQuestion(qid, false), retry: false, staleTime: 15_000 })),
   })
@@ -101,7 +108,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
           {exam.status === 'PUBLISHED' && <button type="button" className="btn btn-primary" onClick={() => setConfirm('open')}><PlayCircle size={16} aria-hidden /> Mở kỳ thi</button>}
           {(exam.status === 'OPEN' || exam.status === 'PUBLISHED') && <button type="button" className="btn btn-danger" onClick={() => setLifecycle('close')}><Lock size={16} aria-hidden /> Đóng kỳ thi</button>}
           {exam.status === 'CLOSED' && <button type="button" className="btn btn-secondary" onClick={() => setLifecycle('reopen')}><RotateCcw size={16} aria-hidden /> Mở lại</button>}
-          {(exam.status === 'OPEN' || exam.status === 'CLOSED') && <Link to={`/grading?examId=${exam.id}`} className="btn btn-secondary"><ClipboardCheck size={16} aria-hidden /> Chấm bài</Link>}
+          {(exam.status === 'OPEN' || exam.status === 'CLOSED') && <Link to={`/grading?examId=${exam.id}`} className="btn btn-secondary"><ClipboardCheck size={16} aria-hidden /> Chấm bài{gradingBadge > 0 && <span className="badge badge-warning" style={{ marginLeft: 6 }} aria-label={`${gradingBadge} bài cần chấm tay`}>{gradingBadge}</span>}</Link>}
         </>} />
 
       {flash?.notice && !message && <Notice tone={flash.tone ?? 'success'} live>{flash.notice}</Notice>}

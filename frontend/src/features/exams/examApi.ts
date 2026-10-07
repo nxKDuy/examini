@@ -25,7 +25,17 @@ export interface Session {
   sessionId: string; examId: string; title: string; status: string; attemptNumber: number
   expiresAt: string; serverNow: string; questions: SafeQuestion[]; answers: Record<string, string>
 }
-export interface Result { sessionId: string; title: string; status: string; score: number | null; totalScore: number | null; feedback: string | null }
+/** Candidate-safe own result (manual-grading-api.md). Fields the policy hides are simply absent, never null-as-zero. */
+export interface ResultItem {
+  questionId: string; questionVersion: number; position: number; questionContent: string; questionType: string; pointValue?: number
+  answer?: string; awardedPoints?: number; feedback?: string; correctAnswers?: string[]
+}
+export interface ResultRevision { resultRevision: number; releasedAt?: string; score?: number; totalScore?: number; publicReason?: string }
+export interface Result {
+  sessionId: string; examId?: string; title: string; attemptNumber?: number; status: string; resultRevision?: number
+  submittedAt?: string; gradedAt?: string; releasedAt?: string; score?: number; totalScore?: number; feedback?: string
+  questions?: ResultItem[]; history?: ResultRevision[]
+}
 export interface SessionSummary { sessionId: string; userId: string; status: string; attemptNumber: number; startedAt: string; expiresAt: string }
 export interface AuditEntry { id: string; examId: string; actorUserId: string; action: string; metadata: string | null; timestamp: string }
 

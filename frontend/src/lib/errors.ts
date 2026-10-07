@@ -63,6 +63,8 @@ const KNOWN: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/^ATTEMPT_LIMIT$/, 'Bạn đã dùng hết số lượt làm bài.'],
   [/^JOIN_REQUIRED$/, 'Bạn cần tham gia kỳ thi trước khi bắt đầu.'],
   [/^SNAPSHOT_UNAVAILABLE$/, 'Nội dung đề tạm thời không khả dụng. Hãy thử lại sau.'],
+  // Manual grading
+  [/^STALE_RESULT_REVISION$/, 'Bài này vừa được cập nhật ở nơi khác. Tải lại bản mới nhất trước khi thao tác tiếp.'],
   // Exam scheduling
   [/^SCHEDULE_REVISION_MISMATCH$/, 'Lịch này vừa được người khác thay đổi. Hãy tải lại lịch mới nhất rồi chỉnh lại.'],
   [/^START_ADMISSION_IN_PROGRESS$/, 'Đang có thí sinh bắt đầu làm bài nên chưa thay đổi được lúc này. Hãy thử lại sau vài giây.'],
