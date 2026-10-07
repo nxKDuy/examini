@@ -2,6 +2,7 @@
 
 Nhánh `frontend/app`. Căn cứ: `contracts/exam-calendar-ui-scope.md` (user "duyệt", MAIN `f7c933d`), `exam-scheduling-api.md`, `notification-scheduling.md`.
 Backend và contracts chỉ đọc, không sửa.
+Commit mới nhất: `7a11e4a` (tắt push khi đổi tài khoản).
 Trạng thái cuối: **READY FOR MANUAL UI VALIDATION**. MAIN và user chưa duyệt UI cuối.
 
 ## Đã có
@@ -34,6 +35,7 @@ không tạo identity header, không có token nội bộ; TEACHER != ADMIN; kh�
 | Enable đang chờ khi logout/đổi tài khoản (`msg_7fa7df8d7bd7`) | `enablePush` kiểm tra lại phiên sau mỗi lần await, chỉ gỡ đúng subscription mà nó giữ, không đăng ký cho tài khoản mới, và xóa record server do POST có thể đã tạo bằng token cũ. Có unit test cho từng điểm await, đã kiểm tra mutation. |
 | Hai account enable đồng thời (`msg_5614578712e8`) | Lần đầu viết test với fake `subscribe()` luôn tạo object mới nên test không bắt được lỗi (cả hai mutation đều xanh). Sau khi sửa fake giống `PushManager` thật (một subscription cho mỗi registration), test chứng minh được rủi ro: không có hàng đợi thì undo của A gỡ endpoint của B. Đã sửa tối thiểu trong `pushClient.ts`: các lần enable xếp hàng, B chờ A xong và tự dọn; `undo` chỉ gỡ subscription do chính lần enable đó tạo (subscription có sẵn thì không đụng tới). Hai test mới; bỏ hàng đợi hoặc cho `undo` luôn unsubscribe đều làm đúng một test đỏ, và mã đã được khôi phục sau mỗi lần thử. Đây là kiểm chứng bằng fake trong unit test, không phải browser thật. |
 | `reconcilePush` bất đồng bộ (`msg_af347a325eaf`) | Đã sửa trong `pushClient.ts` và `AuthRuntime.tsx`: reconcile nhận `isCurrent()` (cùng `sessionVersion` và `user.id`), kiểm tra lại sau mỗi await, chỉ gỡ đúng subscription đã đọc, và chạy chung hàng đợi với enable nên không xóa subscription đang chờ POST chưa có record. Ba test mới: reconcile A trễ khi B đã enable, reconcile cùng account lúc enable chờ POST, và reconcile vẫn gỡ subscription thừa của account khác. Bỏ guard sau lần đọc hoặc đưa reconcile ra ngoài hàng đợi đều làm đúng một test đỏ; mã đã khôi phục sau mỗi lần thử. Đây là kiểm chứng bằng fake trong unit test, không phải browser thật. |
+| Tắt push khi đổi tài khoản (follow-up MAIN) | `disable()` cũ await DELETE của A rồi mới tra và gỡ subscription hiện tại, nên nếu DELETE trễ và B đã enable thì A gỡ nhầm endpoint của B. Đã sửa: logic chuyển sang `disablePush` trong `pushClient.ts`, đọc record và subscription của A trước await, DELETE bằng token của A (`revokePushSubscription`, không dùng token đang đăng nhập), kiểm tra lại phiên sau await (đổi phiên thì không tra hay gỡ endpoint hiện tại), và chạy chung hàng đợi với enable/reconcile nên enable của B chờ disable A xong. Hai test mới: disable A treo ở DELETE, logout, login B, B enable, disable A xong thì record và endpoint của B còn nguyên và mọi DELETE đều mang token A; và disable bình thường vẫn hủy đúng endpoint và record. Đối chứng: mô phỏng lại hành vi cũ (ngoài hàng đợi, tra endpoint hiện tại sau await) làm test 17 đỏ, mã xanh khi dùng bản sửa. Bỏ riêng guard hoặc riêng hàng đợi thì test vẫn xanh vì hai lớp bảo vệ chồng nhau (defense in depth). Đây là kiểm chứng bằng fake browser trong unit test, không phải push vật lý hay browser E2E. |
 | Editor cũ không đổi lịch | Gửi nguyên `startTime/endTime` đã lưu (null vẫn null). Browser: sửa tiêu đề/mô tả của đề nháp không làm đổi `startAt` (tới từng ms), múi giờ, rule, cờ tự động, nhắc và `scheduleRevision`. |
 
 ## Ghi nhận về contract cho MAIN (không sửa backend)
@@ -46,7 +48,7 @@ không tạo identity header, không có token nội bộ; TEACHER != ADMIN; kh�
 
 ## Kiểm chứng
 
-Lệnh (trong `frontend/`): `npm exec -- tsc -b --pretty false` PASS; `npm run build` PASS (chunk chính khoảng 301 kB, route lazy); `bash tests/validate-shared.sh` PASS 81 test (auth runtime, UI logic, zone 7, calendar model 17, schedule model 7, notification model 5, push/auth 16); `npm run lint` PASS; `git diff --check` PASS.
+Lệnh (trong `frontend/`): `npm exec -- tsc -b --pretty false` PASS; `npm run build` PASS (chunk chính khoảng 301 kB, route lazy); `bash tests/validate-shared.sh` PASS 83 test (auth runtime, UI logic, zone 7, calendar model 17, schedule model 7, notification model 5, push/auth 18); `npm run lint` PASS; `git diff --check` PASS.
 `python3 tests/browser-smoke.py` PASS 8/8 ở lần chạy gần nhất (fixture API, chỉ kiểm route guard). Lần chạy đó trước hai thay đổi nhỏ cuối là `DetailPanel.tsx` và `pushClient.ts`; chưa chạy lại smoke sau chúng.
 
 **Browser thật** (agent-browser, phiên riêng) với Gateway thật `127.0.0.1:18180`, Vite `127.0.0.1:13100`:

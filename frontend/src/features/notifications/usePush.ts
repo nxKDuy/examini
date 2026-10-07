@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/authStore'
 import { errorText } from '../../lib/errors'
 import { notificationApi } from './notificationApi'
-import { clearRecord, currentSubscription, enablePush, getRecord, pushSupported } from './pushClient'
+import { currentSubscription, disablePush, enablePush, getRecord, pushSupported } from './pushClient'
 
 export type PushStatus = 'checking' | 'unsupported' | 'unconfigured' | 'blocked' | 'off' | 'on'
 
@@ -53,13 +53,12 @@ export function usePush() {
 
   async function disable() {
     if (!userId) return
+    const start = useAuthStore.getState(), session = start.sessionVersion
+    const isCurrent = () => { const now = useAuthStore.getState(); return now.sessionVersion === session && now.user?.id === userId }
     setBusy(true); setError('')
     try {
-      const id = getRecord(userId)
-      if (id) { try { await notificationApi.unsubscribe(id) } catch { /* already gone: idempotent */ } }
-      try { await (await currentSubscription())?.unsubscribe() } catch { /* best effort */ }
-      clearRecord(userId)
-      await refresh()
+      await disablePush({ userId, token: start.accessToken, isCurrent })
+      if (isCurrent()) await refresh()
     } finally { setBusy(false) }
   }
 

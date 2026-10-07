@@ -30,7 +30,7 @@ const makeSub = name => ({ name, unsubscribed: false, async unsubscribe() { even
   toJSON() { return { endpoint: `https://push.example/${name}`, keys: { p256dh: 'p', auth: 'a' } } } })
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 // Controllable fake browser steps for the enable flow
-const gates = { permission: null, subscribe: null, post: null, lookup: null }
+const gates = { permission: null, subscribe: null, post: null, lookup: null, del: null }
 let permissionResult = 'granted', subscribeCalls = 0
 const registration = { pushManager: { getSubscription: async () => { const found = current; if (gates.lookup) await gates.lookup.promise; return found }, subscribe: async () => { subscribeCalls++; if (gates.subscribe) await gates.subscribe.promise; current = current ?? makeSub('NEW'); return current } } } // like the real PushManager: one subscription per registration
 globalThis.Notification = { requestPermission: async () => { if (gates.permission) await gates.permission.promise; return permissionResult } }
@@ -41,6 +41,7 @@ axios.defaults.adapter = async config => {
   events.push(`${config.method}:${config.url}`)
   requests.push(config)
   if (config.method === 'post' && gates.post) await gates.post.promise
+  if (config.method === 'delete' && gates.del) { const g = gates.del; gates.del = null; await g.promise } // only the first DELETE waits
   await new Promise(r => setTimeout(r, 15)) // the server call is slower than the local unsubscribe
   if (config.method === 'post') return { status: 201, statusText: 'Created', headers: {}, config, data: { id: 'server-sub-9', createdAt: '2030-01-01T00:00:00Z' } }
   return { status: 204, statusText: 'No Content', headers: {}, config, data: '' }
@@ -52,7 +53,7 @@ const { watchPushCleanup } = await import('../src/features/notifications/pushAut
 const user = id => ({ id, email: `${id}@example.test`, fullName: id, role: 'STUDENT', persona: 'STUDENT', systemPrivilege: 'NONE' })
 const signIn = (id, token) => store.setState({ accessToken: token, refreshToken: 'r-' + token, user: user(id), authReady: true })
 let stop = () => {}
-beforeEach(() => { stop(); storage.clear(); events.length = 0; requests.length = 0; current = null; gates.permission = gates.subscribe = gates.post = gates.lookup = null; permissionResult = 'granted'; subscribeCalls = 0; store.setState({ accessToken: null, refreshToken: null, user: null, authReady: true }) })
+beforeEach(() => { stop(); storage.clear(); events.length = 0; requests.length = 0; current = null; gates.permission = gates.subscribe = gates.post = gates.lookup = gates.del = null; permissionResult = 'granted'; subscribeCalls = 0; store.setState({ accessToken: null, refreshToken: null, user: null, authReady: true }) })
 
 test('forced logout (failed refresh) cleans up with the OLD identity and token; browser subscription goes first', async () => {
   signIn('user-a', 'tok-a'); push.setRecord('user-a', 'sub-1'); current = makeSub('A')
@@ -235,4 +236,30 @@ test('reconcile still removes a leftover subscription that the signed-in account
   const a = begin('user-a', 'tok-a'); const left = makeSub('LEFTOVER'); current = left
   await push.reconcilePush('user-a', a.isCurrent)
   assert.equal(left.unsubscribed, true)
+})
+
+test('disable pending on the DELETE, A logs out, B logs in and enables: disable A finishes, B keeps its record and endpoint', async () => {
+  const a = begin('user-a', 'tok-a'); stop = watchPushCleanup()
+  assert.equal(await enablePush(a), 'enabled'); assert.equal(push.getRecord('user-a'), 'server-sub-9')
+  const hold = gates.del = deferred()
+  const pd = push.disablePush({ userId: 'user-a', token: 'tok-a', isCurrent: a.isCurrent })
+  await new Promise(r => setTimeout(r, 20)) // DELETE of A's record is in flight
+  store.getState().logout(); await new Promise(r => setTimeout(r, 5)) // account-end cleanup finishes on its own
+  const b = begin('user-b', 'tok-b')
+  const pb = enablePush(b) // B enables while disable A is still pending
+  await new Promise(r => setTimeout(r, 5))
+  hold.resolve()
+  await pd; assert.equal(await pb, 'enabled')
+  assert.equal(push.getRecord('user-b'), 'server-sub-9'); assert.equal(push.getRecord('user-a'), undefined)
+  assert.ok(current && !current.unsubscribed) // B's endpoint is untouched
+  const deletes = requests.filter(r => r.method === 'delete')
+  assert.ok(deletes.length >= 1 && deletes.every(r => r.headers.get('Authorization') === 'Bearer tok-a')) // no B authority on A's requests
+})
+
+test('normal disable removes this account\'s endpoint and record with its own token', async () => {
+  const a = begin('user-a', 'tok-a')
+  assert.equal(await enablePush(a), 'enabled'); const sub = current
+  await push.disablePush({ userId: 'user-a', token: 'tok-a', isCurrent: a.isCurrent })
+  assert.equal(sub.unsubscribed, true); assert.equal(push.getRecord('user-a'), undefined)
+  const del = requests.find(r => r.method === 'delete'); assert.match(del.url, /subscriptions\/server-sub-9$/); assert.equal(del.headers.get('Authorization'), 'Bearer tok-a')
 })

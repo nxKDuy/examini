@@ -85,6 +85,22 @@ export function reconcilePush(userId: string, isCurrent: () => boolean = () => t
   })
 }
 
+/**
+ * Turn push off for ONE account. The record and the browser subscription are read once, up front, while this account is still the
+ * active one; the best-effort server DELETE uses that account's own token (never whoever is signed in when it finishes). After the
+ * await the session is checked again: if it changed, the account-end cleanup has already dropped A's subscription, so nothing
+ * current is looked up or unsubscribed. Shares the enable/reconcile queue, so a later account's enable waits for this to finish.
+ */
+export function disablePush(o: { userId: string; token: string | null; isCurrent: () => boolean }): Promise<void> {
+  return inQueue(async () => {
+    const id = getRecord(o.userId)
+    const sub = o.isCurrent() ? await currentSubscription() : null
+    try { if (id && o.token) await revokePushSubscription(o.token, id) } catch { /* already gone: idempotent */ }
+    if (o.isCurrent()) { try { await sub?.unsubscribe() } catch { /* best effort */ } }
+    if (getRecord(o.userId) === id) clearRecord(o.userId)
+  })
+}
+
 export type EnableResult = 'enabled' | 'denied' | 'stale'
 
 /**
