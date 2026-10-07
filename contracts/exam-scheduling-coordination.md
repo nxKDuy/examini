@@ -3,8 +3,9 @@
 Trạng thái: Product/Domain Scope Lock đã duyệt, gồm PUBLIC flag kèm Notification
 và lựa chọn A cho attempt hiện hành. Auth contact, Exam/Session Scheduling và
 Notification đã tích hợp vào MAIN. Backend E2E qua Gateway thật đạt 34/34 checks
-ngày 2026-10-07. Frontend Calendar chưa triển khai: tiếp theo là khảo sát và hỏi
-người dùng UI/UX trước khi code; chưa có manual UI/browser release approval.
+ngày 2026-10-07. Frontend đã sync/khảo sát và user duyệt toàn bộ khuyến nghị
+UI/UX; triển khai theo `exam-calendar-ui-scope.md`. Manual UI/browser release
+approval vẫn chưa có, không coi backend gate là feature final.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -245,14 +246,17 @@ có khuyến nghị bằng Orca ask để MAIN chuyển người dùng. Implemen
 câu trả lời rõ ràng và UI/UX Scope Lock. Runtime backend thật qua Gateway 18180
 có sẵn; login test riêng chỉ local, không chứa service/SMTP credentials.
 Sau tests/browser, worker dừng ở READY FOR MANUAL UI VALIDATION; user duyệt
-UI trước MAIN review/merge cuối. UI/UX và manual validation hiện **PENDING**.
+UI trước MAIN review/merge cuối. UI/UX **APPROVED**, manual validation **PENDING**.
 
 Worker đã sync sạch tại `6714709`, giữ nguyên Product UI, khảo sát API thật và
 gửi câu hỏi `msg_a1fb86f267f4` trong delivery `delivery_554044c44b3e`. MAIN đã
-chuyển sáu nhóm quyết định UI/UX đến user; chưa trả lời thay user và chưa ACK
-câu hỏi khi chưa có quyết định. Pending context lưu local tại
+chuyển sáu nhóm quyết định UI/UX đến user. User trả lời “duyệt” cho toàn bộ
+khuyến nghị ngày 2026-10-07; scope được khóa trong `exam-calendar-ui-scope.md`.
+MAIN trả lời đúng câu hỏi rồi ACK delivery; không tự quyết thay user.
+Decision context lưu local tại
 `.git/coordination/scheduling-frontend-pending-user.json`; worker chờ cùng
-message ID, không tạo câu hỏi/Dispatch trùng hoặc tự implement.
+message ID, không tạo câu hỏi/Dispatch trùng. Task hiện hữu tiếp tục implementation
+sau reply; không tự merge hoặc vượt manual UI gate.
 
 Stack test Notification đã provision VAPID từ cấu hình local, public-key API
 qua Gateway trả enabled=true; private key không vào Git/frontend/handoff.
@@ -262,4 +266,5 @@ browser push gate sau UI/UX, chưa chứng minh subscription/provider/display.
 MAIN gửi một smoke test SMTP Gmail về chính sender đã cấu hình: SMTP accepted,
 Inbox chưa verify; evidence `/tmp/examini-scheduling-gmail-transport-smoke-result.json`.
 Không gửi lặp tự động, không gửi tới địa chỉ fixture và không coi transport test
-là producer/Notification/Gmail E2E. UI/UX Scope Lock vẫn chờ câu trả lời user.
+là producer/Notification/Gmail E2E. UI/UX Scope Lock đã được user duyệt;
+browser validation và manual UI gate còn phía trước.
