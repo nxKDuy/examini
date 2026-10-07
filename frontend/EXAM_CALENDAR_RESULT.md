@@ -5,6 +5,11 @@ Backend và contracts chỉ đọc, không sửa.
 Commit mới nhất: `7012e17` (tắt push khi đổi tài khoản).
 Trạng thái cuối: **READY FOR MANUAL UI VALIDATION**. MAIN và user chưa duyệt UI cuối.
 
+## Thay đổi theo yêu cầu trực tiếp của user: gom lịch thành một lưới tháng
+
+Trang `/calendar` không còn các tab Agenda/Tháng/Tuần/Ngày. Chỉ còn một lưới tháng kẻ ô như ảnh tham chiếu (mũi tên trước/sau hai bên tên tháng, nút "Hôm nay", cuối tuần nền xám, kỳ thi là thanh xanh/viền theo trạng thái). Bấm vào số ngày hoặc "+N khác" thì mở popup liệt kê kỳ thi trong ngày; chọn một kỳ thi trong popup hoặc bấm thẳng thanh kỳ thi thì mở panel chi tiết có sẵn (bottom sheet trên mobile). Kỳ thi chưa có lịch hiện ở mục "Chưa có lịch" dưới lưới. Logic gate của backend, múi giờ và panel chi tiết giữ nguyên; các helper model của view cũ vẫn còn và còn test.
+Kiểm chứng: `tsc`, `build`, `lint`, 83 test PASS; browser thật (Teacher, 1440 px): lưới 35 ô, popup ngày 07/10 liệt kê 7 kỳ thi, chọn một kỳ thi đóng popup và mở panel, không còn tab; 390 px không tràn ngang. Student dùng cùng trang nhưng chưa chụp lại sau thay đổi này.
+
 ## Đã có
 
 | Phạm vi | Vị trí |
