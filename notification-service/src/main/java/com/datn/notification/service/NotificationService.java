@@ -2,6 +2,7 @@ package com.datn.notification.service;
 import com.datn.notification.config.RabbitMQConfig;
 import com.datn.notification.dto.NotificationDto.*;
 import com.datn.notification.repository.NotificationRepository;
+import com.datn.notification.grading.GradingNotifications;
 import com.datn.notification.scheduling.SchedulingConsumer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.*;
@@ -17,7 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 @Service @RequiredArgsConstructor @Transactional
 public class NotificationService {
-    private final NotificationRepository notifications;private final ObjectMapper json;private final SchedulingConsumer scheduling;
+    private final NotificationRepository notifications;private final ObjectMapper json;private final SchedulingConsumer scheduling;private final GradingNotifications grading;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(NotificationService.class);
 
     /** Envelope: {eventId, eventType, eventVersion: 1, occurredAt, payload}. Malformed events are dead-lettered. */
@@ -35,6 +36,9 @@ public class NotificationService {
             case SchedulingEvents.Schedule e -> scheduling.onSchedule(event.eventId(),e);
             case SchedulingEvents.Lifecycle e -> scheduling.onLifecycle(event.eventId(),e);
             case SchedulingEvents.Recipients e -> scheduling.onRecipients(e);
+            case GradingEvents.Released e -> grading.onReleased(event.eventId(),e);
+            case GradingEvents.Regraded e -> grading.onRegraded(e);
+            case GradingEvents.ReviewRequired e -> grading.onReviewRequired(e);
             case null, default -> record(event.eventId(),event.eventType(),event.draft());
         }
     }

@@ -20,7 +20,7 @@ import static com.datn.notification.scheduling.SchedulingConsumer.*;
 @Service
 public class SchedulingJobs {
     static final Duration LEASE=Duration.ofMinutes(2),WAIT_FOR_REVISION=Duration.ofSeconds(30),MAX_BACKOFF=Duration.ofMinutes(30);
-    static final Set<String> EMAIL_TYPES=Set.of("EXAM_SCHEDULED","EXAM_RESCHEDULED","EXAM_UNSCHEDULED","EXAM_REMINDER");
+    static final Set<String> EMAIL_TYPES=Set.of("EXAM_SCHEDULED","EXAM_RESCHEDULED","EXAM_UNSCHEDULED","EXAM_REMINDER","GRADING_REVIEW_REQUIRED");
     private final JdbcTemplate db;private final TransactionTemplate tx;private final ObjectMapper json;private final Clock clock;
     private final ExamRecipientClient exams;private final SchedulingConsumer consumer;private final int batch;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(SchedulingJobs.class);
@@ -93,6 +93,14 @@ public class SchedulingJobs {
                     default -> {targets=targets(snap,e.actorUserId(),true,true);content=SchedulingMessages.closed(facts);}
                 }
             }
+            case "GRADING_REVIEW" -> {
+                // OWNER/MANAGER only, from the current Exam snapshot: PROCTOR and students are never in a manager role, and a
+                // teacher whose membership was revoked is no longer in the snapshot.
+                var e=read(job.payload(),com.datn.notification.service.GradingEvents.ReviewRequired.class);
+                targets=snap.recipients().stream().filter(Recipient::manager).map(r->new Target(r.userId(),true)).toList();
+                content=com.datn.notification.grading.GradingMessages.reviewRequired(e.examTitle(),e.examId(),e.sessionId(),e.resultId(),e.resultRevision());
+                revision=e.resultRevision();
+            }
             default -> throw new IllegalStateException("Unknown job kind");
         }
         fanOut(job,snap.examId(),targets,content,expires,revision,studentSource);
@@ -112,7 +120,7 @@ public class SchedulingJobs {
             if(done==0)throw new IllegalStateException("job cancelled or reclaimed during fan-out");
             for(Target t:targets){
                 var meta=new HashMap<>(c.metadata());meta.put("examId",examId.toString());
-                meta.put("link",t.manager()?"/exams/"+examId:"/exam/lobby/"+examId);
+                meta.putIfAbsent("link",t.manager()?"/exams/"+examId:"/exam/lobby/"+examId);
                 // Used to re-check authority before each channel send/retry (DeliveryWorker).
                 meta.put("audience",t.manager()?"MANAGER":"STUDENT");meta.put("scheduleRevision",String.valueOf(revision));
                 List<UUID> inserted=db.queryForList("""

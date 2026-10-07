@@ -13,11 +13,13 @@ import java.util.*;
 public final class EventCatalog {
     public static final String QUESTION_REVIEWED="question.reviewed",EXAM_MEMBER_INVITED="exam.member.invited",
         EXAM_PARTICIPANT_ASSIGNED="exam.participant.assigned",SESSION_SUBMITTED="session.submitted",GRADING_RESULT_RELEASED="grading.result.released";
+    /** Manual grading (contracts/manual-grading-scope.md): additive v1 events handled by GradingNotifications. */
+    public static final String GRADING_REVIEW_REQUIRED="grading.review.required",GRADING_RESULT_REGRADED="grading.result.regraded";
     /** Exam-scoped Scheduling events: no recipient in the payload, fanned out by SchedulingJobs. */
     public static final String EXAM_SCHEDULE_CHANGED="exam.schedule.changed",EXAM_LIFECYCLE_CHANGED="exam.lifecycle.changed",EXAM_RECIPIENTS_CHANGED="exam.recipients.changed";
     public static final List<String> SCHEDULING_TYPES=List.of(EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED);
     public static final List<String> EVENT_TYPES=List.of(QUESTION_REVIEWED,EXAM_MEMBER_INVITED,EXAM_PARTICIPANT_ASSIGNED,SESSION_SUBMITTED,GRADING_RESULT_RELEASED,
-        EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED);
+        EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED,GRADING_REVIEW_REQUIRED,GRADING_RESULT_REGRADED);
     private static final int TITLE_LIMIT=150;
     private EventCatalog(){}
 
@@ -36,6 +38,9 @@ public final class EventCatalog {
         if(type.equals(EXAM_SCHEDULE_CHANGED))return new Event(id,type,occurred,null,SchedulingEvents.schedule(payload));
         if(type.equals(EXAM_LIFECYCLE_CHANGED))return new Event(id,type,occurred,null,SchedulingEvents.lifecycle(payload));
         if(type.equals(EXAM_RECIPIENTS_CHANGED))return new Event(id,type,occurred,null,SchedulingEvents.recipients(payload));
+        if(type.equals(GRADING_RESULT_RELEASED))return new Event(id,type,occurred,null,GradingEvents.released(payload));
+        if(type.equals(GRADING_RESULT_REGRADED))return new Event(id,type,occurred,null,GradingEvents.regraded(payload));
+        if(type.equals(GRADING_REVIEW_REQUIRED))return new Event(id,type,occurred,null,GradingEvents.reviewRequired(payload));
         return new Event(id,type,occurred,draft(type,payload),null);
     }
 
@@ -64,12 +69,6 @@ public final class EventCatalog {
                 yield new Draft(uuid(p,"studentUserId"),"SUBMISSION_RECEIVED","Đã nhận bài làm",
                     (kind.equals("AUTO_SUBMITTED")?"Hết giờ, bài làm kỳ thi \""+title+"\" đã được tự động nộp.":"Bài làm kỳ thi \""+title+"\" đã được nộp thành công."),
                     "EXAM_SESSION",uuid(p,"sessionId"),Map.of("examId",uuid(p,"examId").toString(),"examTitle",title,"submissionType",kind));
-            }
-            case GRADING_RESULT_RELEASED -> {
-                String mode=oneOf(p,"gradingMode","AUTO","MANUAL"),title=title(p);
-                yield new Draft(uuid(p,"studentUserId"),"RESULT_AVAILABLE","Đã có kết quả thi",
-                    (mode.equals("MANUAL")?"Giáo viên đã chấm xong bài kỳ thi \"":"Kết quả kỳ thi \"")+title+"\" đã sẵn sàng. Xem kết quả của bạn ngay.",
-                    "EXAM_SESSION",uuid(p,"sessionId"),Map.of("examId",uuid(p,"examId").toString(),"examTitle",title,"gradingMode",mode));
             }
             default -> throw new IllegalArgumentException("Unsupported event type");
         };
