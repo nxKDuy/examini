@@ -106,8 +106,8 @@ function TeacherDashboard() {
   const gradable = list.filter(e => e.status === 'OPEN' || e.status === 'CLOSED').slice(0, 8)
   const review = useQueries({
     queries: gradable.map(e => ({
-      queryKey: ['submissions', 'count', e.id, 'NEEDS_REVIEW'],
-      queryFn: () => gradingApi.getSubmissions({ examId: e.id, status: 'NEEDS_REVIEW', size: 1 }).then(p => p.totalElements),
+      queryKey: ['grading', 'overview', e.id, 'needs-review'],
+      queryFn: () => gradingApi.overview(e.id).then(o => o.needsReview),
       retry: false,
     })),
   })

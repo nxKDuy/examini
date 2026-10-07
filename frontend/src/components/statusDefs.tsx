@@ -33,6 +33,7 @@ export const RESULT_STATUS: Record<string, StatusDef> = {
   GRADING: { label: 'Đang chấm', tone: 'info', icon: icon(Hourglass), help: 'Hệ thống đang chấm bài.' },
   PENDING: { label: 'Chờ chấm', tone: 'warning', icon: icon(Hourglass), help: 'Bài đang chờ chấm.' },
   NEEDS_REVIEW: { label: 'Cần chấm tay', tone: 'warning', icon: icon(FileEdit), help: 'Có câu cần giáo viên chấm. Điểm chưa được công bố.' },
+  GRADED_UNRELEASED: { label: 'Đã chấm, chờ công bố', tone: 'info', icon: icon(Hourglass), help: 'Giáo viên đã chấm xong nhưng chưa công bố kết quả cho bạn.' },
   GRADED: { label: 'Đã chấm', tone: 'success', icon: icon(CheckCircle2), help: 'Đã có điểm chính thức.' },
   IN_PROGRESS: { label: 'Chưa nộp', tone: 'neutral', icon: icon(Clock), help: 'Lượt làm bài chưa được nộp.' },
 }

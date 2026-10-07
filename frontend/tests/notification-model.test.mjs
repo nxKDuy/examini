@@ -79,3 +79,12 @@ test('push records are per account; logout clears the record and revokes with th
   await push.pushLogoutCleanup('user-c', 'token-c') // no subscription: no request
   assert.equal(requests.length, 0)
 })
+
+test('grading notification deep links: Teacher queue of one Exam and Student own result open in the SPA; foreign links are ignored', () => {
+  const teacher = m.notificationTarget({ entityType: 'EXAM', entityId: 'e1', metadata: { link: '/grading?examId=e1' } }, false)
+  assert.equal(teacher, '/grading?examId=e1')
+  const student = m.notificationTarget({ entityType: 'EXAM_SESSION', entityId: 's1', metadata: { link: '/exam/result/s1' } }, true)
+  assert.equal(student, '/exam/result/s1')
+  assert.equal(m.notificationTarget({ entityType: 'EXAM_SESSION', entityId: 's1', metadata: { link: 'https://evil.example/x' } }, true), '/exam/result/s1')
+  assert.equal(m.notificationTarget({ entityType: 'EXAM_SESSION', entityId: 's1', metadata: { link: '//evil.example' } }, true), '/exam/result/s1')
+})
