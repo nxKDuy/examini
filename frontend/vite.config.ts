@@ -15,7 +15,7 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      ...Object.fromEntries(['/auth', '/questions', '/subjects', '/categories', '/exams', '/sessions', '/grades', '/submissions', '/analytics'].map(path => [path, gatewayProxy])),
+      ...Object.fromEntries(['/auth', '/questions', '/subjects', '/categories', '/exams', '/sessions', '/grades', '/submissions', '/analytics', '/notifications'].map(path => [path, gatewayProxy])),
       '/ws': { target: gatewayUrl, ws: true },
     },
   },

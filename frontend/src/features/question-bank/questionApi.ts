@@ -29,11 +29,6 @@ export interface Filters {
 export interface Version { versionNumber: number; createdAt: string; changedBy: string; question: Question }
 export interface Review { id: string; questionVersion: number; reviewerId: string; decision: 'APPROVED' | 'REJECTED'; reviewNote: string | null; reviewedAt: string }
 export interface ImportResult { totalRows: number; imported: number; failed: number; errors: string[] }
-export function apiError(error: unknown): string {
-  const e = error as { response?: { data?: { detail?: string; message?: string }; status?: number } }
-  return e.response?.data?.detail || e.response?.data?.message || (e.response?.status === 409
-    ? 'Trạng thái/phiên bản đã thay đổi. Vui lòng tải lại.' : 'Không thực hiện được yêu cầu. Kiểm tra quyền và dữ liệu rồi thử lại.')
-}
 export const questionBankApi = {
   getSubjects: () => api.get<Subject[]>('/subjects').then(r => r.data),
   createSubject: (data: { name: string; description?: string }) => api.post<Subject>('/subjects', data).then(r => r.data),
