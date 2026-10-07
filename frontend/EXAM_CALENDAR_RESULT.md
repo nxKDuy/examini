@@ -1,70 +1,66 @@
-# Exam Calendar / Scheduling frontend result
+# Kết quả frontend: Lịch thi và đặt lịch
 
-Branch `frontend/app`. Authority: `contracts/exam-calendar-ui-scope.md` (user "duyệt", MAIN `f7c933d`),
-`exam-scheduling-api.md`, `notification-scheduling.md`. Backend and contracts were read-only.
-Final state: **READY FOR MANUAL UI VALIDATION** (not approved by the user yet).
+Nhánh `frontend/app`. Căn cứ: `contracts/exam-calendar-ui-scope.md` (user "duyệt", MAIN `f7c933d`), `exam-scheduling-api.md`, `notification-scheduling.md`.
+Backend và contracts chỉ đọc, không sửa.
+Trạng thái cuối: **READY FOR MANUAL UI VALIDATION**. MAIN và user chưa duyệt UI cuối.
 
-## What exists
+## Đã có
 
-| Area | Where |
+| Phạm vi | Vị trí |
 | --- | --- |
-| `/calendar` (Teacher "Lịch thi", Student "Lịch của tôi"): Agenda (default), Tháng, Tuần, Ngày; last view remembered per device | `src/features/calendar/CalendarPage.tsx`, `CalendarViews.tsx`, `ExamCard.tsx` |
-| Compact cards, legend (not colour-only), right panel / bottom sheet with role-aware actions, "+N" block for crowded hours | `DetailPanel.tsx`, `calendar.css` |
-| Teacher schedule form: IANA zone, DST gap/overlap, 3 deadline rules, auto open/close, reminders (24h/15m default, custom, off), reason, review step, revision conflicts | `ScheduleDialog.tsx`, `ReminderEditor.tsx`, `scheduleModel.ts` |
-| "Lịch" tab and close-with-reason / reopen on the exam page; "Đặt lịch cho đề" on the calendar | `ExamDetailPage.tsx`, `LifecycleDialog.tsx`, `ScheduleExamPicker.tsx` |
-| Student: availability-driven lobby with early preview, Follow/Unfollow for PUBLIC, join-code preview, My Exams with backend states, Today/Upcoming on both dashboards | `ExamLobbyPage.tsx`, `FollowButton.tsx`, `MyExamsPage.tsx`, `JoinCodeForm.tsx`, `TodayUpcoming.tsx` |
-| In-app notifications (bell, `/notifications`) and opt-in browser push with service worker | `src/features/notifications/*`, `public/sw.js` |
-| Time zone arithmetic (no date library) | `src/lib/zone.ts` |
+| `/calendar` (Teacher "Lịch thi", Student "Lịch của tôi"): Agenda (mặc định), Tháng, Tuần, Ngày; nhớ view đã chọn theo thiết bị | `src/features/calendar/CalendarPage.tsx`, `CalendarViews.tsx`, `ExamCard.tsx` |
+| Thẻ gọn, chú giải (không chỉ dùng màu), panel bên phải / bottom sheet theo vai trò, khối "+N kỳ thi" khi giờ quá đông | `DetailPanel.tsx`, `calendar.css` |
+| Form đặt lịch của Teacher: múi giờ IANA, DST gap/overlap, 3 deadline rule, tự mở/đóng, nhắc (mặc định 24h/15 phút, tùy chỉnh, tắt), lý do, bước xem lại, xung đột revision | `ScheduleDialog.tsx`, `ReminderEditor.tsx`, `scheduleModel.ts` |
+| Tab "Lịch", đóng kèm lý do / mở lại ở trang đề; "Đặt lịch cho đề" trên lịch | `ExamDetailPage.tsx`, `LifecycleDialog.tsx`, `ScheduleExamPicker.tsx` |
+| Student: Lobby theo availability của backend, xem trước khi chưa tới giờ, Follow/Unfollow đề PUBLIC, xem trước mã tham gia, Kỳ thi của tôi theo trạng thái backend, Hôm nay/Sắp tới trên dashboard | `ExamLobbyPage.tsx`, `FollowButton.tsx`, `MyExamsPage.tsx`, `JoinCodeForm.tsx`, `TodayUpcoming.tsx` |
+| Thông báo trong app (chuông, `/notifications`) và push trình duyệt opt-in kèm service worker | `src/features/notifications/*`, `public/sw.js` |
+| Tính toán múi giờ, không thêm thư viện ngày | `src/lib/zone.ts` |
 
-Rules kept: grids use the viewer's zone and say so; every card shows the Exam's zone and a "Giờ của bạn" line when it differs;
-`canJoin/canStart/canResume/reasonCode/serverNow/deadline` are the backend's answers (the browser clock only drives display and decides
-*when to ask again*); no identity headers, no internal tokens; TEACHER != ADMIN; no drag/drop, resize or create-from-empty-cell;
-no library added.
+Giữ nguyên các quy tắc: lưới lịch dùng múi giờ người xem và ghi rõ; thẻ luôn hiện múi giờ của Exam và dòng "Giờ của bạn" khi khác nhau;
+`canJoin/canStart/canResume/reasonCode/serverNow/deadline` là kết quả của backend (đồng hồ trình duyệt chỉ để hiển thị và quyết định *khi nào hỏi lại*);
+không tạo identity header, không có token nội bộ; TEACHER != ADMIN; không kéo thả, không resize, không tạo từ ô trống.
 
-## MAIN review findings
+## Kết quả từng finding của MAIN
 
-| Finding | Result |
+| Finding | Kết quả |
 | --- | --- |
-| DST axis / now line (`msg_a0fc`, `msg_f1c7`) | Grid positions on the 24-row wall-clock axis. Browser proof in an `America/Los_Angeles` browser on 2030-03-10 (23h) and 2030-11-03 (25h): the 10:00 block is on the 10:00 row (0 px, 41.6667%). Unit tests for spring, fall, clipping, now line. |
-| Time labels across DST overlap | Window text, Agenda rows and grid blocks carry each end's offset when they differ ("01:30 GMT-7–01:30 GMT-8"); MAIN's "DST overlap" exam renders that way in the browser. |
-| Start-only OPEN not "past" | Open-ended running Exams stay in Hôm nay; the 1h block is drawing only. Unit tests. |
-| Early Join after preview | Join is locked with the backend reason when the preview says `canJoin=false`. Browser: JOIN_CODE exam starting tomorrow. |
-| Mobile bottom sheet focus | One focus hook for Dialog and panel: Tab trap, scroll lock, Escape only for the top-most modal, focus returns to the opener. Browser (390px): 20 Tab/Shift+Tab presses stay inside, Escape closes, scroll lock released, focus back on the card; nested "Sửa lịch" dialog closes first and keeps the lock. |
-| Refresh at boundaries | Calendar and lobby re-ask the backend just after the next start/end/expiry plus a 2-minute light refresh. Browser: standing still on the calendar, an Exam flipped from "Sắp diễn ra" to "Cần tham gia" 13s after `startAt`. |
-| Push cleanup on forced logout | Watcher in the auth runtime covers logout, expiry, failed refresh, account switch and a dead session at start-up, using the old identity and token; browser subscription is dropped first, then DELETE. Browser: failed refresh -> `/login`, record cleared, DELETE sent. |
-| Pending enable vs logout/switch (`msg_7fa7df8d7bd7`) | `enablePush` re-checks the session after every await, unsubscribes the exact subscription it holds, registers nothing for the new account and deletes a server record the POST may have created using the old token. Unit tests for each await point; mutation-checked. Thêm: các lần enable được xếp hàng (một subscription cho mỗi registration), `undo` chỉ gỡ subscription do chính lần enable đó tạo; test A đang chờ subscribe, B enable trước khi A xong; kiểm tra mutation (bỏ hàng đợi / undo luôn unsubscribe đều làm test đỏ). |
-| Legacy editor pass-through (`msg_c5dd`) | Stored start/end sent verbatim (null stays null). Browser: editing a draft's title/description left startAt (to the millisecond), zone, rule, auto flags, reminders and `scheduleRevision` unchanged. |
+| Trục DST và đường "bây giờ" | Lưới đặt theo trục 24 hàng wall-clock. Browser thật với `America/Los_Angeles`, ngày 2030-03-10 (23h) và 2030-11-03 (25h): khối 10:00 nằm đúng hàng 10:00 (lệch 0 px, 41,6667%). Unit test cho ngày chuyển giờ mùa xuân, mùa thu, cắt khối và đường now. |
+| Nhãn giờ khi DST overlap | Nhãn cửa sổ, hàng Agenda và khối lưới hiện offset từng đầu khi khác nhau ("01:30 GMT-7–01:30 GMT-8"). Exam "DST overlap" của MAIN hiển thị đúng trong browser. |
+| Start-only OPEN không bị coi là "đã qua" | Exam mở không có giờ kết thúc và đang chạy vẫn nằm ở Hôm nay; khối 1 giờ chỉ để vẽ. Có unit test. |
+| Join sớm sau khi xem trước | Nếu preview báo `canJoin=false` thì Join bị khóa kèm lý do của backend. Browser: Exam JOIN_CODE bắt đầu vào ngày mai. |
+| Focus trên bottom sheet mobile | Một hook focus dùng chung cho Dialog và panel: giữ Tab trong modal, khóa cuộn, Escape chỉ đóng modal trên cùng, trả focus về nơi mở. Browser 390 px: 20 lần Tab/Shift+Tab không thoát ra ngoài, Escape đóng được, hết khóa cuộn, focus về thẻ; dialog "Sửa lịch" lồng nhau đóng trước và giữ khóa cuộn. MAIN cũng đã kiểm tra độc lập. |
+| Tự làm mới đúng mốc giờ | Lịch và Lobby hỏi lại backend ngay sau mốc start/end/hết hạn kế tiếp, cộng thêm lần làm mới nhẹ mỗi 2 phút. Browser: đứng yên trên lịch, một Exam chuyển từ "Sắp diễn ra" sang "Cần tham gia" sau khoảng 13 giây kể từ `startAt`. |
+| Dọn push khi bị buộc đăng xuất | Watcher trong auth runtime xử lý logout, hết hạn, refresh thất bại, đổi tài khoản và phiên đã chết lúc khởi động, dùng danh tính và token cũ; gỡ subscription trình duyệt trước, rồi DELETE phía server. Browser: refresh thất bại, chuyển về `/login`, record bị xóa, DELETE được gửi. |
+| Enable đang chờ khi logout/đổi tài khoản (`msg_7fa7df8d7bd7`) | `enablePush` kiểm tra lại phiên sau mỗi lần await, chỉ gỡ đúng subscription mà nó giữ, không đăng ký cho tài khoản mới, và xóa record server do POST có thể đã tạo bằng token cũ. Có unit test cho từng điểm await, đã kiểm tra mutation. |
+| Hai account enable đồng thời (`msg_5614578712e8`) | Lần đầu viết test với fake `subscribe()` luôn tạo object mới nên test không bắt được lỗi (cả hai mutation đều xanh). Sau khi sửa fake giống `PushManager` thật (một subscription cho mỗi registration), test chứng minh được rủi ro: không có hàng đợi thì undo của A gỡ endpoint của B. Đã sửa tối thiểu trong `pushClient.ts`: các lần enable xếp hàng, B chờ A xong và tự dọn; `undo` chỉ gỡ subscription do chính lần enable đó tạo (subscription có sẵn thì không đụng tới). Hai test mới; bỏ hàng đợi hoặc cho `undo` luôn unsubscribe đều làm đúng một test đỏ, và mã đã được khôi phục sau mỗi lần thử. Đây là kiểm chứng bằng fake trong unit test, không phải browser thật. |
+| Editor cũ không đổi lịch | Gửi nguyên `startTime/endTime` đã lưu (null vẫn null). Browser: sửa tiêu đề/mô tả của đề nháp không làm đổi `startAt` (tới từng ms), múi giờ, rule, cờ tự động, nhắc và `scheduleRevision`. |
 
-## Contract observations for MAIN (no backend change made)
+## Ghi nhận về contract cho MAIN (không sửa backend)
 
-1. `GET /exams/public` still returns the legacy shape (no `followed`, `timezone`, availability). The UI calls `/availability` for each public Exam (first 20). A combined field would remove N calls.
-2. `CalendarItem` has no `scheduleRevision`, auto flags or reminder offsets, so the editor reads `GET /exams/{id}/schedule`. Not blocking.
-3. Agenda asks for 30 days back to 330 days ahead (backend maximum is 366). Please confirm the range query returns an open-ended Exam whose `startAt` is before `from`; the UI assumes it does.
-4. In-app links rely on `metadata.link` from Notification (works against the real stack).
-5. Access tokens stay valid after `/auth/logout`; only refresh is revoked (observed while testing forced logout).
+1. `GET /exams/public` vẫn trả dạng cũ (không có `followed`, `timezone`, availability). UI gọi `/availability` cho từng đề công khai (tối đa 20 đề đầu). Nếu trả gộp thì giảm được N lần gọi.
+2. `CalendarItem` không có `scheduleRevision`, cờ tự động hay mốc nhắc, nên editor đọc `GET /exams/{id}/schedule`. Không chặn việc gì.
+3. Agenda hỏi từ 30 ngày trước đến 330 ngày sau (backend tối đa 366). Nhờ xác nhận query theo khoảng có trả Exam mở không có giờ kết thúc mà `startAt` nằm trước `from`; UI đang giả định là có.
+4. Link trong thông báo dựa vào `metadata.link` của Notification (chạy đúng trên stack thật).
+5. Access token vẫn dùng được sau `/auth/logout`, chỉ refresh bị thu hồi (quan sát khi thử buộc đăng xuất).
 
-## Verification
+## Kiểm chứng
 
-Commands (from `frontend/`): `npm exec -- tsc -b --pretty false` PASS, `npm run build` PASS (main chunk 301 kB, routes lazy-loaded),
-`bash tests/validate-shared.sh` PASS (unit suites: auth runtime, UI logic, zone, calendar model, schedule model, notifications, push/auth),
-`npm run lint` PASS, `git diff --check` PASS, `python3 tests/browser-smoke.py` PASS 8/8 (fixture API, route guards only).
+Lệnh (trong `frontend/`): `npm exec -- tsc -b --pretty false` PASS; `npm run build` PASS (chunk chính khoảng 301 kB, route lazy); `bash tests/validate-shared.sh` PASS 78 test (auth runtime, UI logic, zone 7, calendar model 17, schedule model 7, notification model 5, push/auth 13); `npm run lint` PASS; `git diff --check` PASS.
+`python3 tests/browser-smoke.py` PASS 8/8 ở lần chạy gần nhất (fixture API, chỉ kiểm route guard). Lần chạy đó trước hai thay đổi nhỏ cuối là `DetailPanel.tsx` và `pushClient.ts`; chưa chạy lại smoke sau chúng.
 
-Real browser against the real Gateway `127.0.0.1:18180`, Vite `127.0.0.1:13100` (agent-browser, own sessions):
-- Teacher: agenda/month/week/day, crowded hours, schedule create (Europe/Paris, DST gap blocked, overlap choice, saved values read back from the API),
-  revision conflict + reload, publish/open/close/reopen with reasons and audit log, bell and notification navigation, proctor read-only panel.
-- Student: agenda/month with real states, Follow a PUBLIC Exam, early preview with Join/Start locked (backend also returns 409), boundary refresh,
-  join-code preview lock, join -> lobby -> start, mobile 390px views with no horizontal overflow.
+**Browser thật** (agent-browser, phiên riêng) với Gateway thật `127.0.0.1:18180`, Vite `127.0.0.1:13100`:
+- Teacher: agenda, tháng, tuần, ngày, giờ đông; tạo lịch Europe/Paris (DST gap bị chặn, chọn overlap, đọc lại giá trị lưu từ API); xung đột revision rồi tải lại; publish/mở/đóng/mở lại kèm lý do và audit log; chuông và điều hướng thông báo; panel Proctor chỉ xem.
+- Student: agenda/tháng với trạng thái thật, Follow đề PUBLIC, xem trước sớm với Join/Start bị khóa (backend cũng trả 409), tự làm mới đúng mốc, khóa Join theo preview mã, join, Lobby, start; màn 390 px không tràn ngang.
 
-Not verified / limits:
-- **Physical push display was NOT verified.** The automated Chrome refuses notification permission (`denied`), so no real browser subscription, provider delivery or OS notification was produced. The opt-in states, service worker code and cleanup are covered by unit tests with a fake browser and by the real-browser logout path only.
-- Gmail inbox delivery is not part of this UI work.
-- The DST axis in the browser was checked with a Los Angeles browser clock (`TZ=America/Los_Angeles`); other zones rely on unit tests.
-- Admin has the "Lịch thi" menu entry; calendar content for Admin follows whatever the backend returns for that account.
+**Chỉ là unit test hoặc fixture, không phải browser thật:** toàn bộ race của push (enable chờ permission/subscribe/POST, hai account enable đồng thời, đổi tài khoản), các ngày DST ngoài Los Angeles, và smoke fixture 8/8.
 
-## Manual checklist
+**Chưa kiểm chứng:**
+- **Hiển thị push vật lý KHÔNG được kiểm chứng.** Chrome tự động từ chối quyền thông báo (`denied`), nên không có subscription thật, không có provider gửi và không có thông báo OS. Không giả lập delivery. Trạng thái opt-in, service worker và cleanup chỉ được phủ bằng unit test với trình duyệt giả, cộng với đường logout bằng browser thật.
+- Hộp thư Gmail không thuộc phạm vi UI này.
+- Trục DST trên browser chỉ thử với đồng hồ Los Angeles; các múi giờ khác dựa vào unit test.
+- Admin có mục menu "Lịch thi"; nội dung lịch của Admin theo đúng những gì backend trả cho tài khoản đó.
 
-Teacher: open Lịch thi (Agenda), switch Tháng/Tuần/Ngày, click a card (panel), "Đặt lịch cho đề" -> pick an Exam -> set zone/start/end/rule/reminders -> review -> save;
-try a DST gap time (e.g. 2027-03-28 02:30 in Europe/Paris) and an overlap (2026-10-25 02:30); edit the same schedule from two tabs for the revision message;
-close an Exam before its end (reason required) and reopen it; check the bell and `/notifications`.
-Student: Lịch của tôi; Follow a PUBLIC Exam from Kỳ thi của tôi; open Xem trước and confirm Join/Start stay locked until the start; paste a join code and press Xem trước;
-watch an upcoming Exam become available without reloading; try everything on a phone width and with the keyboard only (Tab, Escape in the bottom sheet).
+## Checklist kiểm tra thủ công
+
+Teacher: mở Lịch thi (Agenda), chuyển Tháng/Tuần/Ngày, bấm thẻ (panel), "Đặt lịch cho đề", chọn đề, đặt múi giờ/bắt đầu/kết thúc/rule/nhắc, xem lại, lưu; thử giờ rơi vào DST gap (ví dụ 2027-03-28 02:30 Europe/Paris) và overlap (2026-10-25 02:30); sửa cùng một lịch từ hai tab để thấy thông báo revision; đóng một Exam trước giờ kết thúc (bắt buộc có lý do) rồi mở lại; kiểm tra chuông và `/notifications`.
+Student: Lịch của tôi; Follow một đề PUBLIC ở Kỳ thi của tôi; mở Xem trước và xác nhận Join/Start còn khóa tới giờ; dán mã tham gia rồi bấm Xem trước; đứng yên xem Exam sắp diễn ra chuyển sang tham gia được mà không tải lại; thử ở chiều rộng điện thoại và chỉ dùng bàn phím (Tab, Escape trong bottom sheet).
