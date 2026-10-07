@@ -3,8 +3,9 @@
 Trạng thái: Product/Domain Scope Lock đã duyệt, gồm PUBLIC flag kèm Notification
 và lựa chọn A cho attempt hiện hành. Auth contact, Exam/Session Scheduling và
 Notification đã tích hợp vào MAIN. Backend E2E qua Gateway thật đạt 34/34 checks
-ngày 2026-10-07. Frontend Calendar chưa triển khai: tiếp theo là khảo sát và hỏi
-người dùng UI/UX trước khi code; chưa có manual UI/browser release approval.
+ngày 2026-10-07. Frontend đã sync/khảo sát và user duyệt toàn bộ khuyến nghị
+UI/UX; triển khai theo `exam-calendar-ui-scope.md`. Manual UI/browser release
+approval vẫn chưa có, không coi backend gate là feature final.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -228,3 +229,42 @@ MAIN chấp nhận backend/API để giao Frontend clarification. Contract hiệ
 `exam-scheduling-api.md`, `exam-scheduling-scope.md`, `notification-scheduling.md`.
 Frontend phải dùng committed MAIN, giữ các commit Product UI hiện có, hỏi một
 lượt UI/UX có khuyến nghị qua Orca. Chưa có UI/UX Scope Lock thì không implement.
+
+### Frontend clarification đã giao
+
+Task `task_64a855e02cbf` / Dispatch `ctx_186d17bdb03e`, Run
+`run_3b1c99897538`, reused terminal `term_6f901d86-f6de-4ef5-ae1c-b7c4262295b8`
+tại worktree `frontend/app`. Orca receipt: ready/input_accepted,
+turnStart observed; không tạo agent/worktree mới hoặc thay model.
+Baseline giao worker: committed MAIN `de83ea1`; frontend HEAD ban đầu
+`bdf5239`, sạch, chín commit Product UI chưa merge phải giữ.
+Task cho phép safe merge đúng committed baseline trong checkout của worker,
+không copy dirty MAIN hay merge các domain Phase2 chưa duyệt.
+
+Frontend khảo sát design system và hai role trước; gửi một nhóm câu hỏi UI/UX
+có khuyến nghị bằng Orca ask để MAIN chuyển người dùng. Implementation chỉ sau
+câu trả lời rõ ràng và UI/UX Scope Lock. Runtime backend thật qua Gateway 18180
+có sẵn; login test riêng chỉ local, không chứa service/SMTP credentials.
+Sau tests/browser, worker dừng ở READY FOR MANUAL UI VALIDATION; user duyệt
+UI trước MAIN review/merge cuối. UI/UX **APPROVED**, manual validation **PENDING**.
+
+Worker đã sync sạch tại `6714709`, giữ nguyên Product UI, khảo sát API thật và
+gửi câu hỏi `msg_a1fb86f267f4` trong delivery `delivery_554044c44b3e`. MAIN đã
+chuyển sáu nhóm quyết định UI/UX đến user. User trả lời “duyệt” cho toàn bộ
+khuyến nghị ngày 2026-10-07; scope được khóa trong `exam-calendar-ui-scope.md`.
+MAIN trả lời đúng câu hỏi rồi ACK delivery; không tự quyết thay user.
+Decision context lưu local tại
+`.git/coordination/scheduling-frontend-pending-user.json`; worker chờ cùng
+message ID, không tạo câu hỏi/Dispatch trùng. Task hiện hữu tiếp tục implementation
+sau reply; không tự merge hoặc vượt manual UI gate.
+
+Stack test Notification đã provision VAPID từ cấu hình local, public-key API
+qua Gateway trả enabled=true; private key không vào Git/frontend/handoff.
+SMTP vẫn Mailpit, không gửi địa chỉ test qua Gmail. Đây là prerequisite cho
+browser push gate sau UI/UX, chưa chứng minh subscription/provider/display.
+
+MAIN gửi một smoke test SMTP Gmail về chính sender đã cấu hình: SMTP accepted,
+Inbox chưa verify; evidence `/tmp/examini-scheduling-gmail-transport-smoke-result.json`.
+Không gửi lặp tự động, không gửi tới địa chỉ fixture và không coi transport test
+là producer/Notification/Gmail E2E. UI/UX Scope Lock đã được user duyệt;
+browser validation và manual UI gate còn phía trước.
