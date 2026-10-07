@@ -28,7 +28,6 @@ globalThis.window = { localStorage: globalThis.localStorage }
 const { errorInfo } = await import('../src/lib/errors.ts')
 const { parseUtc, fromLocalInput, toLocalInput, formatDuration, formatScore } = await import('../src/lib/format.ts')
 const { policyError } = await import('../src/features/exams/policy.ts')
-const { availability } = await import('../src/features/exams/examApi.ts')
 const { rememberAttempt, lastAttempt } = await import('../src/features/exams/attemptHints.ts')
 
 const problem = (status, detail) => ({ response: { status, data: { detail } } })
@@ -82,18 +81,26 @@ test('participation policy mirrors backend capacity rules', () => {
   assert.equal(policyError({ ...ok, accessMode: 'JOIN_CODE', joinCode: undefined }), null)
 })
 
-test('student availability follows status and UTC schedule', () => {
-  const now = Date.parse('2026-10-05T10:00:00Z')
-  assert.equal(availability({ status: 'PUBLISHED', startTime: null, endTime: null }, now), 'NOT_OPEN')
-  assert.equal(availability({ status: 'OPEN', startTime: null, endTime: null }, now), 'OPEN')
-  assert.equal(availability({ status: 'OPEN', startTime: '2026-10-05T11:00:00', endTime: null }, now), 'UPCOMING')
-  assert.equal(availability({ status: 'OPEN', startTime: null, endTime: '2026-10-05T10:00:00' }, now), 'ENDED')
-  assert.equal(availability({ status: 'CLOSED', startTime: null, endTime: null }, now), 'CLOSED')
-})
-
 test('attempt hints are scoped per account', () => {
   rememberAttempt('student-a', 'exam-1', 'session-1')
   assert.equal(lastAttempt('student-a', 'exam-1'), 'session-1')
   assert.equal(lastAttempt('student-b', 'exam-1'), undefined)
   assert.equal(lastAttempt(undefined, 'exam-1'), undefined)
+})
+
+test('scheduling error codes become actionable Vietnamese messages', () => {
+  assert.match(errorInfo(problem(409, 'SCHEDULE_REVISION_MISMATCH')).message, /tải lại lịch/)
+  assert.match(errorInfo(problem(409, 'START_ADMISSION_IN_PROGRESS')).message, /thử lại/)
+  assert.match(errorInfo(problem(409, 'OPEN_EXAM_END_AT_MUST_EXTEND')).message, /muộn hơn/)
+  assert.match(errorInfo(problem(400, 'Reason required for early close')).message, /lý do/)
+  assert.match(errorInfo(problem(400, 'startAt falls in a daylight-saving gap')).message, /chuyển giờ mùa hè/)
+  assert.match(errorInfo(problem(409, 'SCHEDULE_LOCKED_AFTER_STUDENT_START')).message, /đã có thí sinh/i)
+  assert.equal(errorInfo(problem(409, 'SCHEDULE_REVISION_MISMATCH')).detail, 'SCHEDULE_REVISION_MISMATCH')
+})
+
+test('Start/Join denials from the backend read as plain Vietnamese', () => {
+  assert.match(errorInfo(problem(409, 'Join is not available before startAt')).message, /Chưa đến giờ bắt đầu/)
+  assert.match(errorInfo(problem(409, 'EXAM_NOT_OPEN')).message, /chưa mở/)
+  assert.match(errorInfo(problem(409, 'INSUFFICIENT_TIME')).message, /không đủ/)
+  assert.match(errorInfo(problem(409, 'AFTER_END_AT')).message, /qua giờ kết thúc/)
 })

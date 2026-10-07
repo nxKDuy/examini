@@ -144,3 +144,16 @@ test('fetchCalendar reads every page and corrects the clock from serverNow', asy
   assert.deepEqual(seen, [0, 1, 2]); assert.equal(r.items.length, 201); assert.equal(r.truncated, false)
   assert.ok(Math.abs(r.clockOffset - (Date.parse('2030-01-10T00:00:10Z') - before)) < 5000)
 })
+
+test('crowded clusters collapse into one "+N" block beyond the column cap', () => {
+  const mk = (i) => item({ examId: `x${i}`, startAt: '2030-01-10T01:00:00Z', endAt: '2030-01-10T02:00:00Z' })
+  const blocks = m.layoutDay([mk(1), mk(2), mk(3), mk(4), mk(5), mk(6)], '2030-01-10', 'UTC')
+  assert.equal(blocks[0].cols, 6)
+  const { shown, overflow } = m.collapseCrowded(blocks, 3)
+  assert.equal(shown.length, 2); assert.ok(shown.every(b => b.cols === 3))
+  assert.equal(overflow.length, 1); assert.equal(overflow[0].hidden.length, 4); assert.equal(overflow[0].col, 2)
+  const few = m.collapseCrowded(m.layoutDay([mk(1), mk(2)], '2030-01-10', 'UTC'), 3)
+  assert.equal(few.overflow.length, 0); assert.equal(few.shown.length, 2)
+  const day = m.collapseCrowded(blocks, 6)
+  assert.equal(day.overflow.length, 0); assert.equal(day.shown.length, 6)
+})
