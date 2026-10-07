@@ -2,7 +2,7 @@
 
 Nhánh `frontend/app`. Căn cứ: `contracts/exam-calendar-ui-scope.md` (user "duyệt", MAIN `f7c933d`), `exam-scheduling-api.md`, `notification-scheduling.md`.
 Backend và contracts chỉ đọc, không sửa.
-Commit mới nhất: `7a11e4a` (tắt push khi đổi tài khoản).
+Commit mới nhất: `7012e17` (tắt push khi đổi tài khoản).
 Trạng thái cuối: **READY FOR MANUAL UI VALIDATION**. MAIN và user chưa duyệt UI cuối.
 
 ## Đã có
