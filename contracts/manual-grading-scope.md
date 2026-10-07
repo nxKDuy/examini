@@ -16,9 +16,13 @@ Baseline MAIN: `d146be39c554f80be380a46c1bff1a90cb0ceced`.
 - Chấm từng item trên frozen Exam snapshot; tổng điểm tính từ các item.
 - Cho phép override auto-score của mọi loại câu; giữ original auto-score,
   manual-score, actor, timestamp và audit. Không nhập tổng độc lập.
+- Override objective auto-score phải có lý do; audit ghi được item và điểm/
+  feedback cũ–mới, không chỉ tên action của Result.
 - Feedback từng câu và toàn bài; có lưu nháp trước Finalize.
 - Finalize yêu cầu mọi item bắt buộc đã xử lý, điểm hữu hạn và trong giới hạn.
 - Essay AI unavailable giữ NEEDS_REVIEW, không biến lỗi AI thành điểm 0.
+- Điểm/feedback AI cho Essay chỉ là gợi ý; Teacher là authority cuối cùng,
+  không tự công bố Essay chỉ vì AI trả kết quả thành công.
 - Session SUBMITTED không đồng nghĩa Result GRADED. Trạng thái và gradedAt phải
   phản ánh thực tế chấm, không thời điểm tạo hàng DB.
 
@@ -74,3 +78,21 @@ Baseline MAIN: `d146be39c554f80be380a46c1bff1a90cb0ceced`.
 
 - BACKEND CONTRACT LOCK: chờ provider handoff và MAIN focused review.
 - UI/UX SCOPE LOCK: chờ frontend inspect/clarification theo contract đã duyệt.
+
+## Acceptance tích hợp do MAIN thực hiện sau merge
+
+Các mục dưới đây là yêu cầu kiểm thử, chưa phải kết quả PASS.
+
+- Reporting: initial result, finalize, regrade, duplicate/redelivery và
+  resultRevision đi qua outbox → RabbitMQ → Analytics. Mỗi session giữ một
+  logical result; revision cũ/duplicate không ghi đè revision mới hoặc nhân bản
+  thống kê. Đối chiếu projection thực tế với producer.
+- Notification: NEEDS_REVIEW → OWNER/MANAGER nhận in-app notice mở đúng queue;
+  Release → đúng Student nhận notice mở đúng result. Không báo draft regrade.
+- Email/browser push chỉ smoke test theo infrastructure hiện có; không gửi
+  email hàng loạt. ACK vận chuyển không đồng nghĩa đã hiển thị trên thiết bị.
+- Unified E2E: objective, Essay manual, mixed total, regrade giữ publication cũ
+  đến Release mới, Student isolation, unrelated Teacher 403 và scheduling
+  regression. MAIN chạy sau khi backend/frontend được duyệt và tích hợp.
+- Chỉ MAIN refresh canonical Graphify sau merge; không ghi feature chưa merge
+  hoặc chưa duyệt vào graph.
