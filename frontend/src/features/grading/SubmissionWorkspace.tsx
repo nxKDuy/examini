@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, PenLine } from 'lucide-react'
 import { gradingApi, type GradeItem, type ResultPolicy, type SubmissionDetail } from './gradingApi'
 import {
-  canEdit, canRegrade, canRelease, formFromDetail, isDirty, isObjective, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, shortStudent,
+  canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, shortStudent,
   toDraftRequest, unresolvedItems, type GradeForm,
 } from './gradingModel'
+import { finalizeWithDraft, type DraftSavedError } from './gradingFlow'
 import { PublicationBadge } from './SubmissionQueue'
 import { ResultStatusBadge } from '../../components/status'
 import { ConfirmDialog, Dialog } from '../../components/Dialog'
@@ -61,32 +62,34 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
     setStale(false); await refreshLists()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, put, qc, detail])
-  const fail = (e: unknown) => {
+  const fail = (e: unknown, prefix = '') => {
     setConfirm(null)
-    if (isStaleRevision(e)) { setStale(true); setFlash(null) }
-    else setFlash({ tone: 'danger', text: errorText(e) })
+    if (isStaleRevision(e)) { setStale(true); setFlash(prefix ? { tone: 'danger', text: `${prefix}Bài đã thay đổi ở nơi khác, hãy tải lại bản mới.` } : null) }
+    else setFlash({ tone: 'danger', text: prefix + errorText(e) })
   }
 
   const save = useMutation({
     mutationFn: () => gradingApi.saveDraft(id, toDraftRequest(d!, loaded!.form, loaded!.initial)),
-    onSuccess: async data => { await adopt(data); setFlash({ tone: 'success', text: 'Đã lưu bản nháp. Học sinh chưa thấy gì thay đổi.' }) }, onError: fail,
+    onSuccess: async data => { await adopt(data); setFlash({ tone: 'success', text: 'Đã lưu bản nháp. Học sinh chưa thấy gì thay đổi.' }) }, onError: e => fail(e),
   })
   const finalize = useMutation({
-    // The current draft is saved first so the revision being finalized is exactly what is on screen.
-    mutationFn: async () => {
-      let rev = d!.resultRevision
-      if (dirty) rev = (await gradingApi.saveDraft(id, toDraftRequest(d!, loaded!.form, loaded!.initial))).resultRevision
-      return gradingApi.finalize(id, rev)
-    },
-    onSuccess: async data => { setConfirm(null); await adopt(data); setFlash({ tone: 'success', text: policy?.autoRelease === false ? 'Đã hoàn tất chấm. Học sinh chưa thấy cho tới khi bạn Công bố.' : 'Đã hoàn tất chấm và công bố cho học sinh.' }) }, onError: fail,
+    // The current draft is saved first so the revision being finalized is exactly what is on screen; once saved it is adopted,
+    // so a failed finalize leaves the saved revision as the baseline and a retry cannot reuse the old one.
+    mutationFn: () => finalizeWithDraft({
+      dirty, currentRevision: d!.resultRevision,
+      saveDraft: () => gradingApi.saveDraft(id, toDraftRequest(d!, loaded!.form, loaded!.initial)),
+      adopt: saved => adopt(saved), finalize: rev => gradingApi.finalize(id, rev),
+    }),
+    onSuccess: async data => { setConfirm(null); await adopt(data); setFlash({ tone: 'success', text: policy?.autoRelease === false ? 'Đã hoàn tất chấm. Học sinh chưa thấy cho tới khi bạn Công bố.' : 'Đã hoàn tất chấm và công bố cho học sinh.' }) },
+    onError: e => fail(e, (e as DraftSavedError)?.draftSaved ? 'Đã lưu bản nháp nhưng chưa hoàn tất chấm. ' : ''),
   })
   const release = useMutation({
     mutationFn: () => gradingApi.release(id, d!.resultRevision),
-    onSuccess: async data => { setConfirm(null); await adopt(data); setFlash({ tone: 'success', text: 'Đã công bố kết quả cho học sinh.' }) }, onError: fail,
+    onSuccess: async data => { setConfirm(null); await adopt(data); setFlash({ tone: 'success', text: 'Đã công bố kết quả cho học sinh.' }) }, onError: e => fail(e),
   })
   const regradeM = useMutation({
     mutationFn: () => gradingApi.regrade(id, { expectedRevision: d!.resultRevision, publicReason: regrade.publicReason.trim(), ...(regrade.privateAuditNote.trim() ? { privateAuditNote: regrade.privateAuditNote.trim() } : {}) }),
-    onSuccess: async data => { setConfirm(null); setRegrade({ publicReason: '', privateAuditNote: '' }); await adopt(data); setFlash({ tone: 'success', text: 'Đã mở chấm lại. Học sinh vẫn thấy bản đã công bố trước đó cho tới khi bạn Công bố bản mới.' }) }, onError: fail,
+    onSuccess: async data => { setConfirm(null); setRegrade({ publicReason: '', privateAuditNote: '' }); await adopt(data); setFlash({ tone: 'success', text: 'Đã mở chấm lại. Học sinh vẫn thấy bản đã công bố trước đó cho tới khi bạn Công bố bản mới.' }) }, onError: e => fail(e),
   })
   const busy = save.isPending || finalize.isPending || release.isPending || regradeM.isPending
 
@@ -212,9 +215,8 @@ function ItemCard({ item, form, initial, problem, editable, onChange }: {
   item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
   problem?: { score?: string; reason?: string }; editable: boolean; onChange: (patch: Partial<GradeForm['items'][string]>) => void
 }) {
-  const objective = isObjective(item.questionType)
-  const response = objective ? item.selectedOptionContent : item.answerContent
-  const showReason = objective && form.score.trim() !== '' && form.score.trim() !== initial.score.trim() && Number(form.score) !== item.autoScore
+  const response = isChoiceAnswer(item.questionType) ? item.selectedOptionContent : item.answerContent
+  const showReason = isAutoGraded(item.questionType) && form.score.trim() !== '' && form.score.trim() !== initial.score.trim() && Number(form.score) !== item.autoScore
   const fid = `item-${item.questionId}`
   return (
     <li id={fid} className="grade-item" data-review={item.needsReview}>

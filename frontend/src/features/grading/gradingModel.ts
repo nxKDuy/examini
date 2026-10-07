@@ -2,7 +2,10 @@ import type { DraftRequest, GradeItem, Submission, SubmissionDetail } from './gr
 
 /** Pure grading-form logic: what to send, what is valid, what the Student sees. No React, no fetch. */
 
-export const isObjective = (type: string) => type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE'
+/** The answer IS one of the offered options (shown by option label; may arrive as an option id). Short answers are free text. */
+export const isChoiceAnswer = (type: string) => type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE'
+/** The server auto-scores it, so changing that score is an override that needs its own reason. Includes SHORT_ANSWER. */
+export const isAutoGraded = (type: string) => isChoiceAnswer(type) || type === 'SHORT_ANSWER'
 export const shortStudent = (id: string) => id.slice(0, 8)
 
 export interface ItemForm { score: string; feedback: string; overrideReason: string }
@@ -29,10 +32,10 @@ export function scoreProblem(item: GradeItem, f: ItemForm): string | null {
   return null
 }
 
-/** Overriding an objective auto-score needs its own internal reason (never shown to the Student). */
+/** Overriding an auto-graded score (choice or short answer) needs its own internal reason (never shown to the Student). */
 export function reasonRequired(item: GradeItem, f: ItemForm, initial: ItemForm): boolean {
   const v = parseScore(f.score)
-  if (v === null || !isObjective(item.questionType)) return false
+  if (v === null || !isAutoGraded(item.questionType)) return false
   if (f.score.trim() === initial.score.trim()) return false // unchanged, already overridden earlier
   return v !== item.autoScore
 }
@@ -113,7 +116,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Own answer text; an objective answer that is only an option id cannot be shown by name (Contract Request), so say so instead of guessing. */
 export function studentAnswerText(type: string, answer: string | undefined): { text: string; unresolved: boolean } | null {
   if (answer === undefined || answer === null || answer.trim() === '') return null
-  if (isObjective(type) && UUID.test(answer.trim())) return { text: 'Đã chọn một phương án', unresolved: true }
+  if (isChoiceAnswer(type) && UUID.test(answer.trim())) return { text: 'Đã chọn một phương án', unresolved: true }
   return { text: answer, unresolved: false }
 }
 export const readableAnswers = (list: string[] | undefined) => (list ?? []).filter(a => !UUID.test(a.trim()))

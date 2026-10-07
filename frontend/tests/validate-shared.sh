@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 cd "$(dirname "$0")/.."
-node --test tests/auth-runtime.test.mjs tests/ui-logic.test.mjs tests/zone.test.mjs tests/calendar-model.test.mjs tests/schedule-model.test.mjs tests/notification-model.test.mjs tests/push-auth.test.mjs tests/grading-model.test.mjs
+node --test tests/auth-runtime.test.mjs tests/ui-logic.test.mjs tests/zone.test.mjs tests/calendar-model.test.mjs tests/schedule-model.test.mjs tests/notification-model.test.mjs tests/push-auth.test.mjs tests/grading-model.test.mjs tests/grading-flow.test.mjs
 npm exec -- tsc --ignoreConfig --noEmit --target es2023 --module esnext \
   --moduleResolution bundler --jsx react-jsx --skipLibCheck --types vite/client \
   --noUnusedLocals --noUnusedParameters \
@@ -9,6 +9,6 @@ npm exec -- tsc --ignoreConfig --noEmit --target es2023 --module esnext \
   src/features/auth/LoginPage.tsx src/features/auth/RegisterPage.tsx \
   src/components/ProtectedRoute.tsx src/components/AuthRuntime.tsx \
   src/components/layout/AppLayout.tsx src/components/layout/navigation.ts src/lib/errors.ts
-npm exec -- oxlint --deny-warnings src vite.config.ts tests/auth-runtime.test.mjs tests/ui-logic.test.mjs tests/zone.test.mjs tests/calendar-model.test.mjs tests/schedule-model.test.mjs tests/notification-model.test.mjs tests/push-auth.test.mjs tests/grading-model.test.mjs tests/fixture-server.mjs
+npm exec -- oxlint --deny-warnings src vite.config.ts tests/auth-runtime.test.mjs tests/ui-logic.test.mjs tests/zone.test.mjs tests/calendar-model.test.mjs tests/schedule-model.test.mjs tests/notification-model.test.mjs tests/push-auth.test.mjs tests/grading-model.test.mjs tests/grading-flow.test.mjs tests/fixture-server.mjs
 # Bundling check; the full app typecheck runs in `npm run build` (tsc -b).
 npm exec -- vite build

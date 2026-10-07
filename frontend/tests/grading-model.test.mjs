@@ -94,3 +94,38 @@ test('Student: statuses, no fake zero, UUID answers are not guessed, unreadable 
   assert.equal(m.studentAnswerText('ESSAY', undefined), null)
   assert.deepEqual(m.readableAnswers([uuid, 'Hà Nội']), ['Hà Nội']); assert.deepEqual(m.readableAnswers(undefined), [])
 })
+
+const shortAnswer = (o = {}) => item({ questionId: 'q3', questionType: 'SHORT_ANSWER', pointValue: 5, autoScore: 5, awardedPoints: 5, needsReview: false, answerContent: 'Hà Nội', ...o })
+
+test('SHORT_ANSWER is auto-graded (override needs a reason) but is NOT a choice answer (free text, never an option id)', () => {
+  assert.equal(m.isAutoGraded('SHORT_ANSWER'), true); assert.equal(m.isChoiceAnswer('SHORT_ANSWER'), false)
+  assert.equal(m.isAutoGraded('MULTIPLE_CHOICE'), true); assert.equal(m.isChoiceAnswer('TRUE_FALSE'), true)
+  assert.equal(m.isAutoGraded('ESSAY'), false); assert.equal(m.isChoiceAnswer('ESSAY'), false)
+  const d = detail([shortAnswer()]); const init = m.formFromDetail(d)
+  const f = structuredClone(init); f.items.q3.score = '0'
+  assert.equal(m.itemProblems(d, f, init).q3.reason, 'Nhập lý do khi sửa điểm tự động.')
+  f.items.q3.overrideReason = 'Chấp nhận cách viết khác'
+  assert.equal(m.itemProblems(d, f, init).q3, undefined)
+  assert.deepEqual(m.toDraftRequest(d, f, init).items[0], { questionId: 'q3', score: 0, feedback: null, overrideReason: 'Chấp nhận cách viết khác' })
+  // A short answer that looks like a UUID is the student's text, not an option to hide.
+  const uuid = '3f2b8c1e-1111-4222-8333-444455556666'
+  assert.deepEqual(m.studentAnswerText('SHORT_ANSWER', uuid), { text: uuid, unresolved: false })
+})
+
+test('after an objective/short-answer override was saved, later saves (other item score, any feedback) never resend a score or reason for it', () => {
+  // The server now reports the saved override as manualScore; the reason is not echoed back.
+  const d = detail([item(), mcq({ manualScore: 0, awardedPoints: 0 }), shortAnswer({ manualScore: 1, awardedPoints: 1 })], { status: 'PENDING', resultRevision: 7 })
+  const init = m.formFromDetail(d); const f = structuredClone(init)
+  f.items.q1.score = '6'; f.items.q2.feedback = 'Xem lại bài 3'; f.items.q3.feedback = 'Gần đúng'; f.feedback = 'Cố gắng'
+  assert.deepEqual(m.itemProblems(d, f, init), {}) // no reason demanded again
+  const req = m.toDraftRequest(d, f, init)
+  assert.equal(req.expectedRevision, 7)
+  assert.deepEqual(req.items.map(i => [i.questionId, i.score, i.overrideReason]), [['q1', 6, null], ['q2', null, null], ['q3', null, null]])
+  for (const i of req.items.filter(x => x.questionId !== 'q1')) assert.equal(i.score, null) // never "score different from auto with a null reason"
+  // Editing the overridden score again does demand a (new) reason.
+  const again = structuredClone(init); again.items.q2.score = '4'
+  assert.equal(m.itemProblems(d, again, init).q2.reason, 'Nhập lý do khi sửa điểm tự động.')
+  // Typing the old value back is not a change either.
+  const same = structuredClone(init); same.items.q2.score = '0'
+  assert.equal(m.toDraftRequest(d, same, init).items[1].score, null)
+})

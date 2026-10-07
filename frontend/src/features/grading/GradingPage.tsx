@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useBlocker, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardCheck, Settings2 } from 'lucide-react'
 import './grading.css'
 import { gradingApi } from './gradingApi'
+import { createDeferredGuard, shouldBlockNavigation } from './gradingFlow'
 import SubmissionQueue from './SubmissionQueue'
 import SubmissionWorkspace from './SubmissionWorkspace'
 import ResultPolicyDialog from './ResultPolicyDialog'
@@ -22,10 +23,18 @@ export default function GradingPage() {
   const status = params.get('status') ?? ''
   const released = params.get('released') ?? ''
   const selected = params.get('r')
-  const [page, setPage] = useState(0)
+  // The queue page belongs to the current exam/filter combination, so changing any of them starts again at page 0 without a separate reset step.
+  const filterKey = `${examId}|${status}|${released}`
+  const [pageState, setPageState] = useState({ key: filterKey, n: 0 })
+  const page = pageState.key === filterKey ? pageState.n : 0
+  const setPage = (n: number) => setPageState({ key: filterKey, n })
   const [policyOpen, setPolicyOpen] = useState(false)
-  const [pendingSwitch, setPendingSwitch] = useState<string | null | undefined>(undefined) // undefined: no switch waiting for confirmation
   const dirty = useRef(false)
+  // Every URL change (sidebar, Links, browser Back/Forward, exam/filter/submission switches) is held by the router blocker with its full
+  // destination; page changes are plain state, so they use a deferred action. Cancel keeps the draft; confirm runs the exact thing asked for.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => shouldBlockNavigation(dirty.current, currentLocation, nextLocation))
+  const pageGuard = useRef(createDeferredGuard()).current
+  const [, rerender] = useState(0)
   const narrow = useIsNarrow(899)
 
   const exams = useQuery({ queryKey: ['exams', 'all'], queryFn: examApi.listAll })
@@ -37,18 +46,23 @@ export default function GradingPage() {
     queryFn: () => gradingApi.list({ examId, status: status || undefined, released: released === '' ? undefined : released === 'true', page }),
   })
 
-  const patch = useCallback((changes: Record<string, string | null>, resetPage = true) => {
+  const patch = useCallback((changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params)
     for (const [k, v] of Object.entries(changes)) { if (v) next.set(k, v); else next.delete(k) }
     setParams(next, { replace: false })
-    if (resetPage) setPage(0)
   }, [params, setParams])
-  // Leaving a submission with unsaved edits asks first.
-  const guard = (change: () => void, target: string | null) => { if (dirty.current && target !== selected) setPendingSwitch(target); else change() }
-  const select = (id: string | null) => guard(() => patch({ r: id }, false), id)
+  const select = (id: string | null) => patch({ r: id })
   const onDirty = useCallback((v: boolean) => { dirty.current = v }, [])
-  const setFilter = (key: 'status' | 'released', value: string) => guard(() => patch({ [key]: value, r: null }), null)
-  const setExam = (id: string) => guard(() => patch({ examId: id, status: null, released: null, r: null }), null)
+  const setFilter = (key: 'status' | 'released', value: string) => patch({ [key]: value, r: null })
+  const setExam = (id: string) => patch({ examId: id, status: null, released: null, r: null })
+  // Changing the queue page while a draft is open asks first; confirming also closes that submission (its draft is what is being discarded).
+  const changePage = (p: number) => {
+    const wasDirty = dirty.current
+    if (!pageGuard.request(() => { setPage(p); if (wasDirty) patch({ r: null }) }, wasDirty)) rerender(n => n + 1)
+  }
+  const askingToLeave = blocker.state === 'blocked' || pageGuard.waiting
+  const stay = () => { if (blocker.state === 'blocked') blocker.reset(); pageGuard.cancel(); rerender(n => n + 1) }
+  const leave = () => { dirty.current = false; if (blocker.state === 'blocked') blocker.proceed(); pageGuard.confirm(); rerender(n => n + 1) }
 
   const o = overview.data
   const showQueue = !narrow || !selected
@@ -94,7 +108,7 @@ export default function GradingPage() {
           )}
           <div className="grade-layout">
             {showQueue && <SubmissionQueue data={list.data} loading={list.isLoading} error={list.isError ? list.error : null} onRetry={() => void list.refetch()}
-              activeId={selected} onSelect={select} page={page} onPage={p => guard(() => setPage(p), null)} status={status} />}
+              activeId={selected} onSelect={select} page={page} onPage={changePage} status={status} />}
             {showWork
               ? <SubmissionWorkspace key={selected!} id={selected!} policy={policy.data} narrow={narrow} onDirty={onDirty} onBack={() => select(null)} />
               : !narrow && <section className="card" style={{ gridColumn: 'span 2' }}><EmptyState title="Chọn một bài nộp" description="Xem bài làm đóng băng theo đề, chấm từng câu và lưu nháp trước khi hoàn tất." /></section>}
@@ -102,11 +116,10 @@ export default function GradingPage() {
         </>
       )}
       {policyOpen && policy.data && <ResultPolicyDialog examId={examId} policy={policy.data} onClose={() => setPolicyOpen(false)} />}
-      {pendingSwitch !== undefined && (
-        <ConfirmDialog title="Bỏ thay đổi chưa lưu?" tone="danger" confirmLabel="Bỏ thay đổi" cancelLabel="Ở lại"
-          description="Bài đang mở có điểm hoặc nhận xét chưa lưu. Rời đi sẽ mất chúng. Hãy Lưu nháp nếu muốn giữ."
-          onCancel={() => setPendingSwitch(undefined)}
-          onConfirm={() => { const target = pendingSwitch; dirty.current = false; setPendingSwitch(undefined); patch({ r: target }, false) }} />
+      {askingToLeave && (
+        <ConfirmDialog title="Bỏ thay đổi chưa lưu?" tone="danger" confirmLabel="Bỏ thay đổi và tiếp tục" cancelLabel="Ở lại"
+          description="Bài đang mở có điểm hoặc nhận xét chưa lưu. Rời đi sẽ mất chúng. Chọn Ở lại để giữ nguyên bản nháp rồi Lưu nháp."
+          onCancel={stay} onConfirm={leave} />
       )}
     </div>
   )
