@@ -4,6 +4,7 @@ import { LogOut, Menu } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { authApi } from '../../features/auth/authApi'
 import { AUDIENCE_LABEL, audienceOf, navigationFor } from './navigation'
+import NotificationBell from '../../features/notifications/NotificationBell'
 
 export function Brand() {
   return <NavLink to="/dashboard" className="brand" aria-label="EXAMINI, về trang tổng quan"><span>EXAMINI</span><small>Phase / 01</small></NavLink>
@@ -60,6 +61,7 @@ export default function AppLayout() {
           </button>
           <div style={{ flex: 1 }} />
           <div className="row" style={{ gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
+            <NotificationBell />
             <div style={{ textAlign: 'right', minWidth: 0, lineHeight: 1.3 }}>
               <div className="small" style={{ color: 'var(--color-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
                 {user?.fullName}

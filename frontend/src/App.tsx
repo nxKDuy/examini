@@ -4,6 +4,7 @@ import RegisterPage from './features/auth/RegisterPage'
 import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './features/dashboard/DashboardPage'
+import NotificationsPage from './features/notifications/NotificationsPage'
 import QuestionListPage from './features/question-bank/QuestionListPage'
 import ExamListPage from './features/exams/ExamListPage'
 import ExamEditorPage from './features/exams/ExamEditorPage'
@@ -29,6 +30,7 @@ export default function App() {
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
 
         <Route element={<ProtectedRoute persona="STUDENT"><AppLayout /></ProtectedRoute>}>
