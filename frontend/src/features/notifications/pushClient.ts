@@ -81,14 +81,26 @@ export async function enablePush(o: { userId: string; token: string | null; publ
   const permission = await Notification.requestPermission()
   if (!o.isCurrent()) return 'stale'
   if (permission !== 'granted') return 'denied'
+  // The browser has ONE push subscription per registration, so enables never overlap: a later account waits until an earlier
+  // (possibly stale) enable has finished and undone its own work, otherwise that undo could unsubscribe the later account's endpoint.
+  const turn = enableQueue.then(() => subscribeAndRegister(o))
+  enableQueue = turn.then(() => undefined, () => undefined)
+  return turn
+}
+
+let enableQueue: Promise<void> = Promise.resolve()
+
+async function subscribeAndRegister(o: { userId: string; token: string | null; publicKey: string; isCurrent: () => boolean }): Promise<EnableResult> {
   await pushCleanupSettled() // an earlier account's cleanup must finish before this account subscribes
   if (!o.isCurrent()) return 'stale'
   const reg = await navigator.serviceWorker.register('/sw.js')
   await navigator.serviceWorker.ready
   if (!o.isCurrent()) return 'stale'
-  const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(o.publicKey) })
+  const existing = await reg.pushManager.getSubscription()
+  const sub = existing ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(o.publicKey) })
   const undo = async (serverId?: string) => {
-    try { await sub.unsubscribe() } catch { /* best effort */ }
+    // Only a subscription this call created is ours to remove; a pre-existing one belongs to whoever made it.
+    if (!existing) { try { await sub.unsubscribe() } catch { /* best effort */ } }
     try { if (serverId && o.token) await revokePushSubscription(o.token, serverId) } catch { /* best effort */ }
   }
   if (!o.isCurrent()) { await undo(); return 'stale' } // subscribed after the session ended: do not even register it

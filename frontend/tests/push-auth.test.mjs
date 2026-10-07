@@ -30,9 +30,9 @@ const makeSub = name => ({ name, unsubscribed: false, async unsubscribe() { even
   toJSON() { return { endpoint: `https://push.example/${name}`, keys: { p256dh: 'p', auth: 'a' } } } })
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 // Controllable fake browser steps for the enable flow
-const gates = { permission: null, subscribe: null, post: null }
+const gates = { permission: null, subscribe: null, post: null, lookup: null }
 let permissionResult = 'granted', subscribeCalls = 0
-const registration = { pushManager: { getSubscription: async () => current, subscribe: async () => { subscribeCalls++; if (gates.subscribe) await gates.subscribe.promise; current = makeSub('NEW'); return current } } }
+const registration = { pushManager: { getSubscription: async () => { const found = current; if (gates.lookup) await gates.lookup.promise; return found }, subscribe: async () => { subscribeCalls++; if (gates.subscribe) await gates.subscribe.promise; current = current ?? makeSub('NEW'); return current } } } // like the real PushManager: one subscription per registration
 globalThis.Notification = { requestPermission: async () => { if (gates.permission) await gates.permission.promise; return permissionResult } }
 globalThis.window = { localStorage: globalThis.localStorage, isSecureContext: true, PushManager: {}, Notification: {} }
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { serviceWorker: { getRegistration: async () => registration, register: async () => registration, ready: Promise.resolve(registration) } } })
@@ -52,7 +52,7 @@ const { watchPushCleanup } = await import('../src/features/notifications/pushAut
 const user = id => ({ id, email: `${id}@example.test`, fullName: id, role: 'STUDENT', persona: 'STUDENT', systemPrivilege: 'NONE' })
 const signIn = (id, token) => store.setState({ accessToken: token, refreshToken: 'r-' + token, user: user(id), authReady: true })
 let stop = () => {}
-beforeEach(() => { stop(); storage.clear(); events.length = 0; requests.length = 0; current = null; gates.permission = gates.subscribe = gates.post = null; permissionResult = 'granted'; subscribeCalls = 0; store.setState({ accessToken: null, refreshToken: null, user: null, authReady: true }) })
+beforeEach(() => { stop(); storage.clear(); events.length = 0; requests.length = 0; current = null; gates.permission = gates.subscribe = gates.post = gates.lookup = null; permissionResult = 'granted'; subscribeCalls = 0; store.setState({ accessToken: null, refreshToken: null, user: null, authReady: true }) })
 
 test('forced logout (failed refresh) cleans up with the OLD identity and token; browser subscription goes first', async () => {
   signIn('user-a', 'tok-a'); push.setRecord('user-a', 'sub-1'); current = makeSub('A')
@@ -172,4 +172,35 @@ test('after a stale enable the next account can enable cleanly and keeps its own
 test('permission denied is reported, not registered', async () => {
   const o = begin('user-a', 'tok-a'); permissionResult = 'denied'
   assert.equal(await enablePush(o), 'denied'); assert.equal(subscribeCalls, 0)
+})
+
+test('A is pending on subscribe, logs out; B enables BEFORE A finishes: B keeps its own subscription and record', async () => {
+  const a = begin('user-a', 'tok-a'); stop = watchPushCleanup()
+  gates.subscribe = deferred()
+  const pa = enablePush(a)
+  await new Promise(r => setTimeout(r, 5)) // A waits inside subscribe()
+  store.getState().logout() // cleanup runs now and finds no subscription yet
+  await push.pushCleanupSettled()
+  const b = begin('user-b', 'tok-b')
+  const pb = enablePush(b) // B clicks Enable while A is still pending
+  await new Promise(r => setTimeout(r, 5))
+  gates.subscribe.resolve() // A's subscribe finally returns
+  assert.equal(await pa, 'stale')
+  gates.subscribe = null
+  assert.equal(await pb, 'enabled')
+  assert.equal(push.getRecord('user-b'), 'server-sub-9'); assert.equal(push.getRecord('user-a'), undefined)
+  assert.ok(current && !current.unsubscribed) // B's endpoint was never unsubscribed by A's stale undo
+  const posts = requests.filter(r => r.method === 'post'); assert.equal(posts.length, 1); assert.equal(posts[0].headers.get('Authorization'), 'Bearer tok-b')
+})
+
+test('a stale enable that finds an existing subscription never unsubscribes it', async () => {
+  const a = begin('user-a', 'tok-a') // no cleanup watcher here: this isolates enable's own undo
+  const owned = makeSub('B-OWNED'); current = owned // a subscription already exists when A looks it up
+  gates.lookup = deferred()
+  const pa = enablePush(a)
+  await new Promise(r => setTimeout(r, 5)) // A is inside getSubscription()
+  store.getState().logout()
+  gates.lookup.resolve()
+  assert.equal(await pa, 'stale')
+  assert.equal(owned.unsubscribed, false) // A did not create it, so A's undo leaves it alone
 })
