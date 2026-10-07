@@ -47,14 +47,14 @@ export function useAgendaCalendar(enabled = true) {
   return { ...q, tz, items, clockOffset, truncated: q.data?.truncated ?? false }
 }
 
-/** Grid data for month / week / day (scheduled Exams only; unscheduled ones never get an invented date). */
-export function useGridCalendar(view: Exclude<CalendarView, 'agenda'>, anchor: string, enabled = true) {
+/** Grid data for a month (or week / day). Unscheduled Exams only come back when asked for, and never get an invented date. */
+export function useGridCalendar(view: Exclude<CalendarView, 'agenda'>, anchor: string, enabled = true, includeUnscheduled = false) {
   const tz = useViewerZone()
   const userId = useAuthStore(s => s.user?.id)
   const days = useMemo(() => visibleDays(view, anchor), [view, anchor])
   const { from, to } = useMemo(() => rangeOf(days, tz), [days, tz])
   const q = useQuery({
-    queryKey: ['calendar', userId, 'grid', from, to], queryFn: () => fetchCalendar(from, to, false),
+    queryKey: ['calendar', userId, 'grid', from, to, includeUnscheduled], queryFn: () => fetchCalendar(from, to, includeUnscheduled),
     staleTime: 30_000, refetchOnWindowFocus: true, refetchInterval: LIGHT_REFRESH_MS, enabled,
   })
   const items = q.data?.items ?? EMPTY, clockOffset = q.data?.clockOffset ?? 0
