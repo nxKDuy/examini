@@ -258,3 +258,8 @@ Stack test Notification đã provision VAPID từ cấu hình local, public-key 
 qua Gateway trả enabled=true; private key không vào Git/frontend/handoff.
 SMTP vẫn Mailpit, không gửi địa chỉ test qua Gmail. Đây là prerequisite cho
 browser push gate sau UI/UX, chưa chứng minh subscription/provider/display.
+
+MAIN gửi một smoke test SMTP Gmail về chính sender đã cấu hình: SMTP accepted,
+Inbox chưa verify; evidence `/tmp/examini-scheduling-gmail-transport-smoke-result.json`.
+Không gửi lặp tự động, không gửi tới địa chỉ fixture và không coi transport test
+là producer/Notification/Gmail E2E. UI/UX Scope Lock vẫn chờ câu trả lời user.

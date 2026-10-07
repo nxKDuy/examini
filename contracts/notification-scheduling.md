@@ -140,3 +140,12 @@ database Flyway thành công. Đây là real backend API E2E, chưa là browser
 Calendar/manual UI E2E. **Gmail delivery/inbox và browser push subscription/
 provider/display vẫn chưa xác nhận**; frontend phải hoàn thành opt-in/service
 worker theo UI/UX Scope Lock để chạy gate push thực.
+
+Sau đó MAIN provision VAPID cho stack test riêng; authenticated public-key API
+trả enabled=true. Chưa gọi provider hay xác nhận browser display. SMTP của
+stack vẫn Mailpit. Một smoke test SMTP Gmail trực tiếp gửi duy nhất về chính
+tài khoản sender đã cấu hình được Gmail chấp nhận; evidence local tại
+`/tmp/examini-scheduling-gmail-transport-smoke-result.json`, không có credential.
+Đây chỉ là transport check, chưa là producer → Notification → Gmail E2E hoặc
+Inbox verification; không gửi địa chỉ fixture qua Gmail, không claim channel
+release PASS từ bằng chứng này.
