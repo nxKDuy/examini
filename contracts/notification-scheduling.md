@@ -149,3 +149,17 @@ tài khoản sender đã cấu hình được Gmail chấp nhận; evidence loca
 Đây chỉ là transport check, chưa là producer → Notification → Gmail E2E hoặc
 Inbox verification; không gửi địa chỉ fixture qua Gmail, không claim channel
 release PASS từ bằng chứng này.
+
+MAIN sau đó kiểm riêng **producer → Notification → Gmail thật**: Gateway/Exam/
+RabbitMQ/Notification tách biệt, Auth/QB/Session provider thật, database sạch.
+Teacher Publish một Exam ASSIGNED cho Student có email chính sender đã cung
+cấp; không recipient khác, reminders tắt. In-app được tạo và đúng một logical
+EMAIL delivery SENT sau Gmail SMTP ACK: **5/5 checks PASS**. Evidence:
+`/tmp/examini-scheduling-gmail-pipeline-e2e-result.json`; temporary containers đã
+gỡ, stack Calendar và SMTP Mailpit hiện hữu không đổi. Lượt dựng Rabbit đầu bị
+cookie permission lỗi trước khi có Exam/event/email; failure được giữ riêng,
+chỉ retry sau khi xác minh chưa gửi, không auto-resend một delivery không rõ ACK.
+
+Backend Gmail pipeline nay được xác minh đến SMTP accepted. **Inbox placement,
+email-link browser validation và browser push/display vẫn chưa xác nhận**;
+không claim physical exactly-once hay full frontend/release PASS.

@@ -268,3 +268,10 @@ Inbox chưa verify; evidence `/tmp/examini-scheduling-gmail-transport-smoke-resu
 Không gửi lặp tự động, không gửi tới địa chỉ fixture và không coi transport test
 là producer/Notification/Gmail E2E. UI/UX Scope Lock đã được user duyệt;
 browser validation và manual UI gate còn phía trước.
+
+MAIN đã kiểm thêm pipeline producer → Notification → Gmail trên services/
+broker/database tách biệt: 5/5 checks PASS, in-app và một logical EMAIL SENT
+sau Gmail ACK, chỉ recipient chính sender đã cung cấp. Evidence
+`/tmp/examini-scheduling-gmail-pipeline-e2e-result.json`. Temporary containers
+đã gỡ, không thay stack Calendar/datn. Inbox và browser link/push/display còn
+chưa verify; không gửi lặp tự động hoặc coi SMTP ACK là release UI approval.
