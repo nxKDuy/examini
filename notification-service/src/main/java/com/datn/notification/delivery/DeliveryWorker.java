@@ -1,5 +1,6 @@
 package com.datn.notification.delivery;
 import com.datn.notification.client.*;
+import com.datn.notification.grading.GradingNotifications;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -65,7 +66,12 @@ public class DeliveryWorker {
      */
     private List<Row> stillAuthorized(List<Row> rows){
         var ok=new ArrayList<Row>();Instant now=clock.instant();
-        var byExam=new LinkedHashMap<UUID,List<Row>>();rows.forEach(r->byExam.computeIfAbsent(r.examId(),k->new ArrayList<>()).add(r));
+        var byExam=new LinkedHashMap<UUID,List<Row>>();
+        for(Row r:rows){
+            // A student's own published result stays theirs even after they lose their Exam relation: no Exam recheck.
+            if(GradingNotifications.RESULT_OWNER.equals(r.meta().get("audience")))ok.add(r);
+            else byExam.computeIfAbsent(r.examId(),k->new ArrayList<>()).add(r);
+        }
         byExam.forEach((exam,group)->{
             ExamRecipientClient.Snapshot snap;
             try{snap=exam==null?null:exams.recipients(exam);}
