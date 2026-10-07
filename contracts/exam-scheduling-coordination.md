@@ -4,8 +4,9 @@ Trạng thái: Product/Domain Scope Lock đã duyệt, gồm PUBLIC flag kèm No
 và lựa chọn A cho attempt hiện hành. Auth contact, Exam/Session Scheduling và
 Notification đã tích hợp vào MAIN. Backend E2E qua Gateway thật đạt 34/34 checks
 ngày 2026-10-07. Frontend đã sync/khảo sát và user duyệt toàn bộ khuyến nghị
-UI/UX; triển khai theo `exam-calendar-ui-scope.md`. Manual UI/browser release
-approval vẫn chưa có, không coi backend gate là feature final.
+UI/UX; Frontend đã hoàn tất và MAIN technical review PASS theo
+`exam-calendar-ui-scope.md`. Manual UI approval vẫn chưa có; trạng thái hiện tại
+là READY FOR MANUAL UI VALIDATION, chưa merge Frontend hoặc coi feature là final.
 Nguồn sản phẩm: `exam-scheduling-scope.md`; không thay business rule bằng file này.
 
 ## Task khảo sát đã hoàn tất
@@ -275,3 +276,43 @@ sau Gmail ACK, chỉ recipient chính sender đã cung cấp. Evidence
 `/tmp/examini-scheduling-gmail-pipeline-e2e-result.json`. Temporary containers
 đã gỡ, không thay stack Calendar/datn. Inbox và browser link/push/display còn
 chưa verify; không gửi lặp tự động hoặc coi SMTP ACK là release UI approval.
+
+## Frontend review và manual UI gate ngày 2026-10-07
+
+- Candidate `frontend/app`: `30cb232dcf3bf500f91ec99daa254429100378f6`, worktree
+  sạch. Giữ nguyên các commit Product UI trước task; không sửa backend/contracts
+  trong worker và không push/merge MAIN. Report tiếng Việt:
+  `frontend/EXAM_CALENDAR_RESULT.md` trong worktree `frontend/app`.
+- Task chính `task_64a855e02cbf` / `ctx_186d17bdb03e` succeeded tại `b70a31a`.
+  Follow-up Tắt push `task_cc2c21c1fccf` / `ctx_a5b7cab2a549` succeeded: fix
+  `7012e17`, report `d2e5d99`. Follow-up EOF `task_0ee58205d1df` /
+  `ctx_d3eee61974f2` succeeded tại `30cb232`. Cùng terminal Claude đã được reuse;
+  không tạo agent/worktree hoặc đổi model. Release đã được xử lý sau settlement;
+  terminal bên ngoài và Vite được giữ nguyên, không còn cần cleanup decision.
+- MAIN review PASS: trục/nhãn DST, start-only Agenda, metadata editor giữ UTC,
+  Join bị khóa sau preview, focus mobile/dialog lồng nhau, availability làm mới
+  tại mốc giờ, và cleanup push khi logout/đổi tài khoản. Enable/reconcile/disable
+  dùng hàng đợi và guard phiên; chỉ thao tác đúng subscription/token đã capture.
+  Unit test bắt hành vi lỗi cũ; không gọi fake PushManager là push vật lý.
+- MAIN kiểm tra độc lập Git archive của `d2e5d99`: `npm ci`, `npm exec -- tsc -b
+  --pretty false`, `npm run build`, `bash tests/validate-shared.sh` (83 tests),
+  `npm run lint` đều PASS. Commit `30cb232` chỉ bỏ một dòng trắng EOF; code tương
+  đương bản đã test. Committed-range `git diff --check` PASS sau fix. Evidence:
+  `/tmp/examini-scheduling-frontend-gate-result.json`; failure EOF ban đầu được
+  giữ trong manifest, không che kết quả kiểm tra.
+- Browser thật qua Gateway: worker kiểm Teacher tạo/chỉnh lịch, revision/DST,
+  lifecycle, Proctor chỉ đọc; Student Follow, preview/Join sớm bị khóa,
+  availability đổi theo giờ, Lobby/Start và mobile. MAIN kiểm độc lập mobile
+  native Tab/Shift+Tab/Escape và focus trả lại, Student đủ bốn view/Upcoming
+  Lobby, chuông markRead → Lobby và unread giảm. Không dùng fixture cho các flow
+  này. Smoke fixture 8/8 là chứng cứ route guard riêng ở bản trước các fix cuối.
+- Giới hạn: physical push subscription/provider/OS display chưa verify vì Chrome
+  automation từ chối permission; Gmail SMTP ACK không chứng minh Inbox placement.
+  Không giả delivery hay tuyên bố UI/release đã được user duyệt.
+- Runtime để user kiểm tra: `http://127.0.0.1:13100/calendar` và
+  `/notifications`, Gateway `http://127.0.0.1:18180`. Credentials test chỉ local
+  tại `/tmp/examini-scheduling-frontend-test-accounts.json`, không đưa vào Git.
+- Theo manual UI gate (#28) do user yêu cầu, MAIN chờ user duyệt bản chạy thật
+  trước merge Frontend. Sau duyệt: bảo toàn dirty MAIN/stashes, merge candidate,
+  refresh canonical Graphify, chạy unified regression/E2E rồi báo cáo cuối.
+  Canonical graph hiện phản ánh backend MAIN đã duyệt; chưa index UI chưa merge.
