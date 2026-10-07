@@ -10,6 +10,7 @@ import FollowButton from './FollowButton'
 import LifecycleDialog, { type LifecycleKind } from './LifecycleDialog'
 import ScheduleDialog from './ScheduleDialog'
 import { Notice } from '../../components/ui'
+import { useModalFocus } from '../../components/useModalFocus'
 import { examApi } from '../exams/examApi'
 import { errorText } from '../../lib/errors'
 import { formatDateTimeIn, zoneLabel } from '../../lib/zone'
@@ -20,6 +21,7 @@ export default function DetailPanel({ item, nowMs, viewerTz, narrow, onClose }: 
   const navigate = useNavigate()
   const qc = useQueryClient()
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
   const [schedule, setSchedule] = useState(false)
   const [lifecycle, setLifecycle] = useState<LifecycleKind | null>(null)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
@@ -28,12 +30,10 @@ export default function DetailPanel({ item, nowMs, viewerTz, narrow, onClose }: 
   const countdown = countdownLine(item, nowMs)
   const reason = !item.canStart && !item.canResume ? reasonText(item.reasonCode) : null
 
+  // Bottom sheet (narrow): a real modal - Tab stays inside, background scroll is locked, Escape closes (only when no dialog is above),
+  // and focus returns to the opener. Side panel (wide): not modal, but it still takes focus on open, closes on Escape and gives focus back.
+  useModalFocus(panelRef, { trap: narrow, escape: true, onEscape: onClose, initialFocus: () => headingRef.current })
   useEffect(() => { headingRef.current?.focus() }, [item.examId])
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !schedule && !lifecycle) onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose, schedule, lifecycle])
 
   const join = useMutation({
     mutationFn: () => examApi.join(item.examId),
@@ -108,7 +108,7 @@ export default function DetailPanel({ item, nowMs, viewerTz, narrow, onClose }: 
   return (
     <>
       {narrow && <button type="button" className="cal-sheet-backdrop" aria-label="Đóng chi tiết" tabIndex={-1} onClick={onClose} />}
-      <aside className="cal-panel" role={narrow ? 'dialog' : 'complementary'} aria-modal={narrow ? true : undefined} aria-labelledby="cal-panel-title">{body}</aside>
+      <aside ref={panelRef} className="cal-panel" tabIndex={-1} role={narrow ? 'dialog' : 'complementary'} aria-modal={narrow ? true : undefined} aria-labelledby="cal-panel-title">{body}</aside>
     </>
   )
 }

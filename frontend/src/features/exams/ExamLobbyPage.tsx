@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileCheck2, PlayCircle, RotateCcw } from 'lucide-react'
 import { examApi } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { calendarApi } from '../calendar/calendarApi'
-import { countdownLine, reasonText, RULE_HELP, ruleLabel, toMs, windowText } from '../calendar/calendarModel'
+import { countdownLine, reasonText, RULE_HELP, ruleLabel, windowText } from '../calendar/calendarModel'
 import { StateBadge } from '../calendar/ExamCard'
 import FollowButton from '../calendar/FollowButton'
-import { useNow, useViewerZone } from '../calendar/useCalendar'
+import { useBoundaryRefetch, useNow, useViewerZone } from '../calendar/useCalendar'
 import { useAuthStore } from '../../store/authStore'
 import { ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { errorStatus, errorText } from '../../lib/errors'
@@ -31,15 +31,8 @@ export default function ExamLobbyPage() {
   })
   const a = avail.data?.a
   const nowMs = useNow(avail.data?.clockOffset ?? 0)
-  const startMs = toMs(a?.startAt)
-  const refetched = useRef<number | null>(null)
-  useEffect(() => {
-    // Re-ask the server once when the start time passes; the clock only triggers the question.
-    if (a && startMs !== null && nowMs >= startMs && !a.canStart && !a.canResume && refetched.current !== startMs) {
-      refetched.current = startMs
-      void avail.refetch()
-    }
-  }, [a, startMs, nowMs, avail])
+  // Re-ask the backend just after the window opens/closes or the attempt expires; the clock only triggers the question.
+  useBoundaryRefetch(a ? [a] : [], avail.data?.clockOffset ?? 0, avail.refetch)
 
   const join = useMutation({
     mutationFn: () => examApi.join(id!),

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from 'lucide-react'
 import { examApi, type Exam, type ExamInput, type Policy } from './examApi'
 import { questionBankApi, type Question } from '../question-bank/questionApi'
 import PolicyFields from './PolicyFields'
+import { legacyScheduleFields } from './examInput'
 import { DEFAULT_POLICY, policyError } from './policy'
 import QuestionPicker from './QuestionPicker'
 import { EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader } from '../../components/ui'
@@ -88,8 +89,8 @@ function Editor({ exam }: { exam?: Exam }) {
     const payload: ExamInput = {
       title: info.title.trim(), description: info.description.trim() || undefined, type: info.type, durationMinutes: info.durationMinutes,
       passingScore: passing, shuffleQuestions: info.shuffleQuestions, shuffleOptions: info.shuffleOptions,
-      // The schedule lives on the Lịch tab. Editing a draft passes the stored legacy values through untouched so it never rewrites them.
-      startTime: exam?.startTime ?? undefined, endTime: exam?.endTime ?? undefined, questions: items,
+      // The schedule lives on the Lịch tab; the legacy fields are passed through exactly as stored so editing never rewrites it.
+      ...legacyScheduleFields(exam), questions: items,
     }
     let saved: Exam
     try {

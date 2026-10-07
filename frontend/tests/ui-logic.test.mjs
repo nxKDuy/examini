@@ -104,3 +104,12 @@ test('Start/Join denials from the backend read as plain Vietnamese', () => {
   assert.match(errorInfo(problem(409, 'INSUFFICIENT_TIME')).message, /không đủ/)
   assert.match(errorInfo(problem(409, 'AFTER_END_AT')).message, /qua giờ kết thúc/)
 })
+
+test('legacy editor fields: stored schedule values pass through verbatim; create sends none', async () => {
+  const { legacyScheduleFields } = await import('../src/features/exams/examInput.ts')
+  assert.deepEqual(legacyScheduleFields(), {})
+  assert.deepEqual(legacyScheduleFields({ startTime: '2030-01-02T07:00:00.123456', endTime: '2030-01-02T09:00:00' }), { startTime: '2030-01-02T07:00:00.123456', endTime: '2030-01-02T09:00:00' })
+  const none = legacyScheduleFields({ startTime: null, endTime: null })
+  assert.equal(none.startTime, null); assert.equal(none.endTime, null) // null is sent as null, never dropped
+  assert.equal(JSON.stringify(none), '{"startTime":null,"endTime":null}')
+})

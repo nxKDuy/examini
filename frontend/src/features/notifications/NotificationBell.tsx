@@ -58,10 +58,10 @@ export default function NotificationBell() {
             <h2 style={{ fontSize: '1.2rem' }}>Thông báo</h2>
             <button type="button" className="btn btn-ghost btn-sm" disabled={count === 0 || readAll.isPending} onClick={() => readAll.mutate()}>Đọc tất cả</button>
           </div>
-          <div style={{ padding: 12, borderBottom: '1px solid #000' }}><PushCard /></div>
           {latest.isLoading ? <LoadingState rows={3} /> : latest.isError ? <ErrorState error={latest.error} onRetry={() => void latest.refetch()} />
             : latest.data!.content.length === 0 ? <EmptyState title="Chưa có thông báo" description="Thông báo đặt/đổi lịch, mở/đóng kỳ thi và nhắc giờ sẽ hiện ở đây." />
             : <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>{latest.data!.content.map(n => <li key={n.id}><NotificationItem n={n} nowMs={nowMs} onOpen={openItem} /></li>)}</ul>}
+          <div style={{ padding: 12, borderTop: '1px solid #000' }}><PushCard /></div>
           <div style={{ padding: '10px 16px', borderTop: '1px solid #000' }}><Link to="/notifications" onClick={() => setOpen(false)}>Xem tất cả thông báo</Link></div>
         </div>
       )}

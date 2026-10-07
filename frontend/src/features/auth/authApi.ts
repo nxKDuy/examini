@@ -1,6 +1,6 @@
 import api, { revokeSession } from '../../lib/api'
 import { useAuthStore, validateAuthUser, type AuthUser } from '../../store/authStore'
-import { pushLogoutCleanup } from '../notifications/pushClient'
+import { pushCleanupSettled } from '../notifications/pushClient'
 
 interface LoginPayload { email: string; password: string }
 interface RegisterPayload { email: string; password: string; fullName: string; accountType: 'PERSONAL'; persona: 'STUDENT' | 'TEACHER' }
@@ -54,11 +54,9 @@ export const authApi = {
   },
   logout: async () => {
     // Clear local identity immediately; backend logout is best effort.
-    const { accessToken: token, user } = useAuthStore.getState()
-    useAuthStore.getState().logout()
-    // Drop this account's browser push subscription (server + browser) so the next account on this machine cannot receive it.
-    const push = pushLogoutCleanup(user?.id, token)
+    const token = useAuthStore.getState().accessToken
+    useAuthStore.getState().logout() // the auth runtime's watcher starts the push cleanup with this account's identity and token
+    await pushCleanupSettled() // delete the push subscription while the token is still valid, then revoke the session
     try { if (token) await revokeSession(token) } catch { /* local session already cleared */ }
-    await push
   },
 }

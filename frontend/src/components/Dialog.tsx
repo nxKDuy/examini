@@ -1,8 +1,7 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
-
-const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+import { useModalFocus } from './useModalFocus'
 
 /** Modal dialog: focus moves in, Tab is trapped, Escape closes, focus returns on close. */
 export function Dialog({ title, description, children, footer, onClose, size, busy }: {
@@ -10,28 +9,7 @@ export function Dialog({ title, description, children, footer, onClose, size, bu
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const titleId = useId(), descId = useId()
-  const closeRef = useRef(onClose)
-  const busyRef = useRef(busy)
-  useEffect(() => { closeRef.current = onClose; busyRef.current = busy })
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    const node = ref.current
-    const first = node?.querySelector<HTMLElement>('[data-autofocus]') ?? node?.querySelector<HTMLElement>(FOCUSABLE)
-    first?.focus()
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !busyRef.current) { e.stopPropagation(); closeRef.current() }
-      if (e.key !== 'Tab' || !node) return
-      const items = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(el => el.offsetParent !== null)
-      if (items.length === 0) return
-      const head = items[0], tail = items[items.length - 1]
-      if (e.shiftKey && document.activeElement === head) { e.preventDefault(); tail.focus() }
-      else if (!e.shiftKey && document.activeElement === tail) { e.preventDefault(); head.focus() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; previous?.focus?.() }
-  }, [])
+  useModalFocus(ref, { trap: true, escape: true, onEscape: () => { if (!busy) onClose() } })
   return createPortal(
     <div className="dialog-backdrop" onMouseDown={e => { if (e.target === e.currentTarget && !busy) onClose() }}>
       <div ref={ref} className={`dialog ${size === 'lg' ? 'dialog-lg' : ''}`} role="dialog" aria-modal="true"

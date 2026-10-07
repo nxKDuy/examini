@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../../store/authStore'
 import { errorText } from '../../lib/errors'
 import { notificationApi } from './notificationApi'
-import { clearRecord, currentSubscription, getRecord, pushSupported, setRecord, urlBase64ToUint8Array } from './pushClient'
+import { clearRecord, currentSubscription, enablePush, getRecord, pushSupported } from './pushClient'
 
 export type PushStatus = 'checking' | 'unsupported' | 'unconfigured' | 'blocked' | 'off' | 'on'
 
@@ -34,19 +34,18 @@ export function usePush() {
 
   async function enable() {
     if (!supported || !userId || !key.data?.publicKey) return
+    const start = useAuthStore.getState(), session = start.sessionVersion
+    // The same session and account must still be active when each step finishes, otherwise nothing is registered for whoever is signed in now.
+    const isCurrent = () => { const now = useAuthStore.getState(); return now.sessionVersion === session && now.user?.id === userId }
     setBusy(true); setError('')
     try {
-      const result = await Notification.requestPermission() // user gesture: called from the button's click
-      setPermission(result)
-      if (result !== 'granted') { setError(result === 'denied' ? 'Trình duyệt đã chặn thông báo cho trang này.' : 'Bạn chưa cho phép thông báo.'); return }
-      const reg = await navigator.serviceWorker.register('/sw.js')
-      await navigator.serviceWorker.ready
-      let sub = await reg.pushManager.getSubscription()
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key.data.publicKey) })
-      const created = await notificationApi.subscribe(sub.toJSON())
-      setRecord(userId, created.id)
+      const result = await enablePush({ userId, token: start.accessToken, publicKey: key.data.publicKey, isCurrent })
+      if (result === 'stale') return
+      setPermission(Notification.permission)
+      if (result === 'denied') { setError(Notification.permission === 'denied' ? 'Trình duyệt đã chặn thông báo cho trang này.' : 'Bạn chưa cho phép thông báo.'); return }
       await refresh()
     } catch (e) {
+      if (!isCurrent()) return
       const name = (e as { name?: string } | undefined)?.name
       setError(name === 'AbortError' || name === 'NotSupportedError' ? 'Trình duyệt không đăng ký được dịch vụ đẩy (có thể bị chặn hoặc thiếu kết nối tới nhà cung cấp push).' : errorText(e))
     } finally { setBusy(false) }

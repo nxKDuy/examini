@@ -157,3 +157,88 @@ test('crowded clusters collapse into one "+N" block beyond the column cap', () =
   const day = m.collapseCrowded(blocks, 6)
   assert.equal(day.overflow.length, 0); assert.equal(day.shown.length, 6)
 })
+
+const LA = 'America/Los_Angeles'
+test('DST regression: a 10:00 Exam sits on the 10:00 row on 23h and 25h days (wall-clock axis)', () => {
+  const tenAm = 10 / 24 * 100
+  // 2030-03-10 is the spring-forward day in Los Angeles (23h). 10:00 PDT = 17:00Z.
+  const spring = m.layoutDay([item({ examId: 's', startAt: '2030-03-10T17:00:00Z', endAt: '2030-03-10T18:00:00Z' })], '2030-03-10', LA)[0]
+  assert.ok(Math.abs(spring.top - tenAm) < 1e-9, `spring top ${spring.top}`)
+  assert.ok(Math.abs(spring.height - 100 / 24) < 1e-9)
+  // 2030-11-03 is the fall-back day (25h). 10:00 PST = 18:00Z.
+  const fall = m.layoutDay([item({ examId: 'f', startAt: '2030-11-03T18:00:00Z', endAt: '2030-11-03T19:00:00Z' })], '2030-11-03', LA)[0]
+  assert.ok(Math.abs(fall.top - tenAm) < 1e-9, `fall top ${fall.top}`)
+  // Before the change on the same spring day: 01:00 PST = 09:00Z is the 01:00 row, not 01:00*24/23
+  const early = m.layoutDay([item({ examId: 'e', startAt: '2030-03-10T09:00:00Z', endAt: '2030-03-10T09:30:00Z' })], '2030-03-10', LA)[0]
+  assert.ok(Math.abs(early.top - 100 / 24) < 1e-9)
+  // Clipped at both ends still spans the whole axis
+  const all = m.layoutDay([item({ startAt: '2030-03-09T00:00:00Z', endAt: '2030-03-12T00:00:00Z' })], '2030-03-10', LA)[0]
+  assert.equal(all.top, 0); assert.ok(Math.abs(all.height - 100) < 1e-9)
+})
+
+test('DST regression: the now line is on the wall-clock row, only on today', () => {
+  const nowSpring = Date.parse('2030-03-10T17:30:00Z') // 10:30 PDT
+  assert.ok(Math.abs(m.nowTop(nowSpring, '2030-03-10', LA) - 10.5 / 24 * 100) < 1e-9)
+  assert.equal(m.nowTop(nowSpring, '2030-03-11', LA), null)
+  const nowFall = Date.parse('2030-11-03T18:30:00Z') // 10:30 PST
+  assert.ok(Math.abs(m.nowTop(nowFall, '2030-11-03', LA) - 10.5 / 24 * 100) < 1e-9)
+})
+
+test('DST regression: both ends of a window carry their own offset when they differ', () => {
+  // Paris falls back on 2030-10-27 03:00 -> 02:00. 02:30 happens twice: +02:00 (00:30Z) then +01:00 (01:30Z).
+  const overlap = m.windowText({ startAt: '2030-10-27T00:30:00Z', endAt: '2030-10-27T01:30:00Z', timezone: PARIS }, PARIS)
+  assert.match(overlap.primary, /02:30 GMT\+2–02:30 GMT\+1/)
+  assert.match(overlap.zone, /GMT\+2 → GMT\+1 · Europe\/Paris/)
+  // Same wall labels, different instants, no ambiguity once offsets are shown
+  const viewer = m.windowText({ startAt: '2030-10-27T00:30:00Z', endAt: '2030-10-27T01:30:00Z', timezone: VN }, PARIS)
+  assert.match(viewer.mine, /02:30 GMT\+2–02:30 GMT\+1/)
+  // No DST change inside the window: unchanged, concise form
+  const plain = m.windowText({ startAt: '2030-06-10T01:00:00Z', endAt: '2030-06-10T03:00:00Z', timezone: PARIS }, PARIS)
+  assert.equal(plain.primary.includes('GMT'), false)
+  assert.match(plain.zone, /^GMT\+2 · Europe\/Paris$/)
+  // Window spanning the change over several days
+  const span = m.windowText({ startAt: '2030-10-26T12:00:00Z', endAt: '2030-10-28T12:00:00Z', timezone: PARIS }, PARIS)
+  assert.match(span.primary, /GMT\+2 → .* GMT\+1/)
+})
+
+test('start-only Exams that are still running are never "past"; finished ones are', () => {
+  const now = Date.parse('2030-01-10T05:00:00Z')
+  const longAgo = '2030-01-07T01:00:00Z' // three days ago, no endAt
+  const open = item({ examId: 'open', startAt: longAgo, calendarState: 'AVAILABLE', canStart: true })
+  const upcomingState = item({ examId: 'joinreq', startAt: longAgo, calendarState: 'JOIN_REQUIRED' })
+  const closed = item({ examId: 'closed', startAt: longAgo, calendarState: 'CLOSED' })
+  const submitted = item({ examId: 'done', startAt: longAgo, calendarState: 'SUBMITTED' })
+  const teacherOpen = item({ examId: 'tOpen', startAt: longAgo, calendarState: 'OPEN', relation: 'OWNER' })
+  const g = Object.fromEntries(m.agendaGroups([open, upcomingState, closed, submitted, teacherOpen], now, VN).map(x => [x.key, x.items.map(i => i.examId)]))
+  assert.deepEqual(g.today, ['open', 'joinreq', 'tOpen'])
+  assert.deepEqual(g.past.sort(), ['closed', 'done'])
+  assert.equal(m.isOpenEnded(open), true); assert.equal(m.isOpenEnded(closed), false)
+  assert.equal(m.isOpenEnded(item({ startAt: longAgo, endAt: '2030-01-08T01:00:00Z', calendarState: 'AVAILABLE' })), false)
+  // The synthetic 1h display block is only a drawing aid: eligibility fields are untouched
+  assert.equal(open.canStart, true)
+  assert.equal(m.itemSpan(open).kind, 'open-start')
+})
+
+test('nextBoundary: the earliest future instant the backend answer can change at', () => {
+  const now = Date.parse('2030-01-10T00:00:00Z')
+  const items = [
+    item({ startAt: '2030-01-09T00:00:00Z', endAt: '2030-01-10T02:00:00Z' }),
+    item({ startAt: '2030-01-10T01:00:00Z' }),
+    item({ effectiveExpiresAt: '2030-01-10T00:30:00Z' }),
+    item({}),
+  ]
+  assert.equal(m.nextBoundary(items, now), Date.parse('2030-01-10T00:30:00Z'))
+  assert.equal(m.nextBoundary(items, Date.parse('2030-01-10T00:30:00Z')), Date.parse('2030-01-10T01:00:00Z'))
+  assert.equal(m.nextBoundary(items, Date.parse('2030-01-11T00:00:00Z')), null)
+  assert.equal(m.nextBoundary([], now), null)
+})
+
+test('block label: each end carries its offset across a DST change, concise otherwise', () => {
+  // Los Angeles falls back on 2030-11-03 02:00 -> 01:00: 01:30 happens as PDT (08:30Z) and again as PST (09:30Z).
+  const overlap = m.blockRangeLabel({ startAt: '2030-11-03T08:30:00Z', endAt: '2030-11-03T09:30:00Z', timezone: LA })
+  assert.equal(overlap, '01:30 GMT-7–01:30 GMT-8')
+  assert.equal(m.blockRangeLabel({ startAt: '2030-11-03T18:00:00Z', endAt: '2030-11-03T19:00:00Z', timezone: LA }), '10:00–11:00 GMT-8')
+  assert.equal(m.blockRangeLabel({ startAt: '2030-11-03T18:00:00Z', endAt: null, timezone: LA }), 'từ 10:00 GMT-8')
+  assert.equal(m.blockRangeLabel({ startAt: null, endAt: '2030-11-03T19:00:00Z', timezone: LA }), 'đóng 11:00 GMT-8')
+  assert.equal(m.blockRangeLabel({ startAt: null, endAt: null, timezone: LA }), '')
+})

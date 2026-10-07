@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import './calendar.css'
 import type { CalendarItem } from './calendarApi'
-import { agendaGroups, collapseCrowded, dayHeading, dayNumber, itemSpan, itemsOnDay, layoutDay, stateInfo } from './calendarModel'
+import { agendaGroups, blockRangeLabel, collapseCrowded, dayHeading, dayNumber, itemsOnDay, layoutDay, nowTop, stateInfo } from './calendarModel'
 import { AgendaRow, MonthChip } from './ExamCard'
 import { EmptyState } from '../../components/ui'
-import { addDays, dayStart, instantToDay, zoneLabel, formatTimeIn, weekdayIndex } from '../../lib/zone'
+import { instantToDay, weekdayIndex } from '../../lib/zone'
 
 const DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
 const shortDow = (day: string) => DOW[weekdayIndex(day)]
@@ -115,17 +115,16 @@ export function TimeGridView({ days, items, tz, nowMs, selectedId, onSelect, nar
           <div className="cal-hours" aria-hidden>{hours.map(h => <div key={h}>{String(h).padStart(2, '0')}:00</div>)}</div>
           {days.map(day => {
             const { shown: blocks, overflow } = collapseCrowded(blocksByDay.get(day) ?? [], maxCols)
-            const from = dayStart(day, tz), total = dayStart(addDays(day, 1), tz) - from
+            const nowLine = nowTop(nowMs, day, tz)
             return (
               <div key={day} className="cal-col" role="gridcell" data-weekend={isWeekend(day)}>
                 {blocks.map(b => {
-                  const span = itemSpan(b.item)!, info = stateInfo(b.item.calendarState), etz = b.item.timezone
-                  const range = span.kind === 'window' ? `${formatTimeIn(span.start, etz)}–${formatTimeIn(span.end, etz)}` : span.kind === 'open-start' ? `từ ${formatTimeIn(span.start, etz)}` : `đóng ${formatTimeIn(span.end, etz)}`
+                  const info = stateInfo(b.item.calendarState), range = blockRangeLabel(b.item)
                   return (
                     <button key={b.item.examId} type="button" className="cal-block" data-tone={info.tone} aria-current={selectedId === b.item.examId}
-                      aria-label={`${b.item.examTitle}, ${info.label}, ${range} ${zoneLabel(span.start, etz)}`}
+                      aria-label={`${b.item.examTitle}, ${info.label}, ${range}`}
                       style={{ top: `${b.top}%`, height: `${b.height}%`, left: `calc(${(b.col / b.cols) * 100}% + 1px)`, width: `calc(${100 / b.cols}% - 3px)` }} onClick={() => onSelect(b.item)}>
-                      <strong>{b.item.examTitle}</strong>{range} {zoneLabel(span.start, etz)}
+                      <strong>{b.item.examTitle}</strong>{range}
                     </button>
                   )
                 })}
@@ -136,7 +135,7 @@ export function TimeGridView({ days, items, tz, nowMs, selectedId, onSelect, nar
                     <strong>+{o.hidden.length} kỳ thi</strong>{days.length === 1 ? 'chọn từng đề' : 'xem theo ngày'}
                   </button>
                 ))}
-                {day === today && <div className="cal-now" style={{ top: `${((nowMs - from) / total) * 100}%` }} aria-hidden />}
+                {nowLine !== null && <div className="cal-now" style={{ top: `${nowLine}%` }} aria-hidden />}
               </div>
             )
           })}

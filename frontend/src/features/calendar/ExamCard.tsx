@@ -3,7 +3,7 @@ import './calendar.css'
 import { Badge } from '../../components/ui'
 import type { CalendarItem } from './calendarApi'
 import { cardMetrics, itemSpan, stateInfo, windowText, type StateInfo } from './calendarModel'
-import { formatTimeIn } from '../../lib/zone'
+import { formatTimeIn, offsetMinutes, zoneLabel } from '../../lib/zone'
 
 const ICONS = { play: PlayCircle, clock: Clock, lock: Lock, edit: FileEdit, check: CheckCircle2, alert: AlertTriangle, send: Send, key: KeyRound, ban: Ban }
 
@@ -21,8 +21,11 @@ export function AgendaRow({ item, nowMs, viewerTz, selected, onSelect }: {
   const span = itemSpan(item)
   const w = windowText(item, viewerTz)
   const tz = item.timezone
-  const clock = !span ? '–' : span.kind === 'window' ? formatTimeIn(span.start, tz) : span.kind === 'open-start' ? formatTimeIn(span.start, tz) : formatTimeIn(span.end, tz)
-  const sub = !span ? 'Chưa có lịch' : span.kind === 'window' ? `đến ${formatTimeIn(span.end, tz)}` : span.kind === 'open-start' ? 'mở từ' : 'hạn đóng'
+  // When a DST change falls inside the window the two ends have different offsets: say which one each time is.
+  const split = !!span && span.kind === 'window' && offsetMinutes(span.start, tz) !== offsetMinutes(span.end, tz)
+  const tag = (ms: number) => (split ? ` ${zoneLabel(ms, tz)}` : '')
+  const clock = !span ? '–' : span.kind === 'window' ? `${formatTimeIn(span.start, tz)}${tag(span.start)}` : span.kind === 'open-start' ? formatTimeIn(span.start, tz) : formatTimeIn(span.end, tz)
+  const sub = !span ? 'Chưa có lịch' : span.kind === 'window' ? `đến ${formatTimeIn(span.end, tz)}${tag(span.end)}` : span.kind === 'open-start' ? 'mở từ' : 'hạn đóng'
   const info = stateInfo(item.calendarState)
   return (
     <button type="button" className="cal-row" data-tone={info.tone} aria-current={selected} aria-label={summary(item, viewerTz)} onClick={() => onSelect(item)}>

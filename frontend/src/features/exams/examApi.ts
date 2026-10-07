@@ -16,7 +16,7 @@ export interface Page<T> { content: T[]; totalElements: number; totalPages: numb
 export interface ExamInput {
   title: string; description?: string; type: 'PRACTICE' | 'EXAM'; durationMinutes: number; passingScore: number | null
   shuffleQuestions: boolean; shuffleOptions: boolean
-  startTime?: string; endTime?: string; questions: QuestionPoints[]
+  startTime?: string | null; endTime?: string | null; questions: QuestionPoints[]
 }
 export interface Policy { accessMode: AccessMode; maxParticipants: number; maxConcurrentSessions: number; attemptLimit: number; joinCode?: string }
 export interface SafeOption { id: string; content: string; displayOrder: number }

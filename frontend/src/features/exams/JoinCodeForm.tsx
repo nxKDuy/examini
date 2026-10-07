@@ -30,10 +30,12 @@ export default function JoinCodeForm({ compact }: { compact?: boolean }) {
     onError: e => { setPreview(null); setError(errorText(e)) },
   })
   const busy = join.isPending || look.isPending
+  // An authoritative preview that says canJoin=false locks Join with the backend's reason; the backend still checks again on Join.
+  const blocked = !!preview && !preview.canJoin
   const id = compact ? 'join-code-compact' : 'join-code'
   const w = preview ? windowText(preview, viewerTz) : null
 
-  function submit(e: FormEvent) { e.preventDefault(); if (!code.trim()) return; setError(''); join.mutate() }
+  function submit(e: FormEvent) { e.preventDefault(); if (!code.trim() || blocked) return; setError(''); join.mutate() }
   function onPreview() { if (!code.trim()) return; setError(''); setPreview(null); look.mutate() }
 
   return (
@@ -43,7 +45,7 @@ export default function JoinCodeForm({ compact }: { compact?: boolean }) {
         <input id={id} className="input" value={code} maxLength={50} autoComplete="off" spellCheck={false}
           onChange={e => { setCode(e.target.value); setPreview(null) }} aria-invalid={!!error} aria-describedby={error ? 'join-code-error' : undefined} style={{ flex: 1 }} />
         <button type="button" className="btn btn-secondary" disabled={busy || !code.trim()} onClick={onPreview}><Eye size={16} aria-hidden /> {look.isPending ? 'Đang xem…' : 'Xem trước'}</button>
-        <button type="submit" className="btn btn-primary" disabled={busy || !code.trim()}><KeyRound size={16} aria-hidden /> {join.isPending ? 'Đang kiểm tra…' : 'Tham gia'}</button>
+        <button type="submit" className="btn btn-primary" disabled={busy || !code.trim() || blocked} aria-describedby={blocked ? 'join-code-blocked' : undefined}><KeyRound size={16} aria-hidden /> {join.isPending ? 'Đang kiểm tra…' : 'Tham gia'}</button>
       </div>
       {error ? <span id="join-code-error" className="field-error" role="alert">{error}</span>
         : <span className="field-hint">Nhập mã giáo viên cung cấp. "Xem trước" chỉ hiện lịch và điều kiện, không tham gia hay giữ chỗ.</span>}
@@ -54,7 +56,7 @@ export default function JoinCodeForm({ compact }: { compact?: boolean }) {
             <span>{w.primary}{w.zone && <> · {w.zone}</>}</span>
             {w.mine && <span>{w.mine}</span>}
             <span>{preview.durationMinutes} phút · {ruleLabel(preview.deadlineRule)}</span>
-            {!preview.canJoin && <span>{reasonText(preview.reasonCode) ?? 'Chưa tham gia được lúc này.'}</span>}
+            {blocked && <span id="join-code-blocked"><strong>Chưa tham gia được:</strong> {reasonText(preview.reasonCode) ?? 'Chưa tham gia được lúc này.'}</span>}
           </div>
         </Notice>
       )}

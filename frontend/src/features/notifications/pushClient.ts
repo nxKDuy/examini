@@ -1,4 +1,5 @@
 import { revokePushSubscription } from '../../lib/api'
+import { notificationApi } from './notificationApi'
 
 const KEY = 'examini-push' // { [userId]: subscriptionId } for this browser only
 
@@ -28,18 +29,72 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
 
 async function dropBrowserSubscription() { try { await (await currentSubscription())?.unsubscribe() } catch { /* best effort */ } }
 
-/** Logout / account switch: delete this account's subscription server-side and drop it from the browser so the next account cannot receive it. */
-export async function pushLogoutCleanup(userId: string | undefined, token: string | null) {
+// Cleanups queue up; anything that creates or reconciles a subscription waits for them, so an old account's
+// cleanup finishing late can never unsubscribe a subscription the next account just made.
+let inFlight: Promise<void> = Promise.resolve()
+export const pushCleanupSettled = () => inFlight
+
+/**
+ * The account lost its session (logout, expiry, failed refresh, account switch). With the OLD identity and token captured at that
+ * moment: drop the browser subscription first (local and immediate), then delete the server subscription (best effort; an expired
+ * token just fails and the dead endpoint is revoked by the provider answer on the next send).
+ */
+export function pushLogoutCleanup(userId: string | undefined, token: string | null): Promise<void> {
   const id = getRecord(userId)
   if (userId) clearRecord(userId)
-  try { if (id && token) await revokePushSubscription(token, id) } catch { /* best effort */ }
-  await dropBrowserSubscription()
+  const run = (async () => {
+    await dropBrowserSubscription()
+    try { if (id && token) await revokePushSubscription(token, id) } catch { /* best effort */ }
+  })()
+  inFlight = inFlight.then(() => run)
+  return run
+}
+
+/** Nobody is signed in: any push subscription left on this browser is stale, so remove it and forget every local record. */
+export function pushSignedOutCleanup(): Promise<void> {
+  const had = Object.keys(readRecords()).length > 0
+  if (had) writeRecords({})
+  const run = dropBrowserSubscription()
+  inFlight = inFlight.then(() => run)
+  return run
 }
 
 /** After a login: a browser subscription that this account did not create is not ours; remove it locally. */
 export async function reconcilePush(userId: string) {
+  await pushCleanupSettled()
   const sub = await currentSubscription()
   const record = getRecord(userId)
   if (sub && !record) await dropBrowserSubscription()
   else if (!sub && record) clearRecord(userId)
+}
+
+export type EnableResult = 'enabled' | 'denied' | 'stale'
+
+/**
+ * Opt in to browser push for ONE account. Every step awaits something the user can outlive (permission prompt, service worker,
+ * subscribe, POST), so after each one we ask `isCurrent()` whether that same session is still the active one. If not, the
+ * subscription this call created is unsubscribed (the exact object it holds, never "whatever the browser has now"), nothing is
+ * recorded for the account that is signed in now, and a server record the POST may already have created is deleted with the OLD token.
+ * Must be called from a click: it requests notification permission.
+ */
+export async function enablePush(o: { userId: string; token: string | null; publicKey: string; isCurrent: () => boolean }): Promise<EnableResult> {
+  const permission = await Notification.requestPermission()
+  if (!o.isCurrent()) return 'stale'
+  if (permission !== 'granted') return 'denied'
+  await pushCleanupSettled() // an earlier account's cleanup must finish before this account subscribes
+  if (!o.isCurrent()) return 'stale'
+  const reg = await navigator.serviceWorker.register('/sw.js')
+  await navigator.serviceWorker.ready
+  if (!o.isCurrent()) return 'stale'
+  const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(o.publicKey) })
+  const undo = async (serverId?: string) => {
+    try { await sub.unsubscribe() } catch { /* best effort */ }
+    try { if (serverId && o.token) await revokePushSubscription(o.token, serverId) } catch { /* best effort */ }
+  }
+  if (!o.isCurrent()) { await undo(); return 'stale' } // subscribed after the session ended: do not even register it
+  let created: { id: string }
+  try { created = await notificationApi.subscribe(sub.toJSON()) } catch (e) { if (!o.isCurrent()) { await undo(); return 'stale' } throw e }
+  if (!o.isCurrent()) { await undo(created.id); return 'stale' } // the POST may have been processed: clean both sides
+  setRecord(o.userId, created.id)
+  return 'enabled'
 }

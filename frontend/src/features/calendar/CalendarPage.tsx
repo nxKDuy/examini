@@ -61,6 +61,12 @@ export default function CalendarPage() {
   }
   const go = (dir: -1 | 1) => update({ date: shiftAnchor(view, anchor, dir) }) // month steps stay on day 1
   const select = (item: { examId: string }) => setSelectedId(item.examId)
+  // Closing the panel puts focus back on the card that is currently selected (it may differ from the first opener).
+  const closePanel = useCallback(() => {
+    const card = document.querySelector<HTMLElement>('.cal-row[aria-current="true"], .cal-chip[aria-current="true"], .cal-block[aria-current="true"]')
+    setSelectedId(null)
+    requestAnimationFrame(() => card?.isConnected && card.focus())
+  }, [])
   const openDay = (day: string) => { try { localStorage.setItem(KEY, 'day') } catch { /* optional */ } setSelectedId(null); update({ view: 'day', date: day }) }
 
   const days = grid.days
@@ -114,7 +120,7 @@ export default function CalendarPage() {
             : <TimeGridView days={days} items={items} tz={tz} nowMs={nowMs} selectedId={selectedId} onSelect={select} narrow={narrowGrid} onOpenDay={openDay} />}
           {data.isFetching && !data.isLoading && <p className="xsmall muted" role="status" style={{ marginTop: 6 }}>Đang cập nhật…</p>}
         </div>
-        {selected && <DetailPanel item={selected} nowMs={nowMs} viewerTz={tz} narrow={narrowPanel} onClose={() => setSelectedId(null)} />}
+        {selected && <DetailPanel item={selected} nowMs={nowMs} viewerTz={tz} narrow={narrowPanel} onClose={closePanel} />}
       </div>
 
       {scheduling && <ScheduleExamPicker onClose={() => setScheduling(false)} />}

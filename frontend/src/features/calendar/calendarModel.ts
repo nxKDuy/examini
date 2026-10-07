@@ -1,4 +1,4 @@
-import { addDays, dayStart, formatDateIn, formatDateTimeIn, formatTimeIn, instantToDay, offsetMinutes, weekdayIndex, zoneLabel } from '../../lib/zone'
+import { addDays, dayStart, formatDateIn, formatDateTimeIn, formatTimeIn, instantToDay, offsetMinutes, wallParts, weekdayIndex, zoneLabel } from '../../lib/zone'
 import type { CalendarItem, DeadlineRule } from './calendarApi'
 
 export type CalendarView = 'agenda' | 'month' | 'week' | 'day'
@@ -67,6 +67,11 @@ export function itemsOnDay(items: CalendarItem[], day: string, tz: string) {
 export const byStart = (a: CalendarItem, b: CalendarItem) =>
   (itemSpan(a)?.start ?? Infinity) - (itemSpan(b)?.start ?? Infinity) || a.examTitle.localeCompare(b.examTitle, 'vi')
 
+/** States after which an Exam without endAt no longer "runs". Used to classify, never to grant anything. */
+const TERMINAL = new Set(['CLOSED', 'EXAM_CLOSED', 'COMPLETED', 'SUBMITTED', 'AUTO_SUBMITTED', 'CANCELLED', 'MISSED', 'AFTER_END_AT'])
+/** Start-only and not finished: it has no real end, so the 1-hour display block must not make it look ended. */
+export const isOpenEnded = (item: Pick<CalendarItem, 'startAt' | 'endAt' | 'calendarState'>) => !!item.startAt && !item.endAt && !TERMINAL.has(item.calendarState)
+
 export type AgendaKey = 'today' | 'upcoming' | 'later' | 'unscheduled' | 'past'
 export const AGENDA_LABEL: Record<AgendaKey, string> = { today: 'Hôm nay', upcoming: 'Sắp tới (7 ngày)', later: 'Sau đó', unscheduled: 'Chưa có lịch', past: 'Đã qua' }
 export const AGENDA_ORDER: AgendaKey[] = ['today', 'upcoming', 'later', 'unscheduled', 'past']
@@ -78,7 +83,7 @@ export function agendaGroups(items: CalendarItem[], nowMs: number, tz: string): 
   for (const item of items) {
     const span = itemSpan(item)
     if (!span) buckets.unscheduled.push(item)
-    else if (span.end <= todayStart) buckets.past.push(item)
+    else if ((isOpenEnded(item) ? Infinity : span.end) <= todayStart) buckets.past.push(item)
     else if (span.start < tomorrow) buckets.today.push(item)
     else if (span.start < weekEnd) buckets.upcoming.push(item)
     else buckets.later.push(item)
@@ -93,15 +98,20 @@ export function agendaGroups(items: CalendarItem[], nowMs: number, tz: string): 
 
 export interface Block { item: CalendarItem; top: number; height: number; col: number; cols: number; cluster: number; clippedStart: boolean; clippedEnd: boolean }
 
-/** Day segments of the items as percentages of the day, with overlapping blocks in side-by-side columns. */
+/**
+ * Day segments as percentages of the 24-row wall-clock axis (00:00..24:00 in the viewer zone), so a 10:00 Exam is
+ * on the 10:00 row on 23h and 25h days too. Overlapping blocks share columns. Display only.
+ */
 export function layoutDay(items: CalendarItem[], day: string, tz: string, minPercent = 3): Block[] {
-  const from = dayStart(day, tz), to = dayStart(addDays(day, 1), tz), total = to - from
+  const from = dayStart(day, tz), to = dayStart(addDays(day, 1), tz)
+  const wall = (ms: number) => { const w = wallParts(ms, tz); return w.h * 60 + w.mi + w.s / 60 }
   const segs = items.flatMap(item => {
     const span = itemSpan(item)
     if (!span || span.start >= to || span.end <= from) return []
-    const s = Math.max(span.start, from), e = Math.min(span.end, to)
-    const top = ((s - from) / total) * 100
-    return [{ item, s, e, top, height: Math.max(minPercent, ((e - s) / total) * 100), clippedStart: span.start < from, clippedEnd: span.end > to }]
+    const s = span.start <= from ? 0 : wall(span.start)
+    let e = span.end >= to ? 1440 : wall(span.end)
+    if (e <= s) e = Math.min(1440, s + 1) // DST overlap/gap can fold the end onto the start on the wall clock
+    return [{ item, s, e, top: (s / 1440) * 100, height: Math.max(minPercent, ((e - s) / 1440) * 100), clippedStart: span.start < from, clippedEnd: span.end > to }]
   }).sort((a, b) => a.s - b.s || b.e - a.e)
 
   const blocks: Block[] = []
@@ -122,6 +132,23 @@ export function layoutDay(items: CalendarItem[], day: string, tz: string, minPer
   }
   if (cluster.length) flush()
   return blocks
+}
+
+/** Position of the "now" line on the wall-clock axis, or null when `day` is not today in `tz`. */
+export function nowTop(nowMs: number, day: string, tz: string): number | null {
+  if (instantToDay(nowMs, tz) !== day) return null
+  const w = wallParts(nowMs, tz)
+  return ((w.h * 60 + w.mi + w.s / 60) / 1440) * 100
+}
+
+/** Instants (server-corrected clock) at which the backend's answer may change: a window opens/closes or an attempt expires. */
+export function nextBoundary(items: Pick<CalendarItem, 'startAt' | 'endAt' | 'effectiveExpiresAt'>[], nowMs: number): number | null {
+  let next = Infinity
+  for (const i of items) for (const iso of [i.startAt, i.endAt, i.effectiveExpiresAt]) {
+    const t = toMs(iso)
+    if (t !== null && t > nowMs && t < next) next = t
+  }
+  return Number.isFinite(next) ? next : null
 }
 
 /** A cluster too crowded for `maxCols` columns: the first maxCols-1 columns stay, the rest collapse into one "+N" block. */
@@ -220,23 +247,42 @@ export function countdownLine(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'ef
   return null
 }
 
-/** Window text in the Exam's own zone, plus a "your time" line when the viewer's clock differs. */
+/** Short window label for a compact block, in the Exam's zone. Each end carries its offset when a DST change separates them. */
+export function blockRangeLabel(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>): string {
+  const span = itemSpan(item), tz = item.timezone
+  if (!span) return ''
+  if (span.kind === 'open-start') return `từ ${formatTimeIn(span.start, tz)} ${zoneLabel(span.start, tz)}`
+  if (span.kind === 'deadline') return `đóng ${formatTimeIn(span.end, tz)} ${zoneLabel(span.end, tz)}`
+  if (offsetMinutes(span.start, tz) !== offsetMinutes(span.end, tz)) return `${formatTimeIn(span.start, tz)} ${zoneLabel(span.start, tz)}–${formatTimeIn(span.end, tz)} ${zoneLabel(span.end, tz)}`
+  return `${formatTimeIn(span.start, tz)}–${formatTimeIn(span.end, tz)} ${zoneLabel(span.start, tz)}`
+}
+
+/**
+ * Window text in the Exam's own zone, plus a "your time" line when the viewer's clock differs. When the two ends sit
+ * on different UTC offsets (a DST change inside the window) each end carries its own offset, so 01:30 and 01:30 are told apart.
+ */
 export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>, viewerTz: string): { primary: string; zone: string; mine?: string; mineText?: string; mineZone?: string } {
   const start = toMs(item.startAt), end = toMs(item.endAt), tz = item.timezone
   const ref = start ?? end
   if (ref === null) return { primary: 'Chưa đặt lịch', zone: '' }
-  const zone = `${zoneLabel(ref, tz)} · ${tz}`
+  const split = (zoneId: string) => start !== null && end !== null && offsetMinutes(start, zoneId) !== offsetMinutes(end, zoneId)
+  const tag = (ms: number, zoneId: string, on: boolean) => (on ? ` ${zoneLabel(ms, zoneId)}` : '')
   const render = (zoneId: string) => {
     if (start !== null && end !== null) {
+      const od = split(zoneId)
       const sameDay = instantToDay(start, zoneId) === instantToDay(end, zoneId)
-      return sameDay ? `${formatDateIn(start, zoneId)}, ${formatTimeIn(start, zoneId)}–${formatTimeIn(end, zoneId)}` : `${formatDateTimeIn(start, zoneId)} → ${formatDateTimeIn(end, zoneId)}`
+      return sameDay
+        ? `${formatDateIn(start, zoneId)}, ${formatTimeIn(start, zoneId)}${tag(start, zoneId, od)}–${formatTimeIn(end, zoneId)}${tag(end, zoneId, od)}`
+        : `${formatDateTimeIn(start, zoneId)}${tag(start, zoneId, od)} → ${formatDateTimeIn(end, zoneId)}${tag(end, zoneId, od)}`
     }
     if (start !== null) return `Từ ${formatDateTimeIn(start, zoneId)}`
     return `Đến ${formatDateTimeIn(end as number, zoneId)}`
   }
+  const label = zoneLabel(ref, tz)
+  const zone = split(tz) ? `${zoneLabel(start as number, tz)} → ${zoneLabel(end as number, tz)} · ${tz} (đổi giờ trong khoảng này)` : label === tz ? tz : `${label} · ${tz}`
   const different = viewerTz !== tz && (offsetMinutes(ref, viewerTz) !== offsetMinutes(ref, tz) || (end !== null && offsetMinutes(end, viewerTz) !== offsetMinutes(end, tz)))
   if (!different) return { primary: render(tz), zone }
-  const mineZone = zoneLabel(ref, viewerTz), mineText = render(viewerTz)
+  const mineZone = split(viewerTz) ? `${zoneLabel(start as number, viewerTz)} → ${zoneLabel(end as number, viewerTz)}` : zoneLabel(ref, viewerTz), mineText = render(viewerTz)
   return { primary: render(tz), zone, mine: `Giờ của bạn (${mineZone}): ${mineText}`, mineText, mineZone }
 }
 
