@@ -204,3 +204,35 @@ test('a stale enable that finds an existing subscription never unsubscribes it',
   assert.equal(await pa, 'stale')
   assert.equal(owned.unsubscribed, false) // A did not create it, so A's undo leaves it alone
 })
+
+test('reconcile for A, delayed in the subscription lookup, does not remove the subscription B made meanwhile', async () => {
+  const a = begin('user-a', 'tok-a')
+  current = makeSub('B-OWNED'); push.setRecord('user-b', 'sub-2') // B's endpoint and record exist by the time A's lookup returns
+  gates.lookup = deferred()
+  const pr = push.reconcilePush('user-a', a.isCurrent)
+  await new Promise(r => setTimeout(r, 5)) // A's reconcile is inside getSubscription()
+  const owned = current
+  signIn('user-b', 'tok-b')
+  gates.lookup.resolve()
+  await pr
+  assert.equal(owned.unsubscribed, false); assert.equal(push.getRecord('user-b'), 'sub-2')
+})
+
+test('reconcile for the same account waits for a pending enable (POST in flight, no record yet) and keeps its subscription', async () => {
+  const a = begin('user-a', 'tok-a')
+  gates.post = deferred()
+  const pe = enablePush(a)
+  await new Promise(r => setTimeout(r, 20)) // subscribed; POST in flight; no record yet
+  const pr = push.reconcilePush('user-a', a.isCurrent)
+  await new Promise(r => setTimeout(r, 5))
+  assert.equal(current.unsubscribed, false)
+  gates.post.resolve()
+  assert.equal(await pe, 'enabled'); await pr
+  assert.equal(current.unsubscribed, false); assert.equal(push.getRecord('user-a'), 'server-sub-9')
+})
+
+test('reconcile still removes a leftover subscription that the signed-in account did not create', async () => {
+  const a = begin('user-a', 'tok-a'); const left = makeSub('LEFTOVER'); current = left
+  await push.reconcilePush('user-a', a.isCurrent)
+  assert.equal(left.unsubscribed, true)
+})

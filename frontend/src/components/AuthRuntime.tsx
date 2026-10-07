@@ -18,7 +18,12 @@ export default function AuthRuntime({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const userId = useAuthStore(s => s.user?.id)
   // A browser push subscription that this account did not create must not keep delivering after an account switch.
-  useEffect(() => { if (userId) void reconcilePush(userId) }, [userId])
+  useEffect(() => {
+    if (!userId) return
+    const version = useAuthStore.getState().sessionVersion
+    const isCurrent = () => { const c = useAuthStore.getState(); return c.sessionVersion === version && c.user?.id === userId }
+    void reconcilePush(userId, isCurrent)
+  }, [userId])
   // Any end of session (logout, expiry, failed refresh, account switch) drops this machine's push subscription for the old account.
   useEffect(() => watchPushCleanup(), [])
   useEffect(() => {

@@ -59,13 +59,30 @@ export function pushSignedOutCleanup(): Promise<void> {
   return run
 }
 
-/** After a login: a browser subscription that this account did not create is not ours; remove it locally. */
-export async function reconcilePush(userId: string) {
-  await pushCleanupSettled()
-  const sub = await currentSubscription()
-  const record = getRecord(userId)
-  if (sub && !record) await dropBrowserSubscription()
-  else if (!sub && record) clearRecord(userId)
+// Enables and reconciles share one queue (the browser has one push subscription per registration), so a reconcile never looks
+// at the subscription while an enable for the same account is still waiting on its POST and has not recorded it yet.
+let enableQueue: Promise<void> = Promise.resolve()
+const inQueue = <T,>(work: () => Promise<T>): Promise<T> => {
+  const turn = enableQueue.then(work)
+  enableQueue = turn.then(() => undefined, () => undefined)
+  return turn
+}
+
+/**
+ * After a login: a browser subscription that this account did not create is not ours; remove it locally.
+ * `isCurrent()` says whether the session that asked is still the active one; if not, this does nothing, so a slow reconcile for
+ * account A can never remove the subscription account B has since made. Only the subscription object it read is unsubscribed.
+ */
+export function reconcilePush(userId: string, isCurrent: () => boolean = () => true): Promise<void> {
+  return inQueue(async () => {
+    await pushCleanupSettled()
+    if (!isCurrent()) return
+    const sub = await currentSubscription()
+    if (!isCurrent()) return
+    const record = getRecord(userId)
+    if (sub && !record) { try { await sub.unsubscribe() } catch { /* best effort */ } }
+    else if (!sub && record) clearRecord(userId)
+  })
 }
 
 export type EnableResult = 'enabled' | 'denied' | 'stale'
@@ -83,12 +100,8 @@ export async function enablePush(o: { userId: string; token: string | null; publ
   if (permission !== 'granted') return 'denied'
   // The browser has ONE push subscription per registration, so enables never overlap: a later account waits until an earlier
   // (possibly stale) enable has finished and undone its own work, otherwise that undo could unsubscribe the later account's endpoint.
-  const turn = enableQueue.then(() => subscribeAndRegister(o))
-  enableQueue = turn.then(() => undefined, () => undefined)
-  return turn
+  return inQueue(() => subscribeAndRegister(o))
 }
-
-let enableQueue: Promise<void> = Promise.resolve()
 
 async function subscribeAndRegister(o: { userId: string; token: string | null; publicKey: string; isCurrent: () => boolean }): Promise<EnableResult> {
   await pushCleanupSettled() // an earlier account's cleanup must finish before this account subscribes
