@@ -28,7 +28,8 @@ export default function DetailPanel({ item, nowMs, viewerTz, narrow, onClose }: 
   const teacher = isTeacherItem(item), manage = isManager(item)
   const w = windowText(item, viewerTz)
   const countdown = countdownLine(item, nowMs)
-  const reason = !item.canStart && !item.canResume ? reasonText(item.reasonCode) : null
+  // Start/Join reasons describe the Student's own eligibility; managers and proctors do not take the Exam.
+  const reason = !teacher && !item.canStart && !item.canResume ? reasonText(item.reasonCode) : null
 
   // Bottom sheet (narrow): a real modal - Tab stays inside, background scroll is locked, Escape closes (only when no dialog is above),
   // and focus returns to the opener. Side panel (wide): not modal, but it still takes focus on open, closes on Escape and gives focus back.
