@@ -60,7 +60,7 @@ class SessionCoreTest {
         try{var a=pool.submit(()->{gate.await();try{return service.startExam(exam,user).sessionId();}catch(Exception e){return null;}});var b=pool.submit(()->{gate.await();try{return service.startExam(exam,UUID.randomUUID()).sessionId();}catch(Exception e){return null;}});gate.countDown();UUID x=a.get(),y=b.get();assertEquals(1,(x!=null?1:0)+(y!=null?1:0));assertEquals(1,sessions.countByExamIdAndStatus(exam,ExamSession.Status.IN_PROGRESS));}
         finally{pool.shutdownNow();}
         UUID multi=UUID.randomUUID();when(exams.authorize(eq(multi),any(),anyString())).thenReturn(new ExamClient.ExamDto(multi,"Multiple",10,1,3,null,false,false));var fixture=exams.safe(exam,"test-internal");when(exams.safe(eq(multi),anyString())).thenReturn(fixture);
-        var first=service.startExam(multi,user);service.submitExam(first.sessionId(),user);var second=service.startExam(multi,user);assertNotEquals(first.sessionId(),second.sessionId());assertEquals(2,second.attemptNumber());
+        var first=service.startExam(multi,user);service.submitExam(first.sessionId(),user);var second=service.startExam(multi,user);assertNotEquals(first.sessionId(),second.sessionId());assertEquals(2,second.attemptNumber());assertEquals(2,service.getSessionDetails(second.sessionId()).attemptNumber());
     }
     @Test void deadlinesStayFrozenAndNewAttemptUsesNewScheduleRevision() {
         UUID multi=UUID.randomUUID();

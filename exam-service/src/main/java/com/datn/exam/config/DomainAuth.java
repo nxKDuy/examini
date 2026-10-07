@@ -17,6 +17,7 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
     @Value("${jwt.secret:}") private String jwtSecret="";
     @Value("${exam.internal-token:}") private String internalToken="";
     @Value("${notification.internal-token:}") private String notificationToken="";
+    @Value("${analytics.permission-token:}") private String analyticsPermissionToken="";
     @Override public void addInterceptors(InterceptorRegistry registry) {registry.addInterceptor(this).excludePathPatterns("/actuator/health","/error");}
     @Override public boolean preHandle(HttpServletRequest req,HttpServletResponse res,Object handler) {
         String bearer=req.getHeader("Authorization"),service=req.getHeader("X-Service-Token");
@@ -35,7 +36,9 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Notification service authentication required");
             return true;
         }
-        boolean internal=mapped.matches("/exams/[^/]+/internal/(start|safe|grading|permission)|/sessions/[^/]+/internal/(answers|owner)|/sessions/exam/[^/]+/internal/eligibility");
+        boolean analyticsPermission="GET".equals(req.getMethod()) && mapped.equals("/exams/{id}/internal/permission") && "true".equals(req.getParameter("manage"));
+        if(analyticsPermission && bearer==null && service!=null && !analyticsPermissionToken.isBlank() && MessageDigest.isEqual(analyticsPermissionToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))return true;
+        boolean internal=mapped.matches("/exams/[^/]+/internal/(start|safe|grading|permission|result-policy)|/sessions/[^/]+/internal/(answers|owner)|/sessions/exam/[^/]+/internal/eligibility");
         if(internal) {
             if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Internal service authentication required");

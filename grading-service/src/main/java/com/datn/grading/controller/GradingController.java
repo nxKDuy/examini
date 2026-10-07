@@ -10,6 +10,9 @@ public class GradingController {
     private final GradingService service;
     @GetMapping("/submissions") public Page<SubmissionDto.SummaryResponse> list(@RequestParam UUID examId,@RequestParam(required=false)String status,Pageable page,@RequestAttribute UUID actor){return service.getSubmissions(examId,status,page,actor);}
     @GetMapping("/submissions/{id}") public SubmissionDto.DetailResponse detail(@PathVariable UUID id,@RequestAttribute UUID actor){return service.detail(id,actor);}
-    @PutMapping("/submissions/{id}/grade") public SubmissionDto.SummaryResponse grade(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody SubmissionDto.ManualGradeRequest req){return service.grade(id,req,actor);}
-    @GetMapping("/grades/session/{id}") public GradingService.StudentResult result(@PathVariable UUID id,@RequestAttribute UUID actor){return service.student(id,actor);}
+    @PutMapping("/submissions/{id}/draft") public SubmissionDto.DetailResponse draft(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody SubmissionDto.SaveDraftRequest req){return service.saveDraft(id,req,actor);}
+    @PostMapping("/submissions/{id}/finalize") public SubmissionDto.DetailResponse finalizeResult(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody SubmissionDto.RevisionRequest req){return service.finalizeResult(id,req.expectedRevision(),actor);}
+    @PostMapping("/submissions/{id}/release") public SubmissionDto.DetailResponse release(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody SubmissionDto.RevisionRequest req){return service.release(id,req.expectedRevision(),actor);}
+    @PostMapping("/submissions/{id}/regrade") public SubmissionDto.DetailResponse regrade(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody SubmissionDto.RegradeRequest req){return service.beginRegrade(id,req,actor);}
+    @GetMapping("/grades/session/{id}") public SubmissionDto.StudentResult result(@PathVariable UUID id,@RequestAttribute UUID actor){return service.student(id,actor);}
 }

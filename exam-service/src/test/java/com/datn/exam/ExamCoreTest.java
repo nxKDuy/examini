@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/exam_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","notification.internal-token=test-notification","question-bank.internal-token=test-qb"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/exam_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","notification.internal-token=test-notification","analytics.permission-token=test-analytics-permission","question-bank.internal-token=test-qb"})
 @AutoConfigureMockMvc
 class ExamCoreTest {
     @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired ExamCore core;@Autowired ExamRepository exams;@Autowired ExamAuditRepository audits;
@@ -68,6 +68,28 @@ class ExamCoreTest {
         core.transition(id,owner,Exam.Status.PUBLISHED);
         var types=outbox.findAll().stream().filter(event->event.getPayload().contains(id.toString())).map(com.datn.exam.entity.ExamOutboxEvent::getEventType).toList();
         assertEquals(List.of("exam.lifecycle.changed"),types);
+    }
+
+    @Test void resultPolicyDefaultsAndOnlyOwnerManagerCanUpdate()throws Exception {
+        UUID id=create();
+        mvc.perform(get("/exams/"+id+"/result-policy").header("Authorization",token(owner,"TEACHER")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.autoRelease").value(true)).andExpect(jsonPath("$.showScore").value(true))
+            .andExpect(jsonPath("$.showQuestionBreakdown").value(true)).andExpect(jsonPath("$.showFeedback").value(true))
+            .andExpect(jsonPath("$.showCorrectAnswers").value(false)).andExpect(jsonPath("$.showExplanation").value(false));
+        core.member(id,owner,manager,Exam.MemberRole.MANAGER,false);core.accept(id,manager,"TEACHER");
+        core.member(id,owner,proctor,Exam.MemberRole.PROCTOR,false);core.accept(id,proctor,"TEACHER");
+        String policy="{\"autoRelease\":false,\"showScore\":false,\"showQuestionBreakdown\":true,\"showFeedback\":false,\"showCorrectAnswers\":true,\"showExplanation\":false}";
+        mvc.perform(put("/exams/"+id+"/result-policy").header("Authorization",token(manager,"TEACHER")).contentType("application/json").content(policy)).andExpect(status().isOk()).andExpect(jsonPath("$.autoRelease").value(false));
+        mvc.perform(put("/exams/"+id+"/result-policy").header("Authorization",token(proctor,"TEACHER")).contentType("application/json").content(policy)).andExpect(status().isForbidden());
+        mvc.perform(get("/exams/"+id+"/internal/result-policy").header("X-Service-Token","test-internal"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.examStatus").value("DRAFT")).andExpect(jsonPath("$.policy.showCorrectAnswers").value(true));
+    }
+
+    @Test void analyticsPermissionTokenIsRestrictedToManagePermission()throws Exception {
+        UUID id=create();
+        mvc.perform(get("/exams/"+id+"/internal/permission").param("actor",owner.toString()).param("manage","true").header("X-Service-Token","test-analytics-permission")).andExpect(status().isOk()).andExpect(content().string("OWNER"));
+        mvc.perform(get("/exams/"+id+"/internal/permission").param("actor",owner.toString()).param("manage","false").header("X-Service-Token","test-analytics-permission")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-analytics-permission")).andExpect(status().isUnauthorized());
     }
 
     @Test void scheduleUpdateUsesOffsetAndRevisionAndPublicPreviewWaitsForStartAt()throws Exception {

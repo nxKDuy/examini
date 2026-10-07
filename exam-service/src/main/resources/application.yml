@@ -42,6 +42,8 @@ spring:
 
 notification:
   internal-token: ${EXAM_NOTIFICATION_TOKEN:}
+analytics:
+  permission-token: ${ANALYTICS_EXAM_PERMISSION_TOKEN:}
 
 eureka:
   client:

@@ -57,6 +57,13 @@ public class Exam {
     @Column(name="recipient_revision",nullable=false) @Builder.Default private long recipientRevision=0;
     @Column(name="first_student_started_at") private Instant firstStudentStartedAt;
 
+    @Column(name="result_auto_release",nullable=false) @Builder.Default private boolean resultAutoRelease=true;
+    @Column(name="result_show_score",nullable=false) @Builder.Default private boolean resultShowScore=true;
+    @Column(name="result_show_question_breakdown",nullable=false) @Builder.Default private boolean resultShowQuestionBreakdown=true;
+    @Column(name="result_show_feedback",nullable=false) @Builder.Default private boolean resultShowFeedback=true;
+    @Column(name="result_show_correct_answers",nullable=false) @Builder.Default private boolean resultShowCorrectAnswers=false;
+    @Column(name="result_show_explanation",nullable=false) @Builder.Default private boolean resultShowExplanation=false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Status status;

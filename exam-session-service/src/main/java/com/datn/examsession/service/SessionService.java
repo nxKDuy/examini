@@ -85,7 +85,7 @@ public class SessionService {
     }
     public void submitExam(UUID id,UUID user){var s=owned(id,user);expire(s);if(s.getStatus()==ExamSession.Status.IN_PROGRESS)finish(s,ExamSession.Status.SUBMITTED);}
     public void autoSubmitExam(UUID id){expire(load(id));}
-    public SessionDetailDto getSessionDetails(UUID id){var s=load(id);expire(s);return new SessionDetailDto(s.getId(),s.getExamId(),s.getUserId(),s.getStatus().name(),s.getExamTitle(),s.getStartTime(),s.getEndTime(),answers.findBySessionId(id).stream().map(a->new SessionDetailDto.AnswerDto(a.getQuestionId(),a.getAnswerContent())).toList());}
+    public SessionDetailDto getSessionDetails(UUID id){var s=load(id);expire(s);return new SessionDetailDto(s.getId(),s.getExamId(),s.getUserId(),s.getStatus().name(),s.getExamTitle(),s.getAttemptNumber(),s.getStartTime(),s.getEndTime(),answers.findBySessionId(id).stream().map(a->new SessionDetailDto.AnswerDto(a.getQuestionId(),a.getAnswerContent())).toList());}
     public boolean resumable(UUID exam,UUID user){return sessions.findActiveSession(exam,user).filter(s->s.getExpiresAt().isAfter(Instant.now())).isPresent();}
     public long attempts(UUID exam,UUID user){return sessions.countByExamIdAndUserId(exam,user);}
     public boolean hasStarted(UUID exam){return sessions.existsByExamId(exam);}
@@ -127,5 +127,5 @@ public class SessionService {
     public record RecipientProgress(UUID userId,boolean started,boolean submitted){}
     public record AdmissionStatus(UUID examId,UUID admissionId,UUID sessionId,boolean started){}
     public record Monitor(UUID sessionId,UUID userId,String status,int attemptNumber,LocalDateTime startedAt,Instant expiresAt){}
-    public record SessionDetailDto(UUID sessionId,UUID examId,UUID userId,String status,String examTitle,LocalDateTime startedAt,LocalDateTime submittedAt,List<AnswerDto> answers){public record AnswerDto(UUID questionId,String answerContent){}}
+    public record SessionDetailDto(UUID sessionId,UUID examId,UUID userId,String status,String examTitle,int attemptNumber,LocalDateTime startedAt,LocalDateTime submittedAt,List<AnswerDto> answers){public record AnswerDto(UUID questionId,String answerContent){}}
 }
