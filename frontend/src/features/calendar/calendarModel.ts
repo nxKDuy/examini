@@ -1,0 +1,226 @@
+import { addDays, dayStart, formatDateIn, formatDateTimeIn, formatTimeIn, instantToDay, offsetMinutes, weekdayIndex, zoneLabel } from '../../lib/zone'
+import type { CalendarItem, DeadlineRule } from './calendarApi'
+
+export type CalendarView = 'agenda' | 'month' | 'week' | 'day'
+export const VIEW_LABEL: Record<CalendarView, string> = { agenda: 'Agenda', month: 'Tháng', week: 'Tuần', day: 'Ngày' }
+const HOUR = 3600e3, MINUTE = 60e3
+
+export const toMs = (iso: string | null | undefined) => (iso ? Date.parse(iso) : null)
+
+/** Where an Exam sits on a time grid. Display only; availability always comes from the backend. */
+export interface Span { start: number; end: number; kind: 'window' | 'open-start' | 'deadline' }
+export function itemSpan(item: Pick<CalendarItem, 'startAt' | 'endAt'>): Span | null {
+  const start = toMs(item.startAt), end = toMs(item.endAt)
+  if (start !== null && end !== null && end > start) return { start, end, kind: 'window' }
+  if (start !== null) return { start, end: start + HOUR, kind: 'open-start' }
+  if (end !== null) return { start: end - 30 * MINUTE, end, kind: 'deadline' }
+  return null
+}
+
+// ---- ranges ---------------------------------------------------------------------------
+
+export function visibleDays(view: CalendarView, anchor: string): string[] {
+  if (view === 'day') return [anchor]
+  if (view === 'week') { const first = addDays(anchor, -weekdayIndex(anchor)); return Array.from({ length: 7 }, (_, i) => addDays(first, i)) }
+  if (view === 'month') {
+    const monthStart = `${anchor.slice(0, 7)}-01`
+    const first = addDays(monthStart, -weekdayIndex(monthStart))
+    const next = addDays(monthStart, 32).slice(0, 7) + '-01'
+    const weeks = Math.ceil(((Date.parse(next) - Date.parse(first)) / 864e5) / 7)
+    return Array.from({ length: weeks * 7 }, (_, i) => addDays(first, i))
+  }
+  return [anchor]
+}
+
+export function rangeOf(days: string[], tz: string) {
+  return { from: new Date(dayStart(days[0], tz)).toISOString(), to: new Date(dayStart(addDays(days[days.length - 1], 1), tz)).toISOString() }
+}
+
+export const AGENDA_BACK_DAYS = 30
+export const AGENDA_AHEAD_DAYS = 330 // together < 366 days, the backend maximum
+
+export function agendaRange(today: string, tz: string) {
+  return rangeOf([addDays(today, -AGENDA_BACK_DAYS), addDays(today, AGENDA_AHEAD_DAYS)], tz)
+}
+
+export function shiftAnchor(view: CalendarView, anchor: string, dir: -1 | 1): string {
+  if (view === 'month') {
+    const [y, m] = anchor.split('-').map(Number)
+    const t = new Date(Date.UTC(y, m - 1 + dir, 1))
+    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-01`
+  }
+  return addDays(anchor, dir * (view === 'week' ? 7 : 1))
+}
+
+// ---- grouping -------------------------------------------------------------------------
+
+export function overlapsDay(span: Span | null, day: string, tz: string) {
+  if (!span) return false
+  const from = dayStart(day, tz), to = dayStart(addDays(day, 1), tz)
+  return span.start < to && span.end > from
+}
+
+export function itemsOnDay(items: CalendarItem[], day: string, tz: string) {
+  return items.filter(i => overlapsDay(itemSpan(i), day, tz)).sort(byStart)
+}
+
+export const byStart = (a: CalendarItem, b: CalendarItem) =>
+  (itemSpan(a)?.start ?? Infinity) - (itemSpan(b)?.start ?? Infinity) || a.examTitle.localeCompare(b.examTitle, 'vi')
+
+export type AgendaKey = 'today' | 'upcoming' | 'later' | 'unscheduled' | 'past'
+export const AGENDA_LABEL: Record<AgendaKey, string> = { today: 'Hôm nay', upcoming: 'Sắp tới (7 ngày)', later: 'Sau đó', unscheduled: 'Chưa có lịch', past: 'Đã qua' }
+export const AGENDA_ORDER: AgendaKey[] = ['today', 'upcoming', 'later', 'unscheduled', 'past']
+
+export function agendaGroups(items: CalendarItem[], nowMs: number, tz: string): { key: AgendaKey; label: string; items: CalendarItem[] }[] {
+  const today = instantToDay(nowMs, tz)
+  const todayStart = dayStart(today, tz), tomorrow = dayStart(addDays(today, 1), tz), weekEnd = dayStart(addDays(today, 8), tz)
+  const buckets: Record<AgendaKey, CalendarItem[]> = { today: [], upcoming: [], later: [], unscheduled: [], past: [] }
+  for (const item of items) {
+    const span = itemSpan(item)
+    if (!span) buckets.unscheduled.push(item)
+    else if (span.end <= todayStart) buckets.past.push(item)
+    else if (span.start < tomorrow) buckets.today.push(item)
+    else if (span.start < weekEnd) buckets.upcoming.push(item)
+    else buckets.later.push(item)
+  }
+  buckets.past.sort((a, b) => byStart(b, a))
+  buckets.unscheduled.sort((a, b) => a.examTitle.localeCompare(b.examTitle, 'vi'))
+  for (const k of ['today', 'upcoming', 'later'] as const) buckets[k].sort(byStart)
+  return AGENDA_ORDER.map(key => ({ key, label: AGENDA_LABEL[key], items: buckets[key] }))
+}
+
+// ---- time grid layout -----------------------------------------------------------------
+
+export interface Block { item: CalendarItem; top: number; height: number; col: number; cols: number; clippedStart: boolean; clippedEnd: boolean }
+
+/** Day segments of the items as percentages of the day, with overlapping blocks in side-by-side columns. */
+export function layoutDay(items: CalendarItem[], day: string, tz: string, minPercent = 3): Block[] {
+  const from = dayStart(day, tz), to = dayStart(addDays(day, 1), tz), total = to - from
+  const segs = items.flatMap(item => {
+    const span = itemSpan(item)
+    if (!span || span.start >= to || span.end <= from) return []
+    const s = Math.max(span.start, from), e = Math.min(span.end, to)
+    const top = ((s - from) / total) * 100
+    return [{ item, s, e, top, height: Math.max(minPercent, ((e - s) / total) * 100), clippedStart: span.start < from, clippedEnd: span.end > to }]
+  }).sort((a, b) => a.s - b.s || b.e - a.e)
+
+  const blocks: Block[] = []
+  let cluster: typeof segs = [], clusterEnd = -Infinity
+  const flush = () => {
+    const colEnds: number[] = []
+    const placed = cluster.map(seg => {
+      let col = colEnds.findIndex(end => end <= seg.s)
+      if (col < 0) { col = colEnds.length; colEnds.push(seg.e) } else colEnds[col] = seg.e
+      return { seg, col }
+    })
+    for (const { seg, col } of placed) blocks.push({ item: seg.item, top: seg.top, height: seg.height, col, cols: colEnds.length, clippedStart: seg.clippedStart, clippedEnd: seg.clippedEnd })
+    cluster = []; clusterEnd = -Infinity
+  }
+  for (const seg of segs) {
+    if (cluster.length && seg.s >= clusterEnd) flush()
+    cluster.push(seg); clusterEnd = Math.max(clusterEnd, seg.e)
+  }
+  if (cluster.length) flush()
+  return blocks
+}
+
+// ---- state, rules, text ---------------------------------------------------------------
+
+export type StateTone = 'success' | 'neutral' | 'warning' | 'muted' | 'danger'
+export interface StateInfo { label: string; tone: StateTone; icon: 'play' | 'clock' | 'lock' | 'edit' | 'check' | 'alert' | 'send' | 'key' | 'ban' }
+
+const STATES: Record<string, StateInfo> = {
+  // Teacher lifecycle
+  DRAFT: { label: 'Bản nháp', tone: 'warning', icon: 'edit' },
+  PUBLISHED: { label: 'Đã xuất bản', tone: 'neutral', icon: 'lock' },
+  OPEN: { label: 'Đang mở', tone: 'success', icon: 'play' },
+  CLOSED: { label: 'Đã đóng', tone: 'muted', icon: 'lock' },
+  COMPLETED: { label: 'Đã kết thúc', tone: 'muted', icon: 'check' },
+  // Student calendarState
+  AVAILABLE: { label: 'Làm được ngay', tone: 'success', icon: 'play' },
+  IN_PROGRESS: { label: 'Đang làm', tone: 'success', icon: 'clock' },
+  SUBMITTED: { label: 'Đã nộp', tone: 'muted', icon: 'send' },
+  AUTO_SUBMITTED: { label: 'Tự động nộp', tone: 'muted', icon: 'send' },
+  CANCELLED: { label: 'Đã hủy', tone: 'muted', icon: 'ban' },
+  MISSED: { label: 'Đã lỡ', tone: 'danger', icon: 'alert' },
+  UPCOMING: { label: 'Sắp diễn ra', tone: 'neutral', icon: 'clock' },
+  NOT_OPEN: { label: 'Chưa mở', tone: 'neutral', icon: 'lock' },
+  JOIN_REQUIRED: { label: 'Cần tham gia', tone: 'neutral', icon: 'key' },
+  // reasonCode used as calendarState
+  EXAM_NOT_PUBLISHED: { label: 'Chưa xuất bản', tone: 'warning', icon: 'edit' },
+  EXAM_CLOSED: { label: 'Đã đóng', tone: 'muted', icon: 'lock' },
+  BEFORE_START_AT: { label: 'Chưa đến giờ', tone: 'neutral', icon: 'clock' },
+  AFTER_END_AT: { label: 'Hết giờ', tone: 'muted', icon: 'lock' },
+  EXAM_NOT_OPEN: { label: 'Chưa mở', tone: 'neutral', icon: 'lock' },
+  ATTEMPT_LIMIT: { label: 'Hết lượt', tone: 'muted', icon: 'ban' },
+  INSUFFICIENT_TIME: { label: 'Không đủ thời gian', tone: 'warning', icon: 'alert' },
+  CAPACITY_FULL: { label: 'Đã đủ chỗ', tone: 'warning', icon: 'alert' },
+  SNAPSHOT_UNAVAILABLE: { label: 'Tạm thời không khả dụng', tone: 'danger', icon: 'alert' },
+}
+export const stateInfo = (state: string | null | undefined): StateInfo =>
+  STATES[state ?? ''] ?? { label: state ?? 'Không rõ', tone: 'neutral', icon: 'clock' }
+
+export const REASON_TEXT: Record<string, string> = {
+  EXAM_NOT_PUBLISHED: 'Giáo viên chưa xuất bản kỳ thi.',
+  EXAM_CLOSED: 'Kỳ thi đã đóng, không nhận lượt làm bài mới.',
+  BEFORE_START_AT: 'Chưa đến giờ bắt đầu. Bạn có thể xem trước nhưng chưa tham gia hoặc bắt đầu được.',
+  AFTER_END_AT: 'Đã qua giờ kết thúc, không nhận lượt làm bài mới.',
+  EXAM_NOT_OPEN: 'Giáo viên chưa mở kỳ thi.',
+  JOIN_REQUIRED: 'Bạn cần tham gia kỳ thi trước khi bắt đầu.',
+  ATTEMPT_LIMIT: 'Bạn đã dùng hết số lượt làm bài.',
+  INSUFFICIENT_TIME: 'Thời gian còn lại không đủ cho một lượt làm bài đầy đủ theo quy định của kỳ thi này.',
+  CAPACITY_FULL: 'Kỳ thi đã đủ số người làm bài cùng lúc. Hãy thử lại sau ít phút.',
+  SNAPSHOT_UNAVAILABLE: 'Nội dung đề tạm thời không khả dụng. Hãy thử lại sau.',
+}
+export const reasonText = (code: string | null | undefined) => (code ? REASON_TEXT[code] ?? `Chưa thể bắt đầu (${code}).` : null)
+
+export const RULE_LABEL: Record<DeadlineRule, string> = { FULL_DURATION: 'Đủ thời lượng', CAPPED_AT_END: 'Nộp đúng giờ kết thúc', REQUIRE_FULL_WINDOW: 'Phải còn đủ thời lượng' }
+export const RULE_HELP: Record<DeadlineRule, string> = {
+  FULL_DURATION: 'Bắt đầu muộn vẫn được trong cửa sổ làm bài. Hạn nộp = lúc bắt đầu + thời lượng, kể cả khi vượt giờ kết thúc.',
+  CAPPED_AT_END: 'Bắt đầu muộn vẫn được trong cửa sổ làm bài. Hạn nộp là mốc sớm hơn giữa (lúc bắt đầu + thời lượng) và giờ kết thúc.',
+  REQUIRE_FULL_WINDOW: 'Không cho bắt đầu nếu thời gian còn lại ít hơn thời lượng. Hạn nộp = lúc bắt đầu + thời lượng.',
+}
+export const ruleLabel = (rule: string) => RULE_LABEL[rule as DeadlineRule] ?? rule
+
+export const RELATION_LABEL: Record<string, string> = {
+  OWNER: 'Chủ sở hữu', MANAGER: 'Quản lý', PROCTOR: 'Giám thị', ASSIGNED: 'Được giao', JOINED: 'Đã tham gia', FOLLOWER: 'Đang theo dõi',
+}
+export const relationLabel = (r: string) => RELATION_LABEL[r] ?? r
+
+export function describeCountdown(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
+  if (d >= 1) return `${d} ngày${h ? ` ${h} giờ` : ''}`
+  if (h >= 1) return `${h} giờ${m ? ` ${m} phút` : ''}`
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+/** One countdown line per Student item. Display only; the server decides what is allowed. */
+export function countdownLine(item: CalendarItem, nowMs: number): string | null {
+  const start = toMs(item.startAt), end = toMs(item.endAt), expires = toMs(item.effectiveExpiresAt)
+  if (item.calendarState === 'IN_PROGRESS' && expires !== null) return expires > nowMs ? `Còn ${describeCountdown(expires - nowMs)} để nộp` : 'Đang hết giờ'
+  if (['SUBMITTED', 'AUTO_SUBMITTED', 'CANCELLED', 'MISSED', 'CLOSED', 'EXAM_CLOSED', 'AFTER_END_AT'].includes(item.calendarState)) return null
+  if (start !== null && start > nowMs) return `Mở sau ${describeCountdown(start - nowMs)}`
+  if (end !== null && end > nowMs && (item.canStart || item.canResume || item.calendarState === 'AVAILABLE')) return `Đóng sau ${describeCountdown(end - nowMs)}`
+  return null
+}
+
+/** Window text in the Exam's own zone, plus a "your time" line when the viewer's clock differs. */
+export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>, viewerTz: string): { primary: string; zone: string; mine?: string } {
+  const start = toMs(item.startAt), end = toMs(item.endAt), tz = item.timezone
+  const ref = start ?? end
+  if (ref === null) return { primary: 'Chưa đặt lịch', zone: '' }
+  const zone = `${zoneLabel(ref, tz)} · ${tz}`
+  const render = (zoneId: string) => {
+    if (start !== null && end !== null) {
+      const sameDay = instantToDay(start, zoneId) === instantToDay(end, zoneId)
+      return sameDay ? `${formatDateIn(start, zoneId)}, ${formatTimeIn(start, zoneId)}–${formatTimeIn(end, zoneId)}` : `${formatDateTimeIn(start, zoneId)} → ${formatDateTimeIn(end, zoneId)}`
+    }
+    if (start !== null) return `Từ ${formatDateTimeIn(start, zoneId)}`
+    return `Đến ${formatDateTimeIn(end as number, zoneId)}`
+  }
+  const different = viewerTz !== tz && (offsetMinutes(ref, viewerTz) !== offsetMinutes(ref, tz) || (end !== null && offsetMinutes(end, viewerTz) !== offsetMinutes(end, tz)))
+  return { primary: render(tz), zone, mine: different ? `Giờ của bạn (${zoneLabel(ref, viewerTz)}): ${render(viewerTz)}` : undefined }
+}
+
+export const isManager = (item: Pick<CalendarItem, 'relation'>) => item.relation === 'OWNER' || item.relation === 'MANAGER'
