@@ -9,15 +9,15 @@ import { DEFAULT_POLICY, policyError } from './policy'
 import QuestionPicker from './QuestionPicker'
 import { EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader } from '../../components/ui'
 import { errorText } from '../../lib/errors'
-import { ACCESS_MODE_LABEL, DIFFICULTY_LABEL, EXAM_TYPE_LABEL, QUESTION_TYPE_LABEL, formatDateTime, formatScore, fromLocalInput, shortId, toLocalInput } from '../../lib/format'
+import { ACCESS_MODE_LABEL, DIFFICULTY_LABEL, EXAM_TYPE_LABEL, QUESTION_TYPE_LABEL, formatScore, shortId } from '../../lib/format'
 
 interface Info {
   title: string; description: string; type: 'PRACTICE' | 'EXAM'; durationMinutes: number; passingScore: string
-  start: string; end: string; shuffleQuestions: boolean; shuffleOptions: boolean
+  shuffleQuestions: boolean; shuffleOptions: boolean
 }
 interface Item { questionId: string; weight: number }
 const STEPS = ['Thông tin chung', 'Câu hỏi và điểm', 'Tham gia và giới hạn', 'Xem lại và lưu']
-const EMPTY_INFO: Info = { title: '', description: '', type: 'EXAM', durationMinutes: 45, passingScore: '', start: '', end: '', shuffleQuestions: false, shuffleOptions: false }
+const EMPTY_INFO: Info = { title: '', description: '', type: 'EXAM', durationMinutes: 45, passingScore: '', shuffleQuestions: false, shuffleOptions: false }
 
 export default function ExamEditorPage() {
   const { id } = useParams()
@@ -39,7 +39,7 @@ function Editor({ exam }: { exam?: Exam }) {
   const [step, setStep] = useState(0)
   const [info, setInfo] = useState<Info>(exam ? {
     title: exam.title, description: exam.description ?? '', type: exam.type, durationMinutes: exam.durationMinutes,
-    passingScore: exam.passingScore === null ? '' : String(exam.passingScore), start: toLocalInput(exam.startTime), end: toLocalInput(exam.endTime),
+    passingScore: exam.passingScore === null ? '' : String(exam.passingScore),
     shuffleQuestions: exam.shuffleQuestions, shuffleOptions: exam.shuffleOptions,
   } : EMPTY_INFO)
   const [items, setItems] = useState<Item[]>(exam ? exam.questions.map(q => ({ questionId: q.questionId, weight: q.weight })) : [])
@@ -64,7 +64,6 @@ function Editor({ exam }: { exam?: Exam }) {
     if (target >= 0) {
       if (!info.title.trim()) return 'Nhập tên đề thi.'
       if (!Number.isInteger(info.durationMinutes) || info.durationMinutes < 1) return 'Thời lượng phải là số phút nguyên từ 1 trở lên.'
-      if (info.start && info.end && fromLocalInput(info.start)! >= fromLocalInput(info.end)!) return 'Giờ bắt đầu phải trước giờ kết thúc.'
     }
     if (target >= 1) {
       if (items.length === 0) return 'Thêm ít nhất một câu hỏi đã duyệt.'
@@ -89,7 +88,8 @@ function Editor({ exam }: { exam?: Exam }) {
     const payload: ExamInput = {
       title: info.title.trim(), description: info.description.trim() || undefined, type: info.type, durationMinutes: info.durationMinutes,
       passingScore: passing, shuffleQuestions: info.shuffleQuestions, shuffleOptions: info.shuffleOptions,
-      startTime: fromLocalInput(info.start), endTime: fromLocalInput(info.end), questions: items,
+      // The schedule lives on the Lịch tab. Editing a draft passes the stored legacy values through untouched so it never rewrites them.
+      startTime: exam?.startTime ?? undefined, endTime: exam?.endTime ?? undefined, questions: items,
     }
     let saved: Exam
     try {
@@ -149,12 +149,7 @@ function Editor({ exam }: { exam?: Exam }) {
             <Field label="Thời lượng (phút)" htmlFor="exam-duration" required hint="Thời gian tính từ lúc thí sinh bắt đầu; máy chủ kiểm soát hết giờ.">
               <input id="exam-duration" type="number" min={1} step={1} className="input" value={info.durationMinutes || ''} onChange={e => setInfo({ ...info, durationMinutes: Math.floor(Number(e.target.value)) })} />
             </Field>
-            <Field label="Mở cho làm bài từ" htmlFor="exam-start" hint="Theo giờ máy của bạn. Để trống nếu không giới hạn.">
-              <input id="exam-start" type="datetime-local" className="input" value={info.start} onChange={e => setInfo({ ...info, start: e.target.value })} />
-            </Field>
-            <Field label="Không nhận lượt mới sau" htmlFor="exam-end" hint="Để trống nếu không giới hạn.">
-              <input id="exam-end" type="datetime-local" className="input" value={info.end} onChange={e => setInfo({ ...info, end: e.target.value })} />
-            </Field>
+            <div className="notice notice-info" style={{ gridColumn: '1 / -1' }}><span>Lịch thi (giờ bắt đầu và kết thúc theo múi giờ của kỳ thi, cách tính hạn nộp, tự mở/đóng, nhắc) được đặt ở tab <strong>Lịch</strong> của đề sau khi lưu. Đề có thể không có lịch.</span></div>
           </div>
           <fieldset className="stack-sm">
             <legend className="field-label" style={{ marginBottom: 6 }}>Hiển thị cho thí sinh</legend>
@@ -210,7 +205,7 @@ function Editor({ exam }: { exam?: Exam }) {
             <div><dt>Tên đề</dt><dd>{info.title}</dd></div>
             <div><dt>Loại</dt><dd>{EXAM_TYPE_LABEL[info.type]}</dd></div>
             <div><dt>Thời lượng</dt><dd>{info.durationMinutes} phút</dd></div>
-            <div><dt>Khung giờ</dt><dd>{!info.start && !info.end ? 'Không giới hạn' : `${info.start ? formatDateTime(fromLocalInput(info.start)) : 'Bất kỳ lúc nào'} đến ${info.end ? formatDateTime(fromLocalInput(info.end)) : 'không giới hạn'}`}</dd></div>
+            <div><dt>Lịch thi</dt><dd>{exam?.startTime || exam?.endTime ? 'Giữ nguyên lịch hiện có (sửa ở tab Lịch)' : 'Đặt sau ở tab Lịch'}</dd></div>
             <div><dt>Số câu / tổng điểm</dt><dd>{items.length} câu · {formatScore(total)} điểm</dd></div>
             <div><dt>Điểm đạt</dt><dd>{passing === null ? 'Không đặt' : formatScore(passing)}</dd></div>
             <div><dt>Cách tham gia</dt><dd>{ACCESS_MODE_LABEL[policy.accessMode]}</dd></div>

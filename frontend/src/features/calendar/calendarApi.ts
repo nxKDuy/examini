@@ -12,7 +12,7 @@ export interface CalendarItem {
   calendarState: string; latestSessionId: string | null; latestSessionStatus: string | null  // Student only
   serverNow?: string
 }
-export interface Availability extends Omit<CalendarItem, 'relation' | 'participantCount' | 'maxParticipants'> { canView: boolean; scheduleRevision: number }
+export interface Availability extends Omit<CalendarItem, 'relation' | 'participantCount' | 'maxParticipants' | 'serverNow'> { canView: boolean; scheduleRevision: number; serverNow: string }
 
 export interface Schedule {
   examId: string; startAt: string | null; endAt: string | null; timezone: string; deadlineRule: DeadlineRule

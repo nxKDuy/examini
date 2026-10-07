@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ClipboardCheck, Lock, Pencil, PlayCircle, RefreshCw, Send, Trash2, UserPlus } from 'lucide-react'
+import { CalendarClock, Check, ClipboardCheck, Lock, Pencil, PlayCircle, RefreshCw, RotateCcw, Send, Trash2, UserPlus } from 'lucide-react'
 import { examApi, type Exam, type MemberRole, type Policy } from './examApi'
 import { questionBankApi, type Question } from '../question-bank/questionApi'
 import PolicyFields from './PolicyFields'
@@ -10,14 +10,20 @@ import { useAuthStore } from '../../store/authStore'
 import { ExamStatusBadge, QuestionStatusBadge, SessionStatusBadge } from '../../components/status'
 import { EXAM_STATUS, QUESTION_STATUS } from '../../components/statusDefs'
 import { ConfirmDialog } from '../../components/Dialog'
+import { calendarApi, type Schedule } from '../calendar/calendarApi'
+import { ruleLabel, RULE_HELP, windowText, toMs } from '../calendar/calendarModel'
+import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
+import ScheduleDialog from '../calendar/ScheduleDialog'
+import LifecycleDialog, { type LifecycleKind } from '../calendar/LifecycleDialog'
+import { useNow, useViewerZone } from '../calendar/useCalendar'
 import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { UPSTREAM_GENERIC, errorInfo, errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, EXAM_TYPE_LABEL, MEMBER_ROLE_LABEL, QUESTION_TYPE_LABEL, formatDateTime, formatScore, shortId } from '../../lib/format'
 
 const LIFECYCLE = ['DRAFT', 'PUBLISHED', 'OPEN', 'CLOSED'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-type Transition = 'publish' | 'open' | 'close' | 'delete'
-type Tab = 'overview' | 'participation' | 'collaborators' | 'attempts' | 'audit'
+type Transition = 'publish' | 'open' | 'delete'
+type Tab = 'overview' | 'schedule' | 'participation' | 'collaborators' | 'attempts' | 'audit'
 
 export default function ExamDetailPage() {
   const { id } = useParams()
@@ -37,6 +43,15 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   const flash = location.state as { notice?: string; tone?: 'success' | 'warning' } | null
   const [tab, setTab] = useState<Tab>('overview')
   const [confirm, setConfirm] = useState<Transition | null>(null)
+  const [lifecycle, setLifecycle] = useState<LifecycleKind | null>(null)
+  const [editing, setEditing] = useState(false)
+  const viewerTz = useViewerZone()
+  const schedule = useQuery({
+    queryKey: ['schedule', exam.id],
+    queryFn: async () => { const s = await calendarApi.getSchedule(exam.id); return { s, clockOffset: Date.parse(s.serverNow) - Date.now() } },
+    staleTime: 15_000,
+  })
+  const nowMs = useNow(schedule.data?.clockOffset ?? 0, 15_000)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const manage = role === 'OWNER' || role === 'MANAGER'
   const questions = useQueries({
@@ -54,7 +69,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
     onSuccess: async (_r, kind) => {
       setConfirm(null)
       if (kind === 'delete') { await qc.invalidateQueries({ queryKey: ['exams'] }); navigate('/exams', { replace: true }); return }
-      setMessage({ tone: 'success', text: { publish: 'Đã xuất bản. Nội dung và phiên bản câu hỏi đã được cố định.', open: 'Kỳ thi đã mở. Thí sinh đủ điều kiện có thể bắt đầu.', close: 'Kỳ thi đã đóng. Không nhận lượt làm bài mới.' }[kind] })
+      setMessage({ tone: 'success', text: { publish: 'Đã xuất bản. Nội dung và phiên bản câu hỏi đã được cố định.', open: 'Kỳ thi đã mở. Thí sinh đủ điều kiện có thể bắt đầu khi đến giờ bắt đầu.' }[kind as 'publish' | 'open'] })
       await invalidate()
     },
     onError: (e, kind) => {
@@ -69,7 +84,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   })
 
   const current = LIFECYCLE.indexOf(exam.status as typeof LIFECYCLE[number])
-  const tabs: [Tab, string][] = [['overview', 'Tổng quan'], ['participation', 'Tham gia'], ['collaborators', 'Cộng tác'], ['attempts', 'Lượt làm bài'], ['audit', 'Nhật ký']]
+  const tabs: [Tab, string][] = [['overview', 'Tổng quan'], ['schedule', 'Lịch'], ['participation', 'Tham gia'], ['collaborators', 'Cộng tác'], ['attempts', 'Lượt làm bài'], ['audit', 'Nhật ký']]
 
   return (
     <div className="stack-lg">
@@ -84,7 +99,8 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
             <button type="button" className="btn btn-primary" onClick={() => setConfirm('publish')}><Send size={16} aria-hidden /> Xuất bản</button>
           </>}
           {exam.status === 'PUBLISHED' && <button type="button" className="btn btn-primary" onClick={() => setConfirm('open')}><PlayCircle size={16} aria-hidden /> Mở kỳ thi</button>}
-          {exam.status === 'OPEN' && <button type="button" className="btn btn-danger" onClick={() => setConfirm('close')}><Lock size={16} aria-hidden /> Đóng kỳ thi</button>}
+          {(exam.status === 'OPEN' || exam.status === 'PUBLISHED') && <button type="button" className="btn btn-danger" onClick={() => setLifecycle('close')}><Lock size={16} aria-hidden /> Đóng kỳ thi</button>}
+          {exam.status === 'CLOSED' && <button type="button" className="btn btn-secondary" onClick={() => setLifecycle('reopen')}><RotateCcw size={16} aria-hidden /> Mở lại</button>}
           {(exam.status === 'OPEN' || exam.status === 'CLOSED') && <Link to={`/grading?examId=${exam.id}`} className="btn btn-secondary"><ClipboardCheck size={16} aria-hidden /> Chấm bài</Link>}
         </>} />
 
@@ -115,7 +131,8 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         ))}
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'overview' && <Overview exam={exam} questions={questions.map(q => q.data)} />}
+        {tab === 'overview' && <Overview exam={exam} questions={questions.map(q => q.data)} schedule={schedule.data?.s} viewerTz={viewerTz} onSchedule={() => setTab('schedule')} />}
+        {tab === 'schedule' && <ScheduleTab exam={exam} manage={manage} schedule={schedule.data?.s} loading={schedule.isLoading} error={schedule.error} onRetry={() => void schedule.refetch()} viewerTz={viewerTz} onEdit={() => setEditing(true)} />}
         {tab === 'participation' && <Participation exam={exam} manage={manage} />}
         {tab === 'collaborators' && <Collaborators exam={exam} owner={role === 'OWNER'} members={members} />}
         {tab === 'attempts' && <Attempts exam={exam} />}
@@ -135,24 +152,25 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
       {confirm === 'open' && <ConfirmDialog title="Mở kỳ thi?" confirmLabel="Mở kỳ thi" busy={transition.isPending}
         description={`Thí sinh đủ điều kiện (${ACCESS_MODE_LABEL[exam.accessMode]}) có thể bắt đầu làm bài${exam.startTime || exam.endTime ? ' trong khung giờ đã đặt' : ''}. Kỳ thi đang mở chỉ có thể chuyển sang Đã đóng.`}
         onConfirm={() => transition.mutate('open')} onCancel={() => setConfirm(null)} />}
-      {confirm === 'close' && <ConfirmDialog title="Đóng kỳ thi?" confirmLabel="Đóng kỳ thi" tone="danger" busy={transition.isPending}
-        description="Không ai bắt đầu được lượt làm bài mới. Thí sinh đang làm dở vẫn có thể lưu và nộp bài đến khi hết giờ. Không thể mở lại."
-        onConfirm={() => transition.mutate('close')} onCancel={() => setConfirm(null)} />}
+      {lifecycle && <LifecycleDialog kind={lifecycle} examId={exam.id} examTitle={exam.title} endAtMs={toMs(schedule.data?.s.endAt)} nowMs={nowMs} onCancel={() => setLifecycle(null)}
+        onDone={kind => { setLifecycle(null); setMessage({ tone: 'success', text: { open: 'Đã mở kỳ thi.', close: 'Đã đóng kỳ thi. Không nhận lượt làm bài mới.', reopen: 'Đã mở lại kỳ thi.' }[kind] }) }} />}
+      {editing && <ScheduleDialog examId={exam.id} examTitle={exam.title} status={exam.status} durationMinutes={exam.durationMinutes} onClose={() => setEditing(false)}
+        onSaved={() => setMessage({ tone: 'success', text: 'Đã lưu lịch. Người liên quan sẽ nhận thông báo đổi lịch.' })} />}
       {confirm === 'delete' && <ConfirmDialog title="Xóa đề thi bản nháp?" confirmLabel="Xóa đề thi" tone="danger" busy={transition.isPending}
         description="Đề thi và cấu hình sẽ bị xóa vĩnh viễn. Câu hỏi trong Ngân hàng không bị ảnh hưởng." onConfirm={() => transition.mutate('delete')} onCancel={() => setConfirm(null)} />}
     </div>
   )
 }
 
-function Overview({ exam, questions }: { exam: Exam; questions: (Question | undefined)[] }) {
+function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: Exam; questions: (Question | undefined)[]; schedule?: Schedule; viewerTz: string; onSchedule: () => void }) {
+  const w = schedule ? windowText(schedule, viewerTz) : null
   return (
     <div className="stack-lg">
       <Section title="Thông tin đề thi">
         <dl className="meta">
           <div><dt>Loại</dt><dd>{EXAM_TYPE_LABEL[exam.type]}</dd></div>
           <div><dt>Thời lượng</dt><dd>{exam.durationMinutes} phút</dd></div>
-          <div><dt>Mở từ</dt><dd>{formatDateTime(exam.startTime, 'Không giới hạn')}</dd></div>
-          <div><dt>Nhận lượt mới đến</dt><dd>{formatDateTime(exam.endTime, 'Không giới hạn')}</dd></div>
+          <div><dt>Lịch thi</dt><dd style={{ fontSize: '1rem' }}>{w ? <>{w.primary}{w.zone && <><br /><span className="muted">{w.zone}</span></>}</> : '…'}<br /><button type="button" className="btn btn-ghost btn-sm" style={{ paddingLeft: 0 }} onClick={onSchedule}>Xem tab Lịch</button></dd></div>
           <div><dt>Số câu / tổng điểm</dt><dd>{exam.questionIds.length} câu · {formatScore(exam.totalScore)} điểm</dd></div>
           <div><dt>Điểm đạt</dt><dd>{exam.passingScore === null ? 'Không đặt' : formatScore(exam.passingScore)}</dd></div>
           <div><dt>Đảo câu hỏi / lựa chọn</dt><dd>{exam.shuffleQuestions ? 'Có' : 'Không'} / {exam.shuffleOptions ? 'Có' : 'Không'}</dd></div>
@@ -348,7 +366,7 @@ function Attempts({ exam }: { exam: Exam }) {
 }
 
 const AUDIT_LABEL: Record<string, string> = {
-  EXAM_CREATED: 'Tạo đề thi', EXAM_UPDATED: 'Cập nhật bản nháp', EXAM_PUBLISHED: 'Xuất bản', EXAM_OPENED: 'Mở kỳ thi', EXAM_CLOSED: 'Đóng kỳ thi',
+  EXAM_CREATED: 'Tạo đề thi', EXAM_UPDATED: 'Cập nhật bản nháp', EXAM_PUBLISHED: 'Xuất bản', EXAM_OPENED: 'Mở kỳ thi', EXAM_CLOSED: 'Đóng kỳ thi', EXAM_REOPENED: 'Mở lại kỳ thi', EXAM_SCHEDULE_CHANGED: 'Thay đổi lịch thi',
   PARTICIPATION_POLICY_UPDATED: 'Cập nhật chính sách tham gia', PARTICIPANT_ASSIGNED: 'Phân công thí sinh', PARTICIPANT_REMOVED: 'Bỏ phân công thí sinh',
   MANAGER_INVITED: 'Mời Quản lý', PROCTOR_INVITED: 'Mời Giám thị', MANAGER_ADDED: 'Quản lý chấp nhận lời mời', PROCTOR_ADDED: 'Giám thị chấp nhận lời mời',
   MANAGER_REMOVED: 'Xóa Quản lý', PROCTOR_REMOVED: 'Xóa Giám thị',
@@ -367,5 +385,33 @@ function Audit({ exam }: { exam: Exam }) {
             ))}</tbody>
           </table></div>}
     </Section>
+  )
+}
+
+function ScheduleTab({ exam, manage, schedule, loading, error, onRetry, viewerTz, onEdit }: {
+  exam: Exam; manage: boolean; schedule?: Schedule; loading: boolean; error: unknown; onRetry: () => void; viewerTz: string; onEdit: () => void
+}) {
+  if (loading) return <LoadingState rows={3} />
+  if (error || !schedule) return <ErrorState error={error} onRetry={onRetry} />
+  const w = windowText(schedule, viewerTz)
+  const reminders = normalizeReminders(schedule.reminderOffsetsMinutes)
+  const none = !schedule.startAt && !schedule.endAt
+  return (
+    <div className="stack-lg">
+      <Section title="Lịch thi" description="Giờ theo múi giờ của kỳ thi; máy chủ quyết định ai được tham gia và bắt đầu."
+        actions={manage ? <button type="button" className="btn btn-primary btn-sm" onClick={onEdit}><CalendarClock size={14} aria-hidden /> {exam.status === 'CLOSED' ? 'Xem lịch' : 'Sửa lịch'}</button> : undefined}>
+        {!manage && <Notice tone="info">Giám thị chỉ xem lịch; không sửa lịch hay mở/đóng kỳ thi.</Notice>}
+        {none && <Notice tone="info" title="Chưa đặt lịch">Kỳ thi không có lịch vẫn xuất bản, mở và đóng thủ công được. Đặt lịch để hiện trên Lịch và nhắc thí sinh.</Notice>}
+        <dl className="meta" style={{ marginTop: none ? 16 : 0 }}>
+          <div><dt>Cửa sổ làm bài</dt><dd style={{ fontSize: '1rem' }}>{w.primary}{w.zone && <><br /><span className="muted">{w.zone}</span></>}</dd></div>
+          {w.mineText && <div><dt>Giờ của bạn</dt><dd style={{ fontSize: '1rem' }}>{w.mineText}<br /><span className="muted">{w.mineZone} · {viewerTz}</span></dd></div>}
+          <div><dt>Cách tính hạn nộp</dt><dd style={{ fontSize: '1rem' }}>{ruleLabel(schedule.deadlineRule)}<br /><span className="xsmall muted">{RULE_HELP[schedule.deadlineRule]}</span></dd></div>
+          <div><dt>Tự động mở</dt><dd>{schedule.autoOpen ? 'Bật' : 'Tắt'}</dd></div>
+          <div><dt>Tự động đóng</dt><dd>{schedule.autoClose ? 'Bật' : 'Tắt'}</dd></div>
+          <div><dt>Nhắc trước giờ bắt đầu</dt><dd style={{ fontSize: '1rem' }}>{reminders.length ? reminders.map(m => offsetLabel(m)).join(', ') : 'Tắt'}</dd></div>
+          <div><dt>Phiên bản lịch</dt><dd>{schedule.scheduleRevision}</dd></div>
+        </dl>
+      </Section>
+    </div>
   )
 }

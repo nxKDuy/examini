@@ -91,7 +91,7 @@ export function agendaGroups(items: CalendarItem[], nowMs: number, tz: string): 
 
 // ---- time grid layout -----------------------------------------------------------------
 
-export interface Block { item: CalendarItem; top: number; height: number; col: number; cols: number; clippedStart: boolean; clippedEnd: boolean }
+export interface Block { item: CalendarItem; top: number; height: number; col: number; cols: number; cluster: number; clippedStart: boolean; clippedEnd: boolean }
 
 /** Day segments of the items as percentages of the day, with overlapping blocks in side-by-side columns. */
 export function layoutDay(items: CalendarItem[], day: string, tz: string, minPercent = 3): Block[] {
@@ -105,7 +105,7 @@ export function layoutDay(items: CalendarItem[], day: string, tz: string, minPer
   }).sort((a, b) => a.s - b.s || b.e - a.e)
 
   const blocks: Block[] = []
-  let cluster: typeof segs = [], clusterEnd = -Infinity
+  let cluster: typeof segs = [], clusterEnd = -Infinity, clusterId = 0
   const flush = () => {
     const colEnds: number[] = []
     const placed = cluster.map(seg => {
@@ -113,8 +113,8 @@ export function layoutDay(items: CalendarItem[], day: string, tz: string, minPer
       if (col < 0) { col = colEnds.length; colEnds.push(seg.e) } else colEnds[col] = seg.e
       return { seg, col }
     })
-    for (const { seg, col } of placed) blocks.push({ item: seg.item, top: seg.top, height: seg.height, col, cols: colEnds.length, clippedStart: seg.clippedStart, clippedEnd: seg.clippedEnd })
-    cluster = []; clusterEnd = -Infinity
+    for (const { seg, col } of placed) blocks.push({ item: seg.item, top: seg.top, height: seg.height, col, cols: colEnds.length, cluster: clusterId, clippedStart: seg.clippedStart, clippedEnd: seg.clippedEnd })
+    cluster = []; clusterEnd = -Infinity; clusterId++
   }
   for (const seg of segs) {
     if (cluster.length && seg.s >= clusterEnd) flush()
@@ -122,6 +122,21 @@ export function layoutDay(items: CalendarItem[], day: string, tz: string, minPer
   }
   if (cluster.length) flush()
   return blocks
+}
+
+/** A cluster too crowded for `maxCols` columns: the first maxCols-1 columns stay, the rest collapse into one "+N" block. */
+export interface Overflow { cluster: number; top: number; height: number; col: number; cols: number; hidden: CalendarItem[] }
+export function collapseCrowded(blocks: Block[], maxCols: number): { shown: Block[]; overflow: Overflow[] } {
+  const shown: Block[] = [], hiddenBy = new Map<number, Block[]>()
+  for (const b of blocks) {
+    if (b.cols <= maxCols || b.col < maxCols - 1) shown.push(b.cols <= maxCols ? b : { ...b, cols: maxCols })
+    else hiddenBy.set(b.cluster, [...(hiddenBy.get(b.cluster) ?? []), b])
+  }
+  const overflow = [...hiddenBy.entries()].map(([cluster, list]) => {
+    const top = Math.min(...list.map(b => b.top)), bottom = Math.max(...list.map(b => b.top + b.height))
+    return { cluster, top, height: bottom - top, col: maxCols - 1, cols: maxCols, hidden: list.map(b => b.item) }
+  })
+  return { shown, overflow }
 }
 
 // ---- state, rules, text ---------------------------------------------------------------
@@ -196,7 +211,7 @@ export function describeCountdown(ms: number): string {
 }
 
 /** One countdown line per Student item. Display only; the server decides what is allowed. */
-export function countdownLine(item: CalendarItem, nowMs: number): string | null {
+export function countdownLine(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'effectiveExpiresAt' | 'calendarState' | 'canStart' | 'canResume'>, nowMs: number): string | null {
   const start = toMs(item.startAt), end = toMs(item.endAt), expires = toMs(item.effectiveExpiresAt)
   if (item.calendarState === 'IN_PROGRESS' && expires !== null) return expires > nowMs ? `Còn ${describeCountdown(expires - nowMs)} để nộp` : 'Đang hết giờ'
   if (['SUBMITTED', 'AUTO_SUBMITTED', 'CANCELLED', 'MISSED', 'CLOSED', 'EXAM_CLOSED', 'AFTER_END_AT'].includes(item.calendarState)) return null
@@ -206,7 +221,7 @@ export function countdownLine(item: CalendarItem, nowMs: number): string | null 
 }
 
 /** Window text in the Exam's own zone, plus a "your time" line when the viewer's clock differs. */
-export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>, viewerTz: string): { primary: string; zone: string; mine?: string } {
+export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>, viewerTz: string): { primary: string; zone: string; mine?: string; mineText?: string; mineZone?: string } {
   const start = toMs(item.startAt), end = toMs(item.endAt), tz = item.timezone
   const ref = start ?? end
   if (ref === null) return { primary: 'Chưa đặt lịch', zone: '' }
@@ -220,7 +235,28 @@ export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timez
     return `Đến ${formatDateTimeIn(end as number, zoneId)}`
   }
   const different = viewerTz !== tz && (offsetMinutes(ref, viewerTz) !== offsetMinutes(ref, tz) || (end !== null && offsetMinutes(end, viewerTz) !== offsetMinutes(end, tz)))
-  return { primary: render(tz), zone, mine: different ? `Giờ của bạn (${zoneLabel(ref, viewerTz)}): ${render(viewerTz)}` : undefined }
+  if (!different) return { primary: render(tz), zone }
+  const mineZone = zoneLabel(ref, viewerTz), mineText = render(viewerTz)
+  return { primary: render(tz), zone, mine: `Giờ của bạn (${mineZone}): ${mineText}`, mineText, mineZone }
+}
+
+export const isTeacherItem = (item: Pick<CalendarItem, 'relation'>) => ['OWNER', 'MANAGER', 'PROCTOR'].includes(item.relation)
+
+/** The one-line key figures shown on a compact card. Only fields the API provides. */
+export function cardMetrics(item: CalendarItem, nowMs: number): string[] {
+  if (isTeacherItem(item)) {
+    return [
+      item.participantCount !== null && item.maxParticipants !== null ? `${item.participantCount}/${item.maxParticipants} người` : '',
+      ruleLabel(item.deadlineRule), `${item.durationMinutes} phút`, relationLabel(item.relation),
+    ].filter(Boolean)
+  }
+  return [
+    countdownLine(item, nowMs) ?? '', `${item.durationMinutes} phút`, ruleLabel(item.deadlineRule),
+    item.attemptsRemaining !== null ? `Còn ${item.attemptsRemaining} lượt` : '', relationLabel(item.relation),
+  ].filter(Boolean)
 }
 
 export const isManager = (item: Pick<CalendarItem, 'relation'>) => item.relation === 'OWNER' || item.relation === 'MANAGER'
+
+export const dayNumber = (day: string) => String(Number(day.slice(8, 10)))
+export const dayHeading = (day: string) => new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`))

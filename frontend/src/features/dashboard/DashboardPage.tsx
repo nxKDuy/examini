@@ -1,16 +1,17 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { ArrowRight, BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle, ShieldCheck } from 'lucide-react'
+import { BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section, Stat } from '../../components/ui'
 import { ExamStatusBadge } from '../../components/status'
-import { availability, examApi, type Exam } from '../exams/examApi'
-import { attemptsFor } from '../exams/attemptHints'
+import { examApi, type Exam } from '../exams/examApi'
+import TodayUpcoming from '../calendar/TodayUpcoming'
+import { useAgendaCalendar, useNow } from '../calendar/useCalendar'
+import { countdownLine } from '../calendar/calendarModel'
 import JoinCodeForm from '../exams/JoinCodeForm'
 import { questionBankApi } from '../question-bank/questionApi'
 import { gradingApi } from '../grading/gradingApi'
-import { formatDateTime, formatDuration } from '../../lib/format'
 
 export default function DashboardPage() {
   const user = useAuthStore(s => s.user)
@@ -37,15 +38,13 @@ function useQuestionCounts(statuses: string[]) {
 }
 
 function StudentDashboard() {
-  const user = useAuthStore(s => s.user)
   const my = useQuery({ queryKey: ['my-exams'], queryFn: examApi.my })
   const pub = useQuery({ queryKey: ['public-exams'], queryFn: examApi.publicExams })
-  const hints = Object.entries(attemptsFor(user?.id))
-  const sessions = useQueries({
-    queries: hints.map(([, sessionId]) => ({ queryKey: ['session', sessionId], queryFn: () => examApi.session(sessionId), retry: false })),
-  })
-  const active = sessions.map(s => s.data).filter(s => s?.status === 'IN_PROGRESS')
-  const openForMe = (my.data ?? []).filter(e => availability(e) === 'OPEN')
+  const agenda = useAgendaCalendar()
+  const nowMs = useNow(agenda.clockOffset, 30_000)
+  // Availability and attempt state are the backend's answers (calendar items), not guesses from this browser's clock.
+  const active = agenda.items.filter(i => i.calendarState === 'IN_PROGRESS' && i.latestSessionId)
+  const doable = agenda.items.filter(i => i.calendarState === 'AVAILABLE' || i.calendarState === 'IN_PROGRESS')
   const joinedIds = new Set((my.data ?? []).map(e => e.id))
   const publicNew = (pub.data ?? []).filter(e => !joinedIds.has(e.id))
 
@@ -54,10 +53,10 @@ function StudentDashboard() {
       {active.length > 0 && (
         <Notice tone="info" title="Bạn có lượt làm bài đang dở">
           <div className="stack-sm" style={{ marginTop: 6 }}>
-            {active.map(s => s && (
-              <div key={s.sessionId} className="spread">
-                <span>{s.title}: còn khoảng {formatDuration((Date.parse(s.expiresAt) - Date.parse(s.serverNow)) / 1000)}</span>
-                <Link to={`/exam/take/${s.sessionId}`} className="btn btn-primary btn-sm"><PlayCircle size={16} aria-hidden /> Tiếp tục làm bài</Link>
+            {active.map(i => (
+              <div key={i.examId} className="spread">
+                <span>{i.examTitle}: {countdownLine(i, nowMs) ?? 'đang làm'}</span>
+                <Link to={`/exam/take/${i.latestSessionId}`} className="btn btn-primary btn-sm"><PlayCircle size={16} aria-hidden /> Tiếp tục làm bài</Link>
               </div>
             ))}
           </div>
@@ -65,19 +64,15 @@ function StudentDashboard() {
       )}
       <div className="grid-stats">
         <Stat label="Kỳ thi đã tham gia / được giao" value={my.data?.length ?? '-'} to="/my-exams" />
-        <Stat label="Đang mở cho bạn" value={my.data ? openForMe.length : '-'} to="/my-exams" />
+        <Stat label="Làm được ngay" value={agenda.data ? doable.length : '-'} to="/calendar" />
         <Stat label="Kỳ thi công khai đang mở" value={pub.data?.length ?? '-'} hint="Dành cho người dùng EXAMINI đã đăng nhập" to="/my-exams" />
       </div>
+      <TodayUpcoming />
       <div className="grid-2">
-        <Section title="Kỳ thi có thể làm ngay" actions={<Link to="/my-exams" className="btn btn-ghost btn-sm">Xem tất cả <ArrowRight size={14} aria-hidden /></Link>} bodyClassName="">
-          {my.isLoading ? <LoadingState rows={2} /> : my.isError ? <ErrorState error={my.error} onRetry={() => void my.refetch()} />
-            : openForMe.length === 0 ? <EmptyState title="Chưa có kỳ thi đang mở" description="Kỳ thi được giao hoặc đã tham gia sẽ xuất hiện ở đây khi giáo viên mở kỳ thi." />
-            : <ExamLinks exams={openForMe} />}
-        </Section>
         <Section title="Tham gia kỳ thi">
           <div className="stack">
             <JoinCodeForm compact />
-            {publicNew.length > 0 && <p className="small muted">Có {publicNew.length} kỳ thi công khai bạn chưa tham gia. <Link to="/my-exams">Xem danh sách</Link></p>}
+            {publicNew.length > 0 && <p className="small muted">Có {publicNew.length} kỳ thi công khai bạn chưa tham gia. <Link to="/my-exams">Xem và theo dõi</Link></p>}
           </div>
         </Section>
       </div>
@@ -94,7 +89,7 @@ function ExamLinks({ exams, to = (e: Exam) => `/exam/lobby/${e.id}` }: { exams: 
             <strong style={{ color: 'var(--color-ink)' }}>{e.title}</strong>
             <ExamStatusBadge status={e.status} />
           </div>
-          <div className="xsmall muted" style={{ marginTop: 4 }}>{e.durationMinutes} phút · Kết thúc: {formatDateTime(e.endTime, 'không giới hạn')}</div>
+          <div className="xsmall muted" style={{ marginTop: 4 }}>{e.durationMinutes} phút · {e.questionIds.length} câu</div>
         </Link>
       ))}
     </div>
@@ -132,6 +127,7 @@ function TeacherDashboard() {
         <Stat label="Đã duyệt, dùng được" value={c(2)} to="/questions" />
         <Stat label="Bị từ chối, cần sửa" value={c(3)} to="/questions" />
       </div>
+      <TodayUpcoming />
       <div className="grid-2">
         <Section title="Đề thi của tôi" description={exams.data ? `${exams.data.totalElements} đề thi bạn sở hữu hoặc cộng tác` : undefined}
           actions={<Link to="/exams/create" className="btn btn-primary btn-sm"><FilePlus2 size={16} aria-hidden /> Tạo đề thi</Link>} bodyClassName="">

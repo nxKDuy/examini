@@ -42,6 +42,14 @@ export function toIsoWithOffset(ms: number, tz: string): string {
   return `${wallString(w)}:${pad(w.s)}${formatOffset(offsetMinutes(ms, tz))}`
 }
 
+/** Offset ISO for a server instant string, keeping its fractional seconds so an untouched value round-trips exactly. */
+export function rawToOffsetIso(raw: string, tz: string): string {
+  const ms = Date.parse(raw)
+  const frac = /\.(\d+)/.exec(raw)?.[1]
+  const iso = toIsoWithOffset(ms, tz)
+  return frac ? iso.replace(/(:\d{2})([+-]\d{2}:\d{2})$/, `$1.${frac}$2`) : iso
+}
+
 export const instantToWall = (ms: number, tz: string) => wallString(wallParts(ms, tz))
 export const instantToDay = (ms: number, tz: string) => dayString(wallParts(ms, tz))
 

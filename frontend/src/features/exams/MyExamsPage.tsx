@@ -1,82 +1,87 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { Globe2, ListChecks } from 'lucide-react'
-import { availability, examApi, type Exam } from './examApi'
-import { attemptsFor } from './attemptHints'
-import { useAuthStore } from '../../store/authStore'
+import { examApi } from './examApi'
 import JoinCodeForm from './JoinCodeForm'
-import { AttemptBadge, AvailabilityBadge } from './StudentExamParts'
-import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
-import { errorText } from '../../lib/errors'
-import { ACCESS_MODE_LABEL, formatDateTime, formatScore } from '../../lib/format'
+import { calendarApi, type CalendarItem } from '../calendar/calendarApi'
+import { cardMetrics, itemSpan, windowText } from '../calendar/calendarModel'
+import { StateBadge } from '../calendar/ExamCard'
+import FollowButton from '../calendar/FollowButton'
+import { useAgendaCalendar, useNow } from '../calendar/useCalendar'
+import { EmptyState, ErrorState, LoadingState, PageHeader, Section } from '../../components/ui'
+import { reasonText } from '../calendar/calendarModel'
+
+const RANK: Record<string, number> = { IN_PROGRESS: 0, AVAILABLE: 1, UPCOMING: 2, JOIN_REQUIRED: 2, NOT_OPEN: 3, MISSED: 5, CLOSED: 6, SUBMITTED: 6, AUTO_SUBMITTED: 6 }
 
 export default function MyExamsPage() {
-  const user = useAuthStore(s => s.user)
-  const qc = useQueryClient()
-  const navigate = useNavigate()
-  const [joinError, setJoinError] = useState('')
   const my = useQuery({ queryKey: ['my-exams'], queryFn: examApi.my })
   const pub = useQuery({ queryKey: ['public-exams'], queryFn: examApi.publicExams })
-  const hints = attemptsFor(user?.id)
-  const hinted = (my.data ?? []).filter(e => hints[e.id])
-  const sessions = useQueries({ queries: hinted.map(e => ({ queryKey: ['session', hints[e.id]], queryFn: () => examApi.session(hints[e.id]), retry: false })) })
-  const attemptState = Object.fromEntries(hinted.map((e, i) => [e.id, sessions[i]?.data?.status]))
+  const agenda = useAgendaCalendar()
+  const nowMs = useNow(agenda.clockOffset, 30_000)
+  const byId = new Map<string, CalendarItem>(agenda.items.map(i => [i.examId, i]))
   const joined = new Set((my.data ?? []).map(e => e.id))
+  const viewerTz = agenda.tz
+  // Schedule, follow state and join eligibility of public Exams come from the availability endpoint, not from guessing.
+  const publicList = (pub.data ?? []).slice(0, 20)
+  const publicAvail = useQueries({ queries: publicList.map(e => ({ queryKey: ['availability', e.id], queryFn: () => calendarApi.availability(e.id), staleTime: 30_000, retry: false })) })
 
-  const join = useMutation({
-    mutationFn: examApi.join,
-    onSuccess: async exam => { await qc.invalidateQueries({ queryKey: ['my-exams'] }); navigate(`/exam/lobby/${exam.id}`) },
-    onError: e => setJoinError(errorText(e)),
+  const sorted = [...(my.data ?? [])].sort((a, b) => {
+    const ia = byId.get(a.id), ib = byId.get(b.id)
+    return (RANK[ia?.calendarState ?? ''] ?? 4) - (RANK[ib?.calendarState ?? ''] ?? 4) || (itemSpan(ia ?? { startAt: null, endAt: null })?.start ?? Infinity) - (itemSpan(ib ?? { startAt: null, endAt: null })?.start ?? Infinity)
   })
-
-  const sorted = [...(my.data ?? [])].sort((a, b) => rank(a) - rank(b))
 
   return (
     <div className="stack-lg">
-      <PageHeader title="Kỳ thi của tôi" description="Kỳ thi bạn được phân công hoặc đã tham gia, kỳ thi công khai và tham gia bằng mã." />
+      <PageHeader title="Kỳ thi của tôi" description="Kỳ thi bạn được phân công hoặc đã tham gia, kỳ thi công khai và tham gia bằng mã. Xem theo ngày ở mục Lịch của tôi."
+        actions={<Link to="/calendar" className="btn btn-secondary">Mở Lịch của tôi</Link>} />
       <div className="grid-2">
         <Section title="Tham gia bằng mã"><JoinCodeForm /></Section>
-        <Section title="Kỳ thi công khai" description="Dành cho người dùng EXAMINI đã đăng nhập; không có truy cập ẩn danh." bodyClassName="">
-          {joinError && <div style={{ padding: '12px 20px 0' }}><Notice tone="danger" live>{joinError}</Notice></div>}
+        <Section title="Kỳ thi công khai" description="Dành cho người dùng EXAMINI đã đăng nhập; không có truy cập ẩn danh. Theo dõi để đưa vào Lịch và nhận thông báo mà chưa cần tham gia." bodyClassName="">
           {pub.isLoading ? <LoadingState rows={2} /> : pub.isError ? <ErrorState error={pub.error} onRetry={() => void pub.refetch()} />
-            : pub.data!.length === 0 ? <EmptyState icon={<Globe2 size={28} />} title="Không có kỳ thi công khai đang mở" />
-            : pub.data!.map(e => (
-              <div key={e.id} className="spread" style={{ padding: '12px 20px', borderBottom: '1px solid var(--color-border)' }}>
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ color: 'var(--color-ink)' }}>{e.title}</strong>
-                  <div className="xsmall muted">{e.durationMinutes} phút · {e.questionIds.length} câu</div>
+            : publicList.length === 0 ? <EmptyState icon={<Globe2 size={28} />} title="Không có kỳ thi công khai đang mở" />
+            : publicList.map((e, i) => {
+              const a = publicAvail[i]?.data
+              const w = a ? windowText(a, viewerTz) : null
+              const isJoined = joined.has(e.id) || !!a?.participant
+              return (
+                <div key={e.id} className="spread" style={{ padding: '12px 20px', borderBottom: '1px solid #000', alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="row"><strong style={{ color: '#000', fontWeight: 400, fontSize: '1.05rem' }}>{e.title}</strong>{a && <StateBadge state={a.calendarState} />}</div>
+                    <div className="xsmall muted">{e.durationMinutes} phút · {e.questionIds.length} câu{w && <> · {w.primary}{w.zone && <> · {w.zone}</>}</>}</div>
+                    {w?.mine && <div className="xsmall muted">{w.mine}</div>}
+                    {a && !a.canJoin && !isJoined && <div className="xsmall muted">{reasonText(a.reasonCode)}</div>}
+                  </div>
+                  <div className="row" style={{ flexShrink: 0 }}>
+                    {a && !isJoined && <FollowButton examId={e.id} followed={a.followed} />}
+                    <Link to={`/exam/lobby/${e.id}`} className="btn btn-secondary btn-sm">{isJoined ? 'Vào phòng chờ' : 'Xem trước'}</Link>
+                  </div>
                 </div>
-                {joined.has(e.id)
-                  ? <Link to={`/exam/lobby/${e.id}`} className="btn btn-secondary btn-sm">Vào phòng chờ</Link>
-                  : <button type="button" className="btn btn-primary btn-sm" disabled={join.isPending} onClick={() => { setJoinError(''); join.mutate(e.id) }}>Tham gia</button>}
-              </div>
-            ))}
+              )
+            })}
         </Section>
       </div>
 
       <Section title="Kỳ thi đã tham gia hoặc được giao" bodyClassName="">
         {my.isLoading ? <LoadingState rows={3} /> : my.isError ? <ErrorState error={my.error} onRetry={() => void my.refetch()} />
           : sorted.length === 0 ? <EmptyState icon={<ListChecks size={30} />} title="Chưa có kỳ thi nào" description="Kỳ thi được giáo viên phân công hoặc bạn đã tham gia sẽ xuất hiện ở đây." />
-          : sorted.map(e => (
-            <Link key={e.id} to={`/exam/lobby/${e.id}`} className="list-item" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="spread">
-                <strong style={{ color: 'var(--color-ink)' }}>{e.title}</strong>
-                <span className="row">
-                  {attemptState[e.id] && <AttemptBadge active={attemptState[e.id] === 'IN_PROGRESS'} />}
-                  <AvailabilityBadge exam={e} />
-                </span>
-              </div>
-              <div className="xsmall muted" style={{ marginTop: 4 }}>
-                {e.durationMinutes} phút · {e.questionIds.length} câu · {formatScore(e.totalScore)} điểm · {ACCESS_MODE_LABEL[e.accessMode]}
-                {e.endTime && <> · Nhận lượt mới đến {formatDateTime(e.endTime)}</>}
-              </div>
-            </Link>
-          ))}
+          : sorted.map(e => {
+            const item = byId.get(e.id)
+            const w = item ? windowText(item, viewerTz) : null
+            return (
+              <Link key={e.id} to={`/exam/lobby/${e.id}`} className="list-item" style={{ textDecoration: 'none' }}>
+                <div className="spread">
+                  <strong style={{ color: '#000', fontWeight: 400, fontSize: '1.1rem' }}>{e.title}</strong>
+                  {item && <StateBadge state={item.calendarState} />}
+                </div>
+                <div className="xsmall muted" style={{ marginTop: 4 }}>
+                  {item ? cardMetrics(item, nowMs).join(' · ') : `${e.durationMinutes} phút · ${e.questionIds.length} câu · ${e.totalScore ?? 0} điểm`}
+                  {w && <> · {w.primary}{w.zone && <> · {w.zone}</>}</>}
+                </div>
+                {w?.mine && <div className="xsmall muted">{w.mine}</div>}
+              </Link>
+            )
+          })}
       </Section>
     </div>
   )
 }
-
-const ORDER = { OPEN: 0, UPCOMING: 1, NOT_OPEN: 2, ENDED: 3, CLOSED: 4 }
-const rank = (e: Exam) => ORDER[availability(e)]

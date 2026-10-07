@@ -78,23 +78,3 @@ export const examApi = {
   approvedQuestions: (params: { categoryId?: string; difficulty?: string; questionType?: string; text?: string; page: number; size: number }) =>
     api.get<Page<Question>>('/questions', { params: { ...params, status: 'APPROVED' } }).then(r => r.data),
 }
-
-/** Student-facing availability derived from status + schedule. The server still decides on Start. */
-export type Availability = 'NOT_OPEN' | 'UPCOMING' | 'OPEN' | 'ENDED' | 'CLOSED'
-export function availability(exam: Pick<Exam, 'status' | 'startTime' | 'endTime'>, now = Date.now()): Availability {
-  if (exam.status === 'CLOSED' || exam.status === 'COMPLETED') return 'CLOSED'
-  if (exam.status !== 'OPEN') return 'NOT_OPEN'
-  const start = exam.startTime ? Date.parse(`${exam.startTime}Z`) : null
-  const end = exam.endTime ? Date.parse(`${exam.endTime}Z`) : null
-  if (start !== null && now < start) return 'UPCOMING'
-  if (end !== null && now >= end) return 'ENDED'
-  return 'OPEN'
-}
-
-export const AVAILABILITY_HELP: Record<Availability, string> = {
-  OPEN: 'Kỳ thi đang mở. Bạn có thể bắt đầu khi sẵn sàng.',
-  UPCOMING: 'Kỳ thi chưa đến giờ bắt đầu.',
-  ENDED: 'Đã hết khung giờ nhận lượt làm bài mới.',
-  CLOSED: 'Kỳ thi đã đóng, không nhận lượt làm bài mới.',
-  NOT_OPEN: 'Giáo viên chưa mở kỳ thi. Hãy quay lại sau.',
-}
