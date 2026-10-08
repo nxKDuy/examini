@@ -1,0 +1,40 @@
+/* Organization management: EXAMINI ruled style. State is always text + badge, never colour alone. */
+.org-grid { display: grid; gap: 0; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); border-top: 1px solid #000; border-left: 1px solid #000; background: #fff; }
+.org-card { display: grid; gap: 8px; padding: 16px; border-right: 1px solid #000; border-bottom: 1px solid #000; color: inherit; text-decoration: none; align-content: start; min-height: 130px; }
+.org-card:hover { background: var(--color-subtle); }
+.org-card h3 { font-size: 1.25rem; overflow-wrap: anywhere; }
+.org-card p { margin: 0; color: var(--color-muted); font-size: 0.9rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.org-invite { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 14px 16px; border-bottom: 1px solid #000; }
+.org-invite:last-child { border-bottom: 0; }
+.org-invite-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { .org-invite { grid-template-columns: minmax(0, 1fr); } .org-invite-actions .btn { flex: 1; } }
+
+.org-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.org-layout[data-panel="open"] { grid-template-columns: minmax(0, 1fr) 380px; }
+@media (max-width: 1100px) { .org-layout[data-panel="open"] { grid-template-columns: minmax(0, 1fr); } }
+
+.org-table { width: 100%; border-collapse: collapse; background: #fff; }
+.org-table th, .org-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #000; vertical-align: middle; }
+.org-table th { font-weight: 400; color: var(--color-muted); font-size: 0.85rem; border-bottom: 1px solid #000; }
+.org-table tr[aria-selected="true"] td { background: var(--color-subtle); box-shadow: inset 4px 0 0 var(--color-accent); }
+.org-table tr[aria-selected="true"] td:not(:first-child) { box-shadow: none; }
+.org-row-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--color-ink); text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.org-member-card { display: grid; gap: 6px; width: 100%; text-align: left; padding: 14px 16px; background: #fff; border: 0; border-bottom: 1px solid #000; cursor: pointer; color: inherit; }
+.org-member-card[aria-current="true"] { background: var(--color-subtle); box-shadow: inset 6px 0 0 var(--color-accent); }
+
+/* Member panel: side drawer on desktop, bottom sheet on narrow screens */
+.org-panel { position: sticky; top: 80px; max-height: calc(100dvh - 96px); overflow-y: auto; background: #fff; border: 1px solid #000; }
+.org-panel-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #000; }
+.org-panel-body { padding: 16px; display: grid; gap: 14px; }
+.org-panel h2:focus { outline: none; }
+.org-sheet-backdrop { display: none; }
+@media (max-width: 1100px) {
+  .org-panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 82dvh; z-index: 70; border-width: 1px 0 0; }
+  .org-sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 65; background: rgb(196 196 196 / 0.82); border: 0; }
+}
+.org-caps { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+.org-audit { list-style: none; margin: 0; padding: 0; }
+.org-audit li { padding: 10px 14px; border-bottom: 1px solid #000; display: grid; gap: 2px; }
+.org-audit li:last-child { border-bottom: 0; }
+.org-danger { border: 1px solid var(--color-danger); padding: 14px 16px; display: grid; gap: 10px; }
+.org-id { font-family: var(--font-mono, monospace); }

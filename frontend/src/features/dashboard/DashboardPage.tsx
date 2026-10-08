@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section, Stat
 import { ExamStatusBadge } from '../../components/status'
 import { examApi, type Exam } from '../exams/examApi'
 import TodayUpcoming from '../calendar/TodayUpcoming'
+import { InvitationNotice } from '../organizations/MyInvitations'
 import { useAgendaCalendar, useNow } from '../calendar/useCalendar'
 import { countdownLine } from '../calendar/calendarModel'
 import JoinCodeForm from '../exams/JoinCodeForm'
@@ -62,6 +63,7 @@ function StudentDashboard() {
           </div>
         </Notice>
       )}
+      <InvitationNotice />
       <div className="grid-stats">
         <Stat label="Kỳ thi đã tham gia / được giao" value={my.data?.length ?? '-'} to="/my-exams" />
         <Stat label="Làm được ngay" value={agenda.data ? doable.length : '-'} to="/calendar" />
@@ -116,6 +118,7 @@ function TeacherDashboard() {
 
   return (
     <>
+      <InvitationNotice />
       {(invites.data?.length ?? 0) > 0 && (
         <Notice tone="info" title={`Bạn có ${invites.data!.length} lời mời cộng tác`} action={<Link to="/exams" className="btn btn-secondary btn-sm">Xem lời mời</Link>}>
           Chấp nhận lời mời để cùng quản lý hoặc giám sát kỳ thi.
