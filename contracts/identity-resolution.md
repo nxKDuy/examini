@@ -1,6 +1,6 @@
 # Auth → Exam/Organization identity resolution
 
-REQUIRED provider request, chưa implement. MAIN giao Auth owner riêng;
+CURRENT provider đã MAIN review và merge tại `0daa663`. Auth owner triển khai;
 không cấp token Notification contact cho domain khác, không query Auth DB trực tiếp.
 
 ```http
@@ -21,3 +21,10 @@ Consumer: Exam chỉ assign STUDENT; Organization invite existing recipientUserI
 accept bằng signed JWT đúng recipient. Không suy emailVerified/active.
 Frontend chỉ qua scoped consumer public API, không gọi endpoint internal.
 Gateway existing internal-deny phải tiếp tục chặn route này.
+
+## Validation provider
+
+Worker chạy `mvn test` với JDK 21: 41 PASS, 1 persistence SKIP do chưa có
+`AUTH_TEST_DATABASE`. MAIN review diff và Surefire XML; runtime resolver trên
+PostgreSQL thật sẽ được xác minh trong consolidated E2E của batch.
+Emails được so khớp chính xác như lưu tại Auth, không lowercase selector tại consumer.

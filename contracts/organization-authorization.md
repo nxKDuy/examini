@@ -1,6 +1,8 @@
 # Organization → Question Bank authorization contract
 
-REQUIRED/APPROVED design cho batch 2026-10-08; CHƯA IMPLEMENT.
+APPROVED contract cho batch 2026-10-08. Provider implementation `e0063b8` đang
+MAIN review/fix; chưa merge và chưa có runtime acceptance. Internal DTO dưới đây
+đã được review để QB adapter có thể triển khai và chạy contract tests độc lập.
 Public routes/DTO cuối cùng phải được provider handoff và MAIN review trước Frontend.
 Business scope: [parallel-participants-organization-scope.md](parallel-participants-organization-scope.md).
 
@@ -47,7 +49,15 @@ Teacher persona, systemPrivilege hoặc bank_authorities legacy.
 
 Provider cũng cần bounded internal discovery `POST /organizations/internal/memberships`
 với `{userId}` và cùng credential, trả active org memberships/capabilities để QB lọc
-bank list mà không enumerate/query foreign DB. Chính xác shape do B handoff cho C.
+bank list mà không enumerate/query foreign DB. Shape đã handoff: request `{userId, capability?}`, response
+`{userId, memberships, truncated, decisionAt}`. Mỗi item có organizationId,
+organizationName, organizationStatus, membershipId, membershipStatus, role,
+canReview, capabilities. Tối đa 200 memberships; `truncated=true` nghĩa kết quả
+không đầy đủ, không được suy rằng user không thuộc một Org ngoài danh sách.
+Operation authorization luôn gọi `/authorize` theo Org cụ thể.
+Response authorize có thêm organizationName, canReview, capabilities; metadata
+nullable có thể bị omit. ARCHIVED cho BANK_READ để đọc lịch sử; không cấp
+BANK_USE/BANK_SUBMIT/BANK_REVIEW/BANK_MANAGE mới.
 Không thay authorization operation bằng một membership list cache.
 
 ## Bank linkage
