@@ -16,6 +16,7 @@ public class ExamEligibilityService {
  private final QuestionRepository questions;
  private final QuestionVersionRepository versions;
  private final PublicQuestionRepository publicQuestions;
+ private final PublicQuestionItemRepository publicItems;
  private final OrganizationQuestionRepository organizationQuestions;
  private final BankRegistry banks;
  private final QuestionPolicy policy;
@@ -31,6 +32,7 @@ public class ExamEligibilityService {
   var ids=ids(input);var qmap=new HashMap<UUID,Question>();questions.findAllById(ids).forEach(q->qmap.put(q.getId(),q));
   var snapshots=new HashMap<UUID,QuestionVersion>();versions.findCurrentSnapshots(ids).forEach(v->snapshots.put(v.getQuestionId(),v));
   var pub=new HashMap<UUID,PublicQuestion>();publicQuestions.findAllById(ids).forEach(p->pub.put(p.getId(),p));
+  var itemMap=new HashMap<UUID,PublicQuestionItem>();publicItems.findByIdIn(ids).forEach(i->itemMap.put(i.getId(),i));
   var org=new HashMap<UUID,OrganizationQuestion>();organizationQuestions.findAllById(ids).forEach(p->org.put(p.getId(),p));
   List<QuestionProjection> result=new ArrayList<>();
   for(var id:ids) {
@@ -42,10 +44,12 @@ public class ExamEligibilityService {
     if(answers&&!policy.canReadAnswers(q,actor)) throw error(HttpStatus.FORBIDDEN,"Không có quyền đọc key");
     var v=snapshots.get(id);if(v==null||v.getVersionNumber()!=q.getQuestionVersion())throw error(HttpStatus.CONFLICT,"Thiếu current snapshot");
     frozen=read(v.getSnapshot()).withContext(q.getStatus(),q.getUpdatedAt()).forExam(id,q.getBankId(),QuestionBank.BankType.valueOf(q.getScope().name()),null);
-   } else if(pub.containsKey(id)) {
-    var p=pub.get(id);if(p.getStatus()!=PublicQuestion.PublicationStatus.PUBLISHED)throw error(HttpStatus.CONFLICT,"PublicQuestion đã archive");
+   } else if(pub.containsKey(id)||itemMap.containsKey(id)) {
+    var item=itemMap.get(id);var p=pub.get(id);
+    if(p==null)p=publicQuestions.findById(item.getPublicationId()).orElseThrow(()->error(HttpStatus.NOT_FOUND,"Không tìm thấy eligible publication"));
+    if(p.getStatus()!=PublicQuestion.PublicationStatus.PUBLISHED)throw error(HttpStatus.CONFLICT,"PublicQuestion đã archive");
     banks.requireRead(banks.get(p.getBankId()),actor);publicationKey(answers,actor);
-    frozen=read(p.getSnapshot()).forExam(id,p.getBankId(),QuestionBank.BankType.PUBLIC,"PUBLISHED");
+    frozen=read(item==null?p.getSnapshot():item.getSnapshot()).forExam(id,p.getBankId(),QuestionBank.BankType.PUBLIC,"PUBLISHED");
    } else if(org.containsKey(id)) {
     var p=org.get(id);banks.requireUse(p.getBankId(),actor);publicationKey(answers,actor);
     frozen=read(p.getSnapshot()).forExam(id,p.getBankId(),QuestionBank.BankType.ORGANIZATION,"APPROVED");
@@ -65,8 +69,8 @@ public class ExamEligibilityService {
      FROM questions q WHERE q.status='ACTIVE' AND
       ((q.scope='PERSONAL' AND q.created_by=:owner) OR q.scope='SYSTEM')
     UNION ALL
-    SELECT p.id,p.bank_id,p.question_type,p.difficulty_level,p.snapshot::jsonb->>'categoryId'
-     FROM public_questions p WHERE p.status='PUBLISHED'
+    SELECT i.id,p.bank_id,i.question_type,i.difficulty_level,i.category_id::text
+     FROM public_question_items i JOIN public_questions p ON p.id=i.publication_id WHERE p.status='PUBLISHED'
     UNION ALL
     SELECT p.id,p.bank_id,p.question_type,p.difficulty_level,p.snapshot::jsonb->>'categoryId'
      FROM organization_questions p WHERE p.bank_id=CAST(:bank AS uuid)

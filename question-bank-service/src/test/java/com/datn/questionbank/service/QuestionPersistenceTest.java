@@ -9,6 +9,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
@@ -23,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import static com.datn.questionbank.entity.Question.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties={"eureka.client.enabled=false", "spring.cloud.discovery.enabled=false",
         "jwt.secret=test-only-jwt-key-32-bytes-or-longer-never-production",
@@ -43,6 +46,8 @@ class QuestionPersistenceTest {
     @Autowired QuestionVersionRepository versions;
     @Autowired QuestionRepository questions;
     @Autowired QuestionReviewRepository reviews;
+    @Autowired MultiBankService banks;
+    @MockBean AuthIdentityClient identities;
     QuestionActor owner = new QuestionActor(UUID.randomUUID(), "TEACHER", false);
     QuestionActor admin = new QuestionActor(UUID.randomUUID(), "ADMIN", false);
     UUID category;
@@ -163,6 +168,27 @@ class QuestionPersistenceTest {
         http.perform(post("/questions/batch").header("X-Service-Token","isolated-test-service-token")
                 .header("X-Question-Owner-Id",owner.userId()).contentType("application/json").content(ids)).andExpect(status().isConflict());
         assertEquals("Internal eligible",service.version(q.id(),1,true,owner).question().content());
+    }
+    @Test void publicRatingAndViewHttpRoutesUseVerifiedJwtActorAndKeepGetsReadOnly() throws Exception {
+        when(identities.displayName(any())).thenReturn("Public author");
+        var q=create("HTTP public rating",DifficultyLevel.EASY);service.activate(q.id(),1,owner);
+        var post=banks.publish(q.id(),new com.datn.questionbank.dto.BankDto.ContributionRequest(1),owner);
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        http.perform(put("/public-questions/"+post.id()+"/rating").header("Authorization",jwt(student)).contentType("application/json").content("{\"rating\":9.25}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.myRating").value(9.25)).andExpect(jsonPath("$.ratingCount").value(1));
+        http.perform(put("/public-questions/"+post.id()+"/rating").header("Authorization",jwt(owner)).contentType("application/json").content("{\"rating\":5}"))
+                .andExpect(status().isForbidden());
+        http.perform(put("/public-questions/"+post.id()+"/rating").header("Authorization",jwt(student)).contentType("application/json").content("{\"rating\":10.01}"))
+                .andExpect(status().isBadRequest());
+        http.perform(post("/public-questions/"+post.id()+"/view").header("Authorization",jwt(student)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.views24h").value(1));
+        http.perform(post("/public-questions/"+post.id()+"/view").header("Authorization",jwt(student)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.views24h").value(1));
+        http.perform(get("/public-questions/"+post.id()).header("Authorization",jwt(student)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.views24h").value(1));
+        http.perform(delete("/public-questions/"+post.id()).header("Authorization",jwt(owner))).andExpect(status().isNoContent());
+        http.perform(put("/public-questions/"+post.id()+"/rating").header("Authorization",jwt(student)).contentType("application/json").content("{\"rating\":7}"))
+                .andExpect(status().isNotFound());
     }
     @Test @Transactional(propagation=org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     void concurrentEditsDoNotOverwriteReviewedRevision() throws Exception {

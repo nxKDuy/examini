@@ -261,7 +261,7 @@ public class QuestionService {
 
     /** Internal domain operation: caller validates source visibility and target bank before copying. */
     @Transactional
-    QuestionResponse copySnapshot(QuestionResponse source, UUID bankId, SourceType sourceType, String sourceRef, QuestionActor actor) {
+    public QuestionResponse copySnapshot(QuestionResponse source, UUID bankId, SourceType sourceType, String sourceRef, QuestionActor actor) {
         var bank = banks.get(bankId);
         banks.requireWrite(bank, actor);
         if (bank.getType() != QuestionBank.BankType.PERSONAL) throw bad("Fork target phải là PERSONAL");
