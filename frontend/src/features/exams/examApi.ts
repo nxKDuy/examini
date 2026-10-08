@@ -1,5 +1,4 @@
 import api from '../../lib/api'
-import type { Question } from '../question-bank/questionApi'
 
 export type ExamStatus = 'DRAFT' | 'PUBLISHED' | 'OPEN' | 'CLOSED' | 'COMPLETED'
 export type AccessMode = 'ASSIGNED' | 'JOIN_CODE' | 'PUBLIC'
@@ -81,7 +80,4 @@ export const examApi = {
   answer: (id: string, questionId: string, content: string) => api.post(`/sessions/${id}/answers`, { content }, { params: { questionId } }),
   submit: (id: string) => api.post(`/sessions/${id}/submit`),
   result: (id: string) => api.get<Result>(`/grades/session/${id}`).then(r => r.data),
-  // Approved questions owned by the author, for composing an exam.
-  approvedQuestions: (params: { categoryId?: string; difficulty?: string; questionType?: string; text?: string; page: number; size: number }) =>
-    api.get<Page<Question>>('/questions', { params: { ...params, status: 'APPROVED' } }).then(r => r.data),
 }

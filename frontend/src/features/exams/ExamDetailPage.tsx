@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock, Check, ClipboardCheck, Lock, Pencil, PlayCircle, RefreshCw, RotateCcw, Send, Trash2, UserPlus } from 'lucide-react'
 import { examApi, type Exam, type MemberRole, type Policy } from './examApi'
-import { questionBankApi, type Question } from '../question-bank/questionApi'
+import type { Question } from '../question-bank/questionApi'
+import { bankApi } from '../banks/bankApi'
 import PolicyFields from './PolicyFields'
 import { policyError } from './policy'
 import { useAuthStore } from '../../store/authStore'
@@ -62,14 +63,9 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
     enabled: manage && (exam.status === 'OPEN' || exam.status === 'CLOSED'),
   })
   const gradingBadge = gradingOverview.data?.needsReview ?? 0
-  const questions = useQueries({
-    queries: exam.questionIds.map(qid => ({ queryKey: ['question', qid, false], queryFn: () => questionBankApi.getQuestion(qid, false), retry: false, staleTime: 15_000 })),
-  })
-  // Pre-publish check against live Question Bank state; the server re-validates on Publish.
-  const ineligible = exam.status === 'DRAFT'
-    ? exam.questionIds.map((_qid, i) => ({ n: i + 1, q: questions[i]?.data })).filter(x => x.q && x.q.status !== 'APPROVED')
-    : []
-  const ineligibleText = ineligible.map(x => `Câu ${x.n} (${QUESTION_STATUS[x.q!.status]?.label ?? x.q!.status}, phiên bản ${x.q!.questionVersion})`).join(', ')
+  const questions = useQuery({ queryKey: ['questions', 'draft-resources', exam.id, exam.status, exam.questionIds], queryFn: () => bankApi.eligibleBatch(exam.questionIds), enabled: exam.status === 'DRAFT' && exam.questionIds.length > 0, retry: false })
+  const ineligible = (exam.status === 'DRAFT' ? questions.data ?? [] : []).map((q, i) => ({ n: i + 1, q })).filter(x => x.q.eligible !== true)
+  const ineligibleText = ineligible.map(x => `Câu ${x.n} (${QUESTION_STATUS[x.q.status]?.label ?? x.q.status}, phiên bản ${x.q.questionVersion})`).join(', ')
   const invalidate = () => Promise.all([qc.invalidateQueries({ queryKey: ['exam', exam.id] }), qc.invalidateQueries({ queryKey: ['exams'] })])
 
   const transition = useMutation({
@@ -85,9 +81,9 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
       const info = errorInfo(e)
       const providerRejected = kind === 'publish' && info.status === 409 && UPSTREAM_GENERIC.test(info.detail ?? '')
       setMessage({ tone: 'danger', text: providerRejected
-        ? `Ngân hàng câu hỏi từ chối xuất bản: có câu hỏi chưa ở trạng thái Đã duyệt hoặc vừa có phiên bản mới chưa duyệt.${ineligibleText ? ` Kiểm tra: ${ineligibleText}.` : ''} Gửi duyệt lại hoặc gỡ câu hỏi đó khỏi đề rồi xuất bản lại.`
+        ? `Ngân hàng câu hỏi từ chối xuất bản: có câu hỏi không còn đủ điều kiện hoặc không còn quyền sử dụng.${ineligibleText ? ` Kiểm tra: ${ineligibleText}.` : ''} Kiểm tra ngân hàng và quyền sử dụng hoặc thay câu hỏi rồi xuất bản lại.`
         : info.message })
-      void qc.invalidateQueries({ queryKey: ['question'] })
+      void qc.invalidateQueries({ queryKey: ['questions', 'draft-resources'] })
     },
   })
 
@@ -113,10 +109,11 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         </>} />
 
       {flash?.notice && !message && <Notice tone={flash.tone ?? 'success'} live>{flash.notice}</Notice>}
+      {exam.status === 'DRAFT' && questions.isError && <Notice tone="warning">Chưa xác minh được câu hỏi trong đề: {errorText(questions.error)}. Máy chủ kiểm tra lại khi xuất bản.</Notice>}
       {message && <Notice tone={message.tone} live title={message.tone === 'danger' ? 'Không thực hiện được' : undefined}>{message.text}</Notice>}
       {manage && ineligible.length > 0 && (
         <Notice tone="warning" title="Chưa thể xuất bản">
-          {ineligible.length} câu hỏi hiện không ở trạng thái Đã duyệt: {ineligibleText}. Gửi duyệt và chờ phê duyệt, hoặc gỡ câu hỏi khỏi đề.
+          {ineligible.length} câu hỏi hiện không đủ điều kiện: {ineligibleText}. Kiểm tra điều kiện ngân hàng hoặc thay câu hỏi.
         </Notice>
       )}
       {role === 'PROCTOR' && <Notice tone="info">Bạn là Giám thị: xem thông tin và lượt làm bài. Xuất bản, mở, đóng kỳ thi và chấm bài do Chủ sở hữu hoặc Quản lý thực hiện.</Notice>}
@@ -139,7 +136,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         ))}
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'overview' && <Overview exam={exam} questions={questions.map(q => q.data)} schedule={schedule.data?.s} viewerTz={viewerTz} onSchedule={() => setTab('schedule')} />}
+        {tab === 'overview' && <Overview exam={exam} questions={exam.status === 'DRAFT' ? exam.questionIds.map(id => questions.data?.find(q => q.id === id)) : []} schedule={schedule.data?.s} viewerTz={viewerTz} onSchedule={() => setTab('schedule')} />}
         {tab === 'schedule' && <ScheduleTab exam={exam} manage={manage} schedule={schedule.data?.s} loading={schedule.isLoading} error={schedule.error} onRetry={() => void schedule.refetch()} viewerTz={viewerTz} onEdit={() => setEditing(true)} />}
         {tab === 'participation' && <Participation exam={exam} manage={manage} />}
         {tab === 'collaborators' && <Collaborators exam={exam} owner={role === 'OWNER'} members={members} />}
@@ -150,12 +147,12 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
       {confirm === 'publish' && <ConfirmDialog title="Xuất bản đề thi?" confirmLabel="Xuất bản" busy={transition.isPending}
         onConfirm={() => transition.mutate('publish')} onCancel={() => setConfirm(null)}>
         <ul className="small stack-sm" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Hệ thống kiểm tra mọi câu hỏi đều <strong>Đã duyệt</strong> và cố định đúng phiên bản hiện tại cùng đáp án, điểm.</li>
+          <li>Hệ thống kiểm tra quyền và <strong>điều kiện sử dụng từng ngân hàng</strong> và cố định đúng phiên bản hiện tại cùng đáp án, điểm.</li>
           <li>Sau khi xuất bản, không thể sửa nội dung, câu hỏi, điểm hay chính sách tham gia của đề.</li>
           <li>Sửa câu hỏi trong Ngân hàng sau đó không làm thay đổi đề đã xuất bản.</li>
           <li>Thí sinh chỉ bắt đầu được sau khi bạn <strong>Mở kỳ thi</strong>.</li>
         </ul>
-        {ineligible.length > 0 && <div style={{ marginTop: 12 }}><Notice tone="warning">Hiện có câu hỏi chưa được duyệt ({ineligibleText}); máy chủ sẽ từ chối xuất bản.</Notice></div>}
+        {ineligible.length > 0 && <div style={{ marginTop: 12 }}><Notice tone="warning">Hiện có câu hỏi không đủ điều kiện ({ineligibleText}); máy chủ sẽ từ chối xuất bản.</Notice></div>}
       </ConfirmDialog>}
       {confirm === 'open' && <ConfirmDialog title="Mở kỳ thi?" confirmLabel="Mở kỳ thi" busy={transition.isPending}
         description={`Thí sinh đủ điều kiện (${ACCESS_MODE_LABEL[exam.accessMode]}) có thể bắt đầu làm bài${exam.startTime || exam.endTime ? ' trong khung giờ đã đặt' : ''}. Kỳ thi đang mở chỉ có thể chuyển sang Đã đóng.`}
@@ -187,7 +184,7 @@ function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: E
         {exam.description && <div className="stack-sm" style={{ marginTop: 16 }}><span className="field-label">Hướng dẫn cho thí sinh</span><p className="prewrap small">{exam.description}</p></div>}
       </Section>
       <Section title="Câu hỏi và điểm" bodyClassName=""
-        description={exam.status === 'DRAFT' ? 'Đề thi quyết định điểm cho từng câu.' : 'Phiên bản câu hỏi đã được cố định khi xuất bản. Nội dung dưới đây là bản hiện tại trong Ngân hàng để tham khảo.'}>
+        description={exam.status === 'DRAFT' ? 'Đề thi quyết định điểm cho từng câu.' : 'Phiên bản câu hỏi đã được cố định khi xuất bản. Chỉ hiển thị mã câu hỏi và điểm; không lấy câu hiện tại để thay bản chụp.'}>
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th scope="col">#</th><th scope="col">Câu hỏi</th><th scope="col">Loại</th><th scope="col" style={{ textAlign: 'right' }}>Điểm</th></tr></thead>
@@ -197,7 +194,7 @@ function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: E
                 return (
                   <tr key={item.questionId}>
                     <td className="mono muted">{i + 1}</td>
-                    <td><div className="truncate-2" style={{ maxWidth: 640 }}>{q ? q.content : <span className="muted">Câu hỏi {shortId(item.questionId)} (không đọc được nội dung)</span>}</div></td>
+                    <td><div className="truncate-2" style={{ maxWidth: 640 }}>{q ? q.content : <span className="muted">Câu hỏi {shortId(item.questionId)} {exam.status === 'DRAFT' ? '(chưa xác minh được nội dung)' : '(bản chụp đã xuất bản)'}</span>}</div></td>
                     <td className="small">{q ? <>{QUESTION_TYPE_LABEL[q.questionType]}{exam.status === 'DRAFT' && <div style={{ marginTop: 4 }}><QuestionStatusBadge status={q.status} /></div>}</> : '-'}</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{formatScore(item.weight)}</td>
                   </tr>

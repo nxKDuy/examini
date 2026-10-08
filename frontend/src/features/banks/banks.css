@@ -1,0 +1,28 @@
+/* Banks: ruled EXAMINI style. State is text + badge, never colour alone. */
+.bk-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.bk-layout[data-panel="open"] { grid-template-columns: minmax(0, 1fr) 420px; }
+@media (max-width: 1100px) { .bk-layout[data-panel="open"] { grid-template-columns: minmax(0, 1fr); } }
+.bk-table { width: 100%; border-collapse: collapse; background: #fff; }
+.bk-table th, .bk-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #000; vertical-align: top; }
+.bk-table th { font-weight: 400; color: var(--color-muted); font-size: 0.85rem; }
+.bk-table tr[aria-selected="true"] td { background: var(--color-subtle); }
+.bk-table tr[aria-selected="true"] td:first-child { box-shadow: inset 4px 0 0 var(--color-accent); }
+.bk-row-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--color-ink); text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.bk-card { display: grid; gap: 6px; width: 100%; text-align: left; padding: 14px 16px; background: #fff; border: 0; border-bottom: 1px solid #000; cursor: pointer; color: inherit; }
+.bk-card[aria-current="true"] { background: var(--color-subtle); box-shadow: inset 6px 0 0 var(--color-accent); }
+.bk-card[data-archived="true"] { border-left: 4px dashed #000; }
+.bk-panel { position: sticky; top: 80px; max-height: calc(100dvh - 96px); overflow-y: auto; background: #fff; border: 1px solid #000; }
+.bk-panel-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; padding: 14px 16px; border-bottom: 1px solid #000; }
+.bk-panel-body { padding: 16px; display: grid; gap: 14px; }
+.bk-panel h2:focus { outline: none; }
+.bk-sheet-backdrop { display: none; }
+@media (max-width: 1100px) {
+  .bk-panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 82dvh; z-index: 70; border-width: 1px 0 0; }
+  .bk-sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 65; background: rgb(196 196 196 / 0.82); border: 0; }
+}
+.bk-chain { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.bk-chain li { border: 1px solid #000; padding: 8px 12px; background: #fff; position: relative; margin-bottom: 14px; }
+.bk-chain li:last-child { margin-bottom: 0; }
+.bk-chain li:not(:last-child)::after { content: "↓"; position: absolute; left: 14px; bottom: -17px; font-size: 0.9rem; }
+.bk-chain li[data-tone="here"] { background: var(--color-subtle); box-shadow: inset 4px 0 0 var(--color-accent); }
+.bk-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }

@@ -13,17 +13,14 @@ import SubjectCategoryFields from './SubjectCategoryFields'
 import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
 
-const TABS: { value: string; label: string }[] = [
-  { value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'PENDING_REVIEW', label: 'Chờ duyệt' },
-  { value: 'APPROVED', label: 'Đã duyệt' }, { value: 'REJECTED', label: 'Bị từ chối' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' },
-]
+const TABS = [{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }]
 
 export default function QuestionListPage() {
   const user = useAuthStore(s => s.user)
   const admin = audienceOf(user) === 'ADMIN'
   const [subjectId, setSubjectId] = useState('')
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState<Filters>({ page: 0, status: admin ? 'PENDING_REVIEW' : undefined })
+  const [filters, setFilters] = useState<Filters>({ page: 0 })
   const [selectedId, setSelectedId] = useState('')
   const [editing, setEditing] = useState<Question | null | 'new'>(null)
   const [importing, setImporting] = useState(false)
@@ -45,10 +42,8 @@ export default function QuestionListPage() {
   return (
     <div className="stack">
       <PageHeader
-        title={admin ? 'Duyệt câu hỏi' : 'Ngân hàng câu hỏi'}
-        description={admin
-          ? 'Phê duyệt hoặc từ chối câu hỏi giáo viên gửi duyệt. Chỉ câu hỏi Đã duyệt được dùng trong đề thi.'
-          : 'Câu hỏi cá nhân của bạn. Soạn ở Bản nháp, gửi duyệt; chỉ câu hỏi Đã duyệt được dùng trong đề thi.'}
+        title={admin ? 'Câu hỏi' : 'Kho cá nhân'}
+        description="Soạn bản nháp, kích hoạt để dùng. Gửi vào tổ chức hoặc xuất bản công khai từ câu cá nhân đang dùng; câu gốc giữ độc lập."
         actions={!admin && <>
           <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> Nhập CSV</button>
           <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> Tạo câu hỏi</button>
@@ -89,8 +84,8 @@ export default function QuestionListPage() {
             {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">Đang cập nhật…</span>}</div>
           {list.isLoading ? <LoadingState rows={6} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
             : list.data!.content.length === 0
-              ? <EmptyState icon={<BookOpenCheck size={30} />} title={admin && filters.status === 'PENDING_REVIEW' ? 'Không có câu hỏi chờ duyệt' : 'Không có câu hỏi phù hợp'}
-                  description={admin ? 'Câu hỏi giáo viên gửi duyệt sẽ xuất hiện ở đây.' : 'Đổi bộ lọc hoặc tạo câu hỏi mới.'}
+              ? <EmptyState icon={<BookOpenCheck size={30} />} title={'Không có câu hỏi phù hợp'}
+                  description={'Đổi bộ lọc hoặc tạo câu hỏi mới.'}
                   action={!admin && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><Plus size={14} aria-hidden /> Tạo câu hỏi</button>} />
               : <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {list.data!.content.map(item => (
@@ -111,7 +106,7 @@ export default function QuestionListPage() {
 
         <section ref={detailRef} className="card card-body sticky-pane" aria-label="Chi tiết câu hỏi" style={{ minHeight: 200 }}>
           {selectedId ? <QuestionDetail key={selectedId} id={selectedId} onEdit={q => setEditing(q)} />
-            : <EmptyState title="Chọn một câu hỏi" description="Chi tiết, đáp án, lịch sử duyệt và lịch sử phiên bản sẽ hiển thị ở đây." />}
+            : <EmptyState title="Chọn một câu hỏi" description="Chi tiết, đáp án, nguồn gốc và lịch sử phiên bản sẽ hiển thị ở đây." />}
         </section>
       </div>
 

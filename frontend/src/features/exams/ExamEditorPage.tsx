@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from 'lucide-react'
 import { examApi, type Exam, type ExamInput, type Policy } from './examApi'
-import { questionBankApi, type Question } from '../question-bank/questionApi'
+import type { Question } from '../question-bank/questionApi'
+import { bankApi } from '../banks/bankApi'
 import PolicyFields from './PolicyFields'
 import { legacyScheduleFields } from './examInput'
 import { DEFAULT_POLICY, policyError } from './policy'
@@ -50,13 +51,11 @@ function Editor({ exam }: { exam?: Exam }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const loaded = useQueries({
-    queries: (exam?.questionIds ?? []).map(qid => ({ queryKey: ['question', qid, false], queryFn: () => questionBankApi.getQuestion(qid, false), retry: false, staleTime: 60_000 })),
-  })
+  // Draft composition reads provider resources; published views keep their snapshots.
+  const loaded = useQuery({ queryKey: ['questions', 'draft-resources', exam?.id, exam?.questionIds], queryFn: () => bankApi.eligibleBatch(exam!.questionIds), enabled: !!exam?.questionIds.length, retry: false })
   useEffect(() => {
-    const found = loaded.map(r => r.data).filter((q): q is Question => !!q)
-    if (found.some(q => !known[q.id])) setKnown(k => ({ ...k, ...Object.fromEntries(found.map(q => [q.id, q])) }))
-  }, [loaded, known])
+    if (loaded.data) setKnown(k => ({ ...k, ...Object.fromEntries(loaded.data!.map(q => [q.id, q])) }))
+  }, [loaded.data])
 
   const total = items.reduce((s, i) => s + (Number.isFinite(i.weight) ? i.weight : 0), 0)
   const passing = info.passingScore.trim() === '' ? null : Number(info.passingScore)
@@ -67,7 +66,7 @@ function Editor({ exam }: { exam?: Exam }) {
       if (!Number.isInteger(info.durationMinutes) || info.durationMinutes < 1) return 'Thời lượng phải là số phút nguyên từ 1 trở lên.'
     }
     if (target >= 1) {
-      if (items.length === 0) return 'Thêm ít nhất một câu hỏi đã duyệt.'
+      if (items.length === 0) return 'Thêm ít nhất một câu hỏi đủ điều kiện.'
       if (items.length > 200) return 'Đề thi tối đa 200 câu hỏi.'
       if (items.some(i => !(i.weight > 0))) return 'Mỗi câu hỏi cần điểm lớn hơn 0.'
       if (passing !== null && (!Number.isFinite(passing) || passing < 0 || passing > total)) return `Điểm đạt phải từ 0 đến tổng điểm (${formatScore(total)}).`
@@ -163,11 +162,12 @@ function Editor({ exam }: { exam?: Exam }) {
 
         {step === 1 && <>
           <Notice tone="info">Đề thi quyết định điểm cho từng câu. Khi xuất bản, nội dung và phiên bản của các câu hỏi được cố định; chỉnh sửa câu hỏi sau đó không ảnh hưởng đến đề.</Notice>
+          {loaded.isError && <Notice tone="warning">Không xác minh được các câu đã chọn: {errorText(loaded.error)}. Máy chủ kiểm tra lại khi xuất bản.</Notice>}
           <div className="spread">
             <p className="small"><strong>{items.length}</strong> câu hỏi · Tổng điểm <strong className="mono">{formatScore(total)}</strong></p>
-            <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}><Plus size={16} aria-hidden /> Thêm câu hỏi đã duyệt</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}><Plus size={16} aria-hidden /> Thêm câu hỏi đủ điều kiện</button>
           </div>
-          {items.length === 0 ? <div className="card"><EmptyState title="Chưa có câu hỏi" description="Thêm câu hỏi đã được duyệt từ Ngân hàng câu hỏi."
+          {items.length === 0 ? <div className="card"><EmptyState title="Chưa có câu hỏi" description="Thêm câu hỏi đủ điều kiện từ Ngân hàng câu hỏi."
             action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setPicking(true)}><Plus size={14} aria-hidden /> Thêm câu hỏi</button>} /></div>
             : <ol className="card" style={{ listStyle: 'none', margin: 0, padding: 0, overflow: 'hidden' }}>
               {items.map((item, i) => {
@@ -177,7 +177,7 @@ function Editor({ exam }: { exam?: Exam }) {
                     <span className="mono muted small" style={{ width: 28, paddingTop: 2 }}>{i + 1}.</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="truncate-2 small" style={{ color: 'var(--color-ink)' }}>{q ? q.content : `Câu hỏi ${shortId(item.questionId)}`}</div>
-                      <div className="xsmall muted">{q ? `${QUESTION_TYPE_LABEL[q.questionType]} · ${DIFFICULTY_LABEL[q.difficultyLevel]} · v${q.questionVersion}${q.status !== 'APPROVED' ? ` · Hiện ở trạng thái ${q.status}, cần thay trước khi xuất bản` : ''}` : 'Không đọc được nội dung câu hỏi (có thể không thuộc quyền của bạn).'}</div>
+                      <div className="xsmall muted">{q ? `${QUESTION_TYPE_LABEL[q.questionType]} · ${DIFFICULTY_LABEL[q.difficultyLevel]} · v${q.questionVersion}${q.eligible !== true ? ` · Cần kiểm tra lại điều kiện trước khi xuất bản` : ''}` : 'Không đọc được nội dung câu hỏi (có thể không thuộc quyền của bạn).'}</div>
                     </div>
                     <label className="row xsmall" style={{ flexWrap: 'nowrap', gap: 6 }}>Điểm
                       <input type="number" min={0.25} step={0.25} className="input" style={{ width: 84, minHeight: 34 }} value={Number.isFinite(item.weight) ? item.weight : ''}

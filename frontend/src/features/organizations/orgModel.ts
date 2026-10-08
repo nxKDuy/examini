@@ -1,3 +1,4 @@
+import { showBankTab } from '../banks/bankModel'
 import type { InviteRole, Member, Organization, OrgRole, RecipientInput } from './orgApi'
 
 /** Pure Organization UI rules. They only mirror what the server already enforces so buttons are not offered in vain; the server stays the authority. */
@@ -20,13 +21,14 @@ export const isOwner = (role: OrgRole | undefined) => role === 'OWNER'
 export const isManager = (role: OrgRole | undefined) => role === 'OWNER' || role === 'ADMIN'
 export const isArchived = (org: Pick<Organization, 'status'>) => org.status === 'ARCHIVED'
 
-export type OrgTab = 'members' | 'invitations' | 'audit' | 'settings'
+export type OrgTab = 'members' | 'invitations' | 'audit' | 'settings' | 'bank'
 /** Tabs the caller may open, from the real membership. Members never see tabs whose API would answer 403. */
 export function tabsFor(role: OrgRole | undefined): OrgTab[] {
   if (!role) return []
   return isOwner(role) ? ['members', 'invitations', 'audit', 'settings'] : isManager(role) ? ['members', 'invitations', 'audit'] : ['members']
 }
-export const TAB_LABEL: Record<OrgTab, string> = { members: 'Thành viên', invitations: 'Lời mời', audit: 'Nhật ký', settings: 'Cài đặt' }
+export const tabsForOrg = (org: Organization): OrgTab[] => [...tabsFor(org.me?.role), ...(showBankTab(org) ? ['bank' as const] : [])]
+export const TAB_LABEL: Record<OrgTab, string> = { bank: 'Ngân hàng câu hỏi', members: 'Thành viên', invitations: 'Lời mời', audit: 'Nhật ký', settings: 'Cài đặt' }
 export const parseTab = (value: string | null, allowed: OrgTab[]): OrgTab => (allowed.includes(value as OrgTab) ? (value as OrgTab) : 'members')
 
 export interface MemberAbilities { changeRole: boolean; toggleReview: boolean; remove: boolean; any: boolean; note: string | null }

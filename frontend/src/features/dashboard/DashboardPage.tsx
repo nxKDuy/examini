@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle, ShieldCheck } from 'lucide-react'
+import { BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section, Stat } from '../../components/ui'
@@ -100,7 +100,7 @@ function ExamLinks({ exams, to = (e: Exam) => `/exam/lobby/${e.id}` }: { exams: 
 
 function TeacherDashboard() {
   const user = useAuthStore(s => s.user)
-  const counts = useQuestionCounts(['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'REJECTED'])
+  const counts = useQuestionCounts(['DRAFT', 'ACTIVE', 'ARCHIVED'])
   const exams = useQuery({ queryKey: ['exams', 'list', 0], queryFn: () => examApi.list(0) })
   const invites = useQuery({ queryKey: ['invitations'], queryFn: examApi.invitations })
   const list = exams.data?.content ?? []
@@ -126,16 +126,15 @@ function TeacherDashboard() {
       )}
       <div className="grid-stats">
         <Stat label="Câu hỏi bản nháp" value={c(0)} to="/questions" />
-        <Stat label="Đang chờ duyệt" value={c(1)} to="/questions" />
-        <Stat label="Đã duyệt, dùng được" value={c(2)} to="/questions" />
-        <Stat label="Bị từ chối, cần sửa" value={c(3)} to="/questions" />
+        <Stat label="Câu hỏi đang dùng" value={c(1)} to="/questions" />
+        <Stat label="Câu hỏi đã lưu trữ" value={c(2)} to="/questions" />
       </div>
       <TodayUpcoming />
       <div className="grid-2">
         <Section title="Đề thi của tôi" description={exams.data ? `${exams.data.totalElements} đề thi bạn sở hữu hoặc cộng tác` : undefined}
           actions={<Link to="/exams/create" className="btn btn-primary btn-sm"><FilePlus2 size={16} aria-hidden /> Tạo đề thi</Link>} bodyClassName="">
           {exams.isLoading ? <LoadingState rows={3} /> : exams.isError ? <ErrorState error={exams.error} onRetry={() => void exams.refetch()} /> : list.length === 0
-            ? <EmptyState icon={<FilePlus2 size={30} />} title="Chưa có đề thi" description="Tạo đề thi từ các câu hỏi đã được duyệt trong Ngân hàng câu hỏi." />
+            ? <EmptyState icon={<FilePlus2 size={30} />} title="Chưa có đề thi" description="Tạo đề thi từ các câu hỏi đủ điều kiện trong Ngân hàng câu hỏi." />
             : <>
               <div className="row small" style={{ padding: '12px 20px', gap: 16, borderBottom: '1px solid var(--color-border)' }}>
                 <span>Bản nháp: <strong>{byStatus('DRAFT')}</strong></span>
@@ -164,31 +163,12 @@ function TeacherDashboard() {
 }
 
 function AdminDashboard() {
-  const counts = useQuestionCounts(['PENDING_REVIEW'])
-  const pending = counts[0]
-  return (
-    <div className="grid-2">
-      <Section title="Duyệt câu hỏi" description="Quản trị viên phê duyệt hoặc từ chối câu hỏi giáo viên gửi duyệt.">
-        <div className="stack">
-          {pending.isError ? <ErrorState error={pending.error} onRetry={() => void pending.refetch()} /> : (
-            <div className="row" style={{ gap: 12 }}>
-              <ShieldCheck size={28} aria-hidden style={{ color: 'var(--color-accent)' }} />
-              <div>
-                <div className="stat-value">{pending.data ?? '-'}</div>
-                <div className="stat-label">câu hỏi đang chờ duyệt</div>
-              </div>
-            </div>
-          )}
-          <div><Link to="/questions" className="btn btn-primary"><BookOpenCheck size={16} aria-hidden /> Mở hàng chờ duyệt</Link></div>
-        </div>
-      </Section>
-      <Section title="Phạm vi quản trị trong Phase 1">
-        <ul className="small stack-sm" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Duyệt câu hỏi: phê duyệt hoặc từ chối kèm lý do.</li>
-          <li>Đề thi và chấm bài: chỉ với đề thi bạn sở hữu hoặc được mời cộng tác; quyền trên từng đề do máy chủ kiểm tra.</li>
-          <li>Quản lý người dùng chưa có trong Phase 1.</li>
-        </ul>
-      </Section>
-    </div>
-  )
+  return <div className="grid-2">
+    <Section title="Ngân hàng câu hỏi" description="Câu cá nhân không cần duyệt. Duyệt đóng góp tại từng tổ chức theo quyền BANK_REVIEW.">
+      <Link to="/questions" className="btn btn-primary"><BookOpenCheck size={16} aria-hidden /> Mở câu hỏi</Link>
+    </Section>
+    <Section title="Phạm vi quản trị trong Phase 1">
+      <p className="small">Quyền hệ thống không thay quyền tổ chức. Đề thi và chấm bài theo quyền từng đề do máy chủ kiểm tra.</p>
+    </Section>
+  </div>
 }

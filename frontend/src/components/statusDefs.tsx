@@ -6,10 +6,8 @@ export interface StatusDef { label: string; tone: Tone; icon: ReactNode; help: s
 const icon = (Icon: typeof Clock) => <Icon size={12} aria-hidden />
 
 export const QUESTION_STATUS: Record<string, StatusDef> = {
-  DRAFT: { label: 'Bản nháp', tone: 'neutral', icon: icon(FileEdit), help: 'Đang soạn. Gửi duyệt khi nội dung hoàn chỉnh.' },
-  PENDING_REVIEW: { label: 'Chờ duyệt', tone: 'warning', icon: icon(Hourglass), help: 'Đã gửi duyệt. Quản trị viên sẽ phê duyệt hoặc từ chối; không thể sửa trong lúc chờ.' },
-  APPROVED: { label: 'Đã duyệt', tone: 'success', icon: icon(CheckCircle2), help: 'Được phép dùng trong đề thi. Sửa câu hỏi sẽ tạo phiên bản mới cần duyệt lại.' },
-  REJECTED: { label: 'Bị từ chối', tone: 'danger', icon: icon(XCircle), help: 'Không được duyệt. Đọc lý do, sửa và gửi duyệt lại.' },
+  DRAFT: { label: 'Bản nháp', tone: 'neutral', icon: icon(FileEdit), help: 'Đang soạn. Kích hoạt khi nội dung hoàn chỉnh; không cần duyệt.' },
+  ACTIVE: { label: 'Đang dùng', tone: 'success', icon: icon(CheckCircle2), help: 'Có thể dùng theo quyền của ngân hàng. Sửa tạo bản nháp phiên bản mới; các bản đã xuất bản giữ nguyên.' },
   ARCHIVED: { label: 'Đã lưu trữ', tone: 'muted', icon: icon(Archive), help: 'Không còn dùng được cho đề thi mới.' },
 }
 

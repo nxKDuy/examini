@@ -15,16 +15,18 @@ export function audienceOf(user: AuthUser | null): Audience {
 export const AUDIENCE_LABEL: Record<Audience, string> = { ADMIN: 'Quản trị hệ thống', TEACHER: 'Giáo viên', STUDENT: 'Học sinh / Sinh viên' }
 
 export function navigationFor(audience: Audience): NavGroup[] {
+  const publicBank: NavItem = { to: '/public-bank', label: 'Ngân hàng công khai', icon: BookOpenCheck }
   const overview: NavItem = { to: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard }
   if (audience === 'STUDENT') {
-    return [{ items: [overview, { to: '/calendar', label: 'Lịch của tôi', icon: CalendarDays }, { to: '/my-exams', label: 'Kỳ thi của tôi', icon: ListChecks }, { to: '/organizations', label: 'Tổ chức', icon: Building2 }] }]
+    return [{ items: [overview, publicBank, { to: '/calendar', label: 'Lịch của tôi', icon: CalendarDays }, { to: '/my-exams', label: 'Kỳ thi của tôi', icon: ListChecks }, { to: '/organizations', label: 'Tổ chức', icon: Building2 }] }]
   }
   if (audience === 'TEACHER') {
     return [
       { items: [overview] },
       { label: 'Giảng dạy', items: [
         { to: '/calendar', label: 'Lịch thi', icon: CalendarDays },
-        { to: '/questions', label: 'Ngân hàng câu hỏi', icon: BookOpenCheck },
+        { to: '/questions', label: 'Kho cá nhân', icon: BookOpenCheck },
+        publicBank,
         { to: '/exams', label: 'Đề thi', icon: FileText },
         { to: '/grading', label: 'Chấm bài', icon: ClipboardCheck },
         { to: '/organizations', label: 'Tổ chức', icon: Building2 },
@@ -33,7 +35,7 @@ export function navigationFor(audience: Audience): NavGroup[] {
   }
   return [
     { items: [overview] },
-    { label: 'Quản trị', items: [{ to: '/questions', label: 'Duyệt câu hỏi', icon: ShieldCheck }] },
+    { label: 'Quản trị', items: [{ to: '/questions', label: 'Câu hỏi', icon: ShieldCheck }, publicBank, { to: '/organizations', label: 'Tổ chức', icon: Building2 }] },
     { label: 'Khảo thí', items: [
       { to: '/calendar', label: 'Lịch thi', icon: CalendarDays },
       { to: '/exams', label: 'Đề thi', icon: FileText },
