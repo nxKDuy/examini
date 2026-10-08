@@ -102,9 +102,13 @@ public class RequestAuthentication extends OncePerRequestFilter {
             Claims claims = Jwts.parser().verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
                     .build().parseSignedClaims(authorization.getFirst().substring(7)).getPayload();
             String role = claims.get("role", String.class);
+            String persona = claims.get("persona", String.class);
+            boolean canonical = persona != null && Set.of("STUDENT", "TEACHER").contains(persona);
+            // Canonical persona is authoritative; legacy role is required only when the canonical claim is absent.
             if (!"access".equals(claims.get("type", String.class)) || claims.getExpiration() == null
-                    || !Set.of("ADMIN", "TEACHER", "STUDENT").contains(role == null ? "" : role)) throw unauthorized();
-            return new Actor(UUID.fromString(claims.getSubject()), role);
+                    || (persona != null && !canonical)
+                    || (!canonical && !Set.of("ADMIN", "TEACHER", "STUDENT").contains(role == null ? "" : role))) throw unauthorized();
+            return new Actor(UUID.fromString(claims.getSubject()), role, persona);
         } catch (JwtException | IllegalArgumentException | NullPointerException error) {
             throw unauthorized();
         }

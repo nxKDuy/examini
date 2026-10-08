@@ -265,18 +265,20 @@ public class OrganizationService {
         requireManager(member(orgId, actor));
         String s = validInvStatus(status);
         Org org = repo.org(orgId).orElseThrow();
-        List<Inv> rows = repo.invs(orgId, s, p.size(), p.offset());
+        OffsetDateTime at = now();
+        List<Inv> rows = repo.invs(orgId, s, at, p.size(), p.offset());
         Map<UUID, String> names = names(rows.stream().map(Inv::recipientUserId).toList());
-        return p.page(rows.stream().map(i -> invView(i, org.name(), names.get(i.recipientUserId()))).toList(), repo.countInvs(orgId, s));
+        return p.page(rows.stream().map(i -> invView(i, org.name(), names.get(i.recipientUserId()), at)).toList(), repo.countInvs(orgId, s, at));
     }
 
     @Transactional(readOnly = true)
     public PageView<InvitationView> myInvitations(Actor actor, String status, Paging p) {
         String s = validInvStatus(status);
-        List<Inv> rows = repo.myInvs(actor.userId(), s, p.size(), p.offset());
+        OffsetDateTime at = now();
+        List<Inv> rows = repo.myInvs(actor.userId(), s, at, p.size(), p.offset());
         Map<UUID, String> orgNames = new HashMap<>();
-        return p.page(rows.stream().map(i -> invView(i, orgNames.computeIfAbsent(i.organizationId(), repo::orgName), null)).toList(),
-                repo.countMyInvs(actor.userId(), s));
+        return p.page(rows.stream().map(i -> invView(i, orgNames.computeIfAbsent(i.organizationId(), repo::orgName), null, at)).toList(),
+                repo.countMyInvs(actor.userId(), s, at));
     }
 
     // The lapsed-invitation EXPIRED write must survive the 409 raised right after it.
@@ -339,9 +341,10 @@ public class OrganizationService {
 
     private IdentityResolver.Identity resolveRecipient(CreateInvitation req) {
         try {
+            // Auth stores the email verbatim and matches it exactly: no trim/lowercase, and the match is re-checked here.
             List<IdentityResolver.Identity> found = req.userId() != null ? identities.byUserIds(List.of(req.userId()))
-                    : identities.byEmails(List.of(req.email().trim().toLowerCase()));
-            return found.stream().filter(i -> req.userId() == null || i.userId().equals(req.userId())).findFirst()
+                    : identities.byEmails(List.of(req.email()));
+            return found.stream().filter(i -> req.userId() != null ? i.userId().equals(req.userId()) : req.email().equals(i.email())).findFirst()
                     .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"));
         } catch (IdentityResolver.Unavailable unavailable) {
             throw error(HttpStatus.SERVICE_UNAVAILABLE, "Dịch vụ danh tính chưa sẵn sàng");
@@ -430,8 +433,10 @@ public class OrganizationService {
         return new MemberView(m.id(), m.userId(), displayName, m.role(), m.status(), m.canReview(), caps, m.joinedAt(), m.endedAt(), m.revision());
     }
 
-    private static InvitationView invView(Inv i, String orgName, String recipientName) {
-        String status = Model.PENDING.equals(i.status()) && !i.expiresAt().isAfter(now()) ? Model.EXPIRED : i.status();
+    private static InvitationView invView(Inv i, String orgName, String recipientName) { return invView(i, orgName, recipientName, now()); }
+
+    private static InvitationView invView(Inv i, String orgName, String recipientName, OffsetDateTime at) {
+        String status = Model.PENDING.equals(i.status()) && !i.expiresAt().isAfter(at) ? Model.EXPIRED : i.status();
         return new InvitationView(i.id(), i.organizationId(), orgName, i.recipientUserId(), recipientName, i.role(), status, i.invitedBy(),
                 i.createdAt(), i.expiresAt(), i.respondedAt(), i.revision());
     }

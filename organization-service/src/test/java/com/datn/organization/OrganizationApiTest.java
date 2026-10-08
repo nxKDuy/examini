@@ -39,6 +39,7 @@ class OrganizationApiTest {
 
     static final Map<UUID, IdentityResolver.Identity> DIRECTORY = new ConcurrentHashMap<>();
     static volatile boolean identityDown = false;
+    static volatile IdentityResolver.Identity wrongEmailMatch = null;   // simulates a provider answering with a different identity
 
     @TestConfiguration
     static class Fakes {
@@ -50,7 +51,8 @@ class OrganizationApiTest {
                 }
                 @Override public List<Identity> byEmails(Collection<String> emails) {
                     if (identityDown) throw new Unavailable("down", null);
-                    return DIRECTORY.values().stream().filter(i -> emails.contains(i.email())).toList();
+                    if (wrongEmailMatch != null) return List.of(wrongEmailMatch);
+                    return DIRECTORY.values().stream().filter(i -> emails.contains(i.email())).toList();   // exact, like Auth
                 }
             };
         }
@@ -73,6 +75,7 @@ class OrganizationApiTest {
 
     @BeforeEach void users() {
         identityDown = false;
+        wrongEmailMatch = null;
         teacher = user("TEACHER", "Teacher One"); teacher2 = user("TEACHER", "Teacher Two"); admin = user("ADMIN", "System Admin");
         studentA = user("STUDENT", "Student A"); studentB = user("STUDENT", "Student B"); studentC = user("STUDENT", "Student C");
     }
@@ -117,7 +120,82 @@ class OrganizationApiTest {
         return null;
     }
 
+    String token(String subject, String role, String persona) {
+        var b = Jwts.builder().subject(subject).claim("type", "access").expiration(new Date(System.currentTimeMillis() + 60000));
+        if (role != null) b.claim("role", role);
+        if (persona != null) b.claim("persona", persona);
+        return "Bearer " + b.signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8))).compact();
+    }
+    int createWith(String authorization) throws Exception {
+        return code(http.perform(post("/organizations").header("Authorization", authorization).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Claims\"}")).andReturn());
+    }
+
     // ================= tests =================
+
+    @Test void canonicalPersonaDecidesTeacherCreationAndLegacyRoleIsCompatibilityOnly() throws Exception {
+        String id = UUID.randomUUID().toString();
+        assertEquals(201, createWith(token(id, null, "TEACHER")));                 // canonical only
+        assertEquals(201, createWith(token(id, "STUDENT", "TEACHER")));            // canonical wins over legacy role
+        assertEquals(201, createWith(token(id, "TEACHER", null)));                 // legacy fallback when persona absent
+        assertEquals(403, createWith(token(id, "TEACHER", "STUDENT")));            // inconsistent: persona STUDENT blocks
+        assertEquals(403, createWith(token(id, null, "STUDENT")));
+        assertEquals(403, createWith(token(id, "STUDENT", null)));
+        assertEquals(403, createWith(token(id, "ADMIN", null)));
+        assertEquals(401, createWith(token(id, "TEACHER", "ADMIN")));              // unknown persona value is rejected
+        assertEquals(401, createWith(token(id, null, null)));                      // neither canonical nor legacy claim
+        // TEACHER persona (even with legacy ADMIN role) gains nothing without membership
+        JsonNode org = createOrg(teacher);
+        String foreign = token(UUID.randomUUID().toString(), "ADMIN", "TEACHER");
+        assertEquals(404, code(http.perform(get("/organizations/" + org.get("id").asText()).header("Authorization", foreign)).andReturn()));
+        assertEquals(404, code(http.perform(get("/organizations/" + org.get("id").asText() + "/members").header("Authorization", foreign)).andReturn()));
+    }
+
+    @Test void invitationEmailMatchesPersistedValueExactly() throws Exception {
+        UUID org = uuid(createOrg(teacher), "id");
+        UUID id = UUID.randomUUID();
+        String mixed = "Mixed.Case-" + id + "@Example.test";
+        DIRECTORY.put(id, new IdentityResolver.Identity(id, "Mixed", mixed, "STUDENT"));
+        assertEquals(404, code(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("email", mixed.toLowerCase(), "role", "MEMBER"))));
+        assertEquals(404, code(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("email", mixed.toUpperCase(), "role", "MEMBER"))));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM invitations WHERE organization_id = ?::uuid", Integer.class, org.toString()));
+        JsonNode inv = ok(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("email", mixed, "role", "MEMBER")), 201);
+        assertEquals(id.toString(), inv.get("recipientUserId").asText());
+        // a provider answering with a different identity than the selector is never trusted
+        wrongEmailMatch = new IdentityResolver.Identity(studentA.id(), "Student A", studentA.email(), "STUDENT");
+        assertEquals(404, code(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("email", "other@example.test", "role", "MEMBER"))));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM invitations WHERE recipient_user_id = ?::uuid", Integer.class, studentA.id().toString()));
+    }
+
+    @Test void invitationFiltersAndCountsUseEffectiveStatusBeforeSweep() throws Exception {
+        UUID org = uuid(createOrg(teacher), "id");
+        JsonNode lapsed = ok(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("userId", studentA.id(), "role", "MEMBER")), 201);
+        JsonNode live = ok(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("userId", studentB.id(), "role", "MEMBER")), 201);
+        JsonNode live2 = ok(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("userId", studentC.id(), "role", "MEMBER")), 201);
+        jdbc.update("UPDATE invitations SET expires_at = now() - interval '1 minute' WHERE id = ?::uuid", lapsed.get("id").asText());   // not swept
+        assertEquals("PENDING", jdbc.queryForObject("SELECT status FROM invitations WHERE id = ?::uuid", String.class, lapsed.get("id").asText()));
+        JsonNode pending = ok(call(get("/organizations/" + org + "/invitations?status=PENDING&size=1&page=1"), teacher, null), 200);
+        assertEquals(2, pending.get("totalElements").asInt());
+        assertEquals(2, pending.get("totalPages").asInt());
+        assertEquals(1, pending.get("items").size());
+        pending.get("items").forEach(i -> assertEquals("PENDING", i.get("status").asText()));
+        JsonNode expired = ok(call(get("/organizations/" + org + "/invitations?status=EXPIRED"), teacher, null), 200);
+        assertEquals(1, expired.get("totalElements").asInt());
+        assertEquals(lapsed.get("id").asText(), expired.get("items").get(0).get("id").asText());
+        assertEquals("EXPIRED", expired.get("items").get(0).get("status").asText());
+        assertEquals(3, ok(call(get("/organizations/" + org + "/invitations"), teacher, null), 200).get("totalElements").asInt());
+        // recipient view
+        assertEquals(0, ok(call(get("/organizations/invitations/mine?status=PENDING"), studentA, null), 200).get("totalElements").asInt());
+        JsonNode mine = ok(call(get("/organizations/invitations/mine?status=EXPIRED"), studentA, null), 200);
+        assertEquals(1, mine.get("totalElements").asInt());
+        assertEquals("EXPIRED", mine.get("items").get(0).get("status").asText());
+        assertEquals(1, ok(call(get("/organizations/invitations/mine?status=PENDING"), studentB, null), 200).get("totalElements").asInt());
+        assertEquals(0, ok(call(get("/organizations/invitations/mine?status=EXPIRED"), studentB, null), 200).get("totalElements").asInt());
+        // sweeping afterwards does not change what the filters report
+        service.sweepExpired();
+        assertEquals(2, ok(call(get("/organizations/" + org + "/invitations?status=PENDING"), teacher, null), 200).get("totalElements").asInt());
+        assertEquals(1, ok(call(get("/organizations/" + org + "/invitations?status=EXPIRED"), teacher, null), 200).get("totalElements").asInt());
+    }
 
     @Test void onlyTeacherCreatesAndBecomesOwner() throws Exception {
         JsonNode org = createOrg(teacher);
@@ -189,7 +267,7 @@ class OrganizationApiTest {
         // expiry: lapsed invitation reads EXPIRED, cannot be accepted, a new one can be issued
         JsonNode inv4 = ok(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("userId", studentB.id(), "role", "MEMBER")), 201);
         jdbc.update("UPDATE invitations SET expires_at = now() - interval '1 minute' WHERE id = ?::uuid", inv4.get("id").asText());
-        assertEquals("EXPIRED", ok(call(get("/organizations/invitations/mine?status=PENDING"), studentB, null), 200).get("items").get(0).get("status").asText());
+        assertEquals("EXPIRED", ok(call(get("/organizations/invitations/mine?status=EXPIRED"), studentB, null), 200).get("items").get(0).get("status").asText());
         assertEquals(409, code(call(post("/organizations/invitations/" + inv4.get("id").asText() + "/accept"), studentB, null)));
         assertEquals("EXPIRED", jdbc.queryForObject("SELECT status FROM invitations WHERE id = ?::uuid", String.class, inv4.get("id").asText()));
         JsonNode inv5 = ok(call(post("/organizations/" + org + "/invitations"), teacher, Map.of("userId", studentB.id(), "role", "MEMBER")), 201);

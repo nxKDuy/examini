@@ -113,19 +113,22 @@ public class Repo {
         return db.sql("UPDATE invitations SET status=:s,responded_at=:at,membership_id=:m,revision=revision+1 WHERE id=:id AND status='PENDING'")
                 .param("s", status).param("at", at).param("m", membershipId).param("id", id).update() == 1;
     }
-    public long countInvs(UUID orgId, String status) {
-        return db.sql("SELECT count(*) FROM invitations WHERE organization_id=:o AND (:s::text IS NULL OR status=:s)").param("o", orgId).param("s", status).query(Long.class).single();
+    /** Status filters use the effective status (PENDING past expires_at counts as EXPIRED) at the caller's single clock reading. */
+    public long countInvs(UUID orgId, String status, OffsetDateTime now) {
+        return db.sql("SELECT count(*) FROM invitations WHERE organization_id=:o AND (:s::text IS NULL OR EFF=:s)".replace("EFF", "(CASE WHEN status='PENDING' AND expires_at<=:now THEN 'EXPIRED' ELSE status END)"))
+                .param("o", orgId).param("s", status).param("now", now).query(Long.class).single();
     }
-    public List<Inv> invs(UUID orgId, String status, int limit, long offset) {
-        return db.sql("SELECT " + INV + " FROM invitations WHERE organization_id=:o AND (:s::text IS NULL OR status=:s) ORDER BY created_at DESC,id LIMIT :l OFFSET :off")
-                .param("o", orgId).param("s", status).param("l", limit).param("off", offset).query(Inv.class).list();
+    public List<Inv> invs(UUID orgId, String status, OffsetDateTime now, int limit, long offset) {
+        return db.sql(("SELECT " + INV + " FROM invitations WHERE organization_id=:o AND (:s::text IS NULL OR EFF=:s) ORDER BY created_at DESC,id LIMIT :l OFFSET :off").replace("EFF", "(CASE WHEN status='PENDING' AND expires_at<=:now THEN 'EXPIRED' ELSE status END)"))
+                .param("o", orgId).param("s", status).param("now", now).param("l", limit).param("off", offset).query(Inv.class).list();
     }
-    public long countMyInvs(UUID userId, String status) {
-        return db.sql("SELECT count(*) FROM invitations WHERE recipient_user_id=:u AND (:s::text IS NULL OR status=:s)").param("u", userId).param("s", status).query(Long.class).single();
+    public long countMyInvs(UUID userId, String status, OffsetDateTime now) {
+        return db.sql("SELECT count(*) FROM invitations WHERE recipient_user_id=:u AND (:s::text IS NULL OR EFF=:s)".replace("EFF", "(CASE WHEN status='PENDING' AND expires_at<=:now THEN 'EXPIRED' ELSE status END)"))
+                .param("u", userId).param("s", status).param("now", now).query(Long.class).single();
     }
-    public List<Inv> myInvs(UUID userId, String status, int limit, long offset) {
-        return db.sql("SELECT " + INV + " FROM invitations WHERE recipient_user_id=:u AND (:s::text IS NULL OR status=:s) ORDER BY created_at DESC,id LIMIT :l OFFSET :off")
-                .param("u", userId).param("s", status).param("l", limit).param("off", offset).query(Inv.class).list();
+    public List<Inv> myInvs(UUID userId, String status, OffsetDateTime now, int limit, long offset) {
+        return db.sql(("SELECT " + INV + " FROM invitations WHERE recipient_user_id=:u AND (:s::text IS NULL OR EFF=:s) ORDER BY created_at DESC,id LIMIT :l OFFSET :off").replace("EFF", "(CASE WHEN status='PENDING' AND expires_at<=:now THEN 'EXPIRED' ELSE status END)"))
+                .param("u", userId).param("s", status).param("now", now).param("l", limit).param("off", offset).query(Inv.class).list();
     }
     public List<Inv> lockLapsed(OffsetDateTime now, int limit) {
         return db.sql("SELECT " + INV + " FROM invitations WHERE status='PENDING' AND expires_at<=:now ORDER BY expires_at LIMIT :l FOR UPDATE SKIP LOCKED")
