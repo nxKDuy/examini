@@ -16,7 +16,15 @@ export interface PublicQuestion {
   id: string; bankId: string; sourceQuestionId: string; sourceQuestionVersion: number; sourceBankId?: string
   sourceOwnerUserId: string; sourceOwnerDisplayName?: string; publicationStatus: PublicationStatus
   publishedBy?: string; publishedAt?: string; archivedBy?: string; archivedAt?: string; question: SafeQuestion
+  postType?: 'SINGLE_QUESTION' | 'QUESTION_SET'; title?: string; description?: string; postVersion?: number; itemCount?: number
+  items?: PublicPostItem[]; subjects?: { id: string; name: string }[]; categories?: { id: string; name: string; subjectId: string; subjectName: string; parentCategoryId?: string; path: string[] }[]
+  copies24h?: number; copies30d?: number; copies365d?: number; copiesTotal?: number
+  averageRating?: number | null; ratingCount?: number; myRating?: number | null
+  views24h?: number; views30d?: number; views365d?: number; viewsTotal?: number
 }
+export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion }
+export interface QuestionSet { id: string; bankId: string; ownerUserId: string; title: string; description?: string; version: number; status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT'; updatedAt?: string; items: PublicPostItem[] }
+export interface Taxonomy { id: string; name: string; subjectId?: string; subjectName?: string; parentCategoryId?: string; path?: string[] }
 export interface OrgQuestion {
   id: string; bankId: string; sourceQuestionId: string; sourceQuestionVersion: number; sourceOwnerUserId: string
   publicationStatus?: string; approvedBy?: string; approvedAt?: string; question: SafeQuestion
@@ -36,7 +44,7 @@ export interface Lineage {
 }
 export interface BankQuestion { bankId: string; question: Question }
 
-export interface PublicFilters { mine?: boolean; publicationStatus?: PublicationStatus; bankId?: string; text?: string; questionType?: string; difficulty?: string; sourceOwnerUserId?: string; page?: number; size?: number }
+export interface PublicFilters { mine?: boolean; publicationStatus?: PublicationStatus; bankId?: string; text?: string; questionType?: string; difficulty?: string; sourceOwnerUserId?: string; subjectId?: string; categoryId?: string; postType?: string; ranking?: string; page?: number; size?: number }
 
 export const bankApi = {
   allBanks: async () => {
@@ -54,7 +62,7 @@ export const bankApi = {
     let metadata: Paged<unknown>
     if (bank.type === 'PUBLIC') {
       const data = await bankApi.publicList({ ...params, bankId: bank.id })
-      rows = data.content; metadata = data
+      rows = data.content.flatMap(post => post.postType === 'QUESTION_SET' ? (post.items ?? []).map(item => ({ id: item.id })) : [{ id: post.id }]); metadata = data
     } else if (bank.type === 'ORGANIZATION') {
       const data = await bankApi.orgQuestions({ ...params, bankId: bank.id })
       rows = data.content; metadata = data
@@ -66,11 +74,22 @@ export const bankApi = {
     return { ...metadata, content: content.filter(q => q.eligible === true) }
   },
   banks: (p: { type?: BankType; organizationId?: string; size?: number; page?: number } = {}) => api.get<Paged<Bank>>('/question-banks', { params: { size: 50, ...p } }).then(r => r.data),
+  personalQuestions: (bankId: string) => api.get<Paged<BankQuestion>>(`/question-banks/${bankId}/questions`, { params: { status: 'ACTIVE', size: 100, page: 0 } }).then(r => r.data),
   // Public
   publicList: (f: PublicFilters) => api.get<Paged<PublicQuestion>>('/public-questions', { params: { size: 20, ...f } }).then(r => r.data),
   publicGet: (id: string) => api.get<PublicQuestion>(`/public-questions/${id}`).then(r => r.data),
+  publicTaxonomy: (kind: 'SUBJECT' | 'CATEGORY', text = '', subjectId?: string) => api.get<Paged<Taxonomy>>('/public-questions/taxonomy', { params: { kind, ...(text ? { text } : {}), ...(subjectId ? { subjectId } : {}), size: 100 } }).then(r => r.data),
+  publicView: (id: string) => api.post(`/public-questions/${id}/view`).then(r => r.data),
+  publicRate: (id: string, rating: number) => api.put(`/public-questions/${id}/rating`, { rating }).then(r => r.data),
   publicUnpublish: (id: string) => api.delete<void>(`/public-questions/${id}`).then(() => undefined),
   publicFork: (id: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork`, { sourceQuestionVersion }).then(r => r.data),
+  publicForkItem: (id: string, itemId: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork-items/${itemId}`, { sourceQuestionVersion }).then(r => r.data),
+  publicForkSet: (id: string) => api.post<QuestionSet>(`/public-questions/${id}/fork-set`, {}).then(r => r.data),
+  questionSets: (bankId: string, page = 0) => api.get<Paged<QuestionSet>>(`/question-banks/${bankId}/question-sets`, { params: { page, size: 100 } }).then(r => r.data),
+  createQuestionSet: (bankId: string, body: { title: string; description?: string; items: { questionId: string; questionVersion: number }[] }) => api.post<QuestionSet>(`/question-banks/${bankId}/question-sets`, body).then(r => r.data),
+  updateQuestionSet: (id: string, body: { title: string; description?: string; items: { questionId: string; questionVersion: number }[]; expectedVersion: number }) => api.put<QuestionSet>(`/question-sets/${id}`, body).then(r => r.data),
+  archiveQuestionSet: (id: string) => api.delete<void>(`/question-sets/${id}`).then(() => undefined),
+  publishQuestionSet: (id: string, version: number) => api.post<PublicQuestion>(`/question-sets/${id}/publish-public`, { version }).then(r => r.data),
   publish: (questionId: string, sourceQuestionVersion: number) => api.post<PublicQuestion>(`/questions/${questionId}/publish-public`, { sourceQuestionVersion }).then(r => r.data),
   // Organization
   orgQuestions: (p: { bankId: string; questionType?: string; difficulty?: string; page?: number; size?: number }) => api.get<Paged<OrgQuestion>>('/organization-questions', { params: { size: 20, ...p } }).then(r => r.data),

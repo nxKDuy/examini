@@ -66,6 +66,13 @@ test('discovery params: blanks dropped, text capped at 200, author filter only w
   assert.deepEqual(m.publicParams({ text: ' đạo hàm ', questionType: 'ESSAY', difficulty: '', author: 'u1', page: 2 }), { text: 'đạo hàm', questionType: 'ESSAY', sourceOwnerUserId: 'u1', page: 2 })
 })
 
+test('Public discovery keeps taxonomy, post kind and rolling copy/rating ranking as explicit server filters', () => {
+  const base = { text: '', questionType: '', difficulty: '', author: '', page: 0 }
+  assert.deepEqual(m.publicParams({ ...base, subjectId: 's1', categoryId: 'c1', postType: 'QUESTION_SET', ranking: 'COPY_MONTH' }), { subjectId: 's1', categoryId: 'c1', postType: 'QUESTION_SET', ranking: 'COPY_MONTH', page: 0 })
+  assert.equal(m.publicParams({ ...base, ranking: 'RATING_YEAR' }).ranking, 'RATING_YEAR')
+  assert.equal(m.publicParams(base).ranking, undefined)
+})
+
 test('provenance chain shows only what lineage says: source -> publication it came through -> this copy; no lineage means no chain', () => {
   assert.deepEqual(m.provenanceChain(null), [])
   const pub = m.provenanceChain({ questionId: 'q', sourceQuestionId: 'abcdef12-0000', sourceQuestionVersion: 3, sourceBankType: 'PERSONAL', sourcePublicQuestionId: '99999999-0000', copiedAt: '2026-10-08T00:00:00Z' })
@@ -134,6 +141,31 @@ test('Picker uses the exact bank list and publication resource ID, then provider
   }
 })
 
+test('Public Question Set picker submits item resource IDs, never the parent post ID', async () => {
+  const requests = []
+  api.defaults.adapter = async config => {
+    requests.push(config)
+    const data = config.url === '/questions/batch' ? [{ id: 'item-1', eligible: true }, { id: 'item-2', eligible: true }] : { content: [{ id: 'post-1', postType: 'QUESTION_SET', items: [{ id: 'item-1' }, { id: 'item-2' }] }], totalElements: 1, totalPages: 1, number: 0 }
+    return { status: 200, statusText: 'OK', config, headers: {}, data }
+  }
+  const result = await bankApi.pickerList({ id: 'public-bank', type: 'PUBLIC' }, { page: 0, size: 10 })
+  assert.deepEqual(result.content.map(q => q.id), ['item-1', 'item-2'])
+  assert.deepEqual(JSON.parse(requests[1].data), ['item-1', 'item-2'])
+  assert.deepEqual(requests[1].params, { eligible: true, includeAnswers: false })
+})
+
+test('Question Set adapters preserve selected versions and explicit publish snapshot version', async () => {
+  const calls = []
+  api.defaults.adapter = async config => { calls.push(config); return { status: 200, statusText: 'OK', config, headers: {}, data: {} } }
+  await bankApi.createQuestionSet('personal', { title: 'Bộ', items: [{ questionId: 'q1', questionVersion: 4 }] })
+  await bankApi.updateQuestionSet('set1', { title: 'Bộ sửa', items: [{ questionId: 'q1', questionVersion: 4 }], expectedVersion: 2 })
+  await bankApi.publishQuestionSet('set1', 3)
+  assert.deepEqual(calls.map(c => c.url), ['/question-banks/personal/question-sets', '/question-sets/set1', '/question-sets/set1/publish-public'])
+  assert.deepEqual(JSON.parse(calls[0].data), { title: 'Bộ', items: [{ questionId: 'q1', questionVersion: 4 }] })
+  assert.equal(JSON.parse(calls[1].data).expectedVersion, 2)
+  assert.deepEqual(JSON.parse(calls[2].data), { version: 3 })
+})
+
 test('Activate sends the displayed version, submit and publish preserve source version and independent workflow', async () => {
   const requests = []
   api.defaults.adapter = async config => { requests.push(config); return { status: 200, statusText: 'OK', config, headers: {}, data: {} } }
@@ -144,7 +176,7 @@ test('Activate sends the displayed version, submit and publish preserve source v
 
 test('Vite proxy sends Bank/Organization API to gateway while document refresh loads SPA', async () => {
   const { default: config } = await import('../vite.config.ts')
-  for (const prefix of ['/organizations', '/question-banks', '/organization-contributions', '/organization-questions', '/public-questions', '/public-contributions']) {
+  for (const prefix of ['/organizations', '/question-banks', '/question-sets', '/organization-contributions', '/organization-questions', '/public-questions', '/public-contributions']) {
     const proxy = config.server.proxy[prefix]
     assert.equal(proxy.bypass({ headers: { accept: 'text/html' } }), '/index.html')
     assert.equal(proxy.bypass({ headers: { accept: 'application/json' } }), undefined)
