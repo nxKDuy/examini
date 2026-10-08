@@ -39,7 +39,8 @@ public class NotificationService {
             case GradingEvents.Released e -> grading.onReleased(event.eventId(),e);
             case GradingEvents.Regraded e -> grading.onRegraded(e);
             case GradingEvents.ReviewRequired e -> grading.onReviewRequired(e);
-            case null, default -> record(event.eventId(),event.eventType(),event.draft());
+            // A valid event without a notice (e.g. participant JOINED) has a null draft: consumed, nothing recorded.
+            case null, default -> {if(event.draft()!=null)record(event.eventId(),event.eventType(),event.draft());}
         }
     }
     /** Idempotent: a redelivered event (same eventId) never creates a second notification. */
