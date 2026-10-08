@@ -25,7 +25,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Trust boundary cho /auth/internal/**: chỉ chấp nhận service credential riêng của Notification.
+ * Trust boundary cho /auth/internal/**: mỗi route chỉ chấp nhận service credential riêng của consumer (Notification contact; Organization/Exam identity).
  * Bearer token người dùng hay X-User-* header không bao giờ thay thế được credential này.
  */
 @Component
@@ -34,12 +34,24 @@ public class InternalServiceAuthentication extends OncePerRequestFilter {
     static final String INTERNAL_PREFIX = "/auth/internal/";
     static final int MAX_BODY_BYTES = 16 * 1024;   // 100 UUID JSON ~4 KiB, chừa dư cho định dạng
 
+    static final String CONTACTS_PATH = "/auth/internal/contacts";
+    static final String IDENTITY_RESOLVE_PATH = "/auth/internal/identities/resolve";
+
     private final byte[] contactToken;
+    private final List<byte[]> identityTokens;
     private final ObjectMapper json;
 
     public InternalServiceAuthentication(@Value("${auth.internal.notification-contact-token:}") String contactToken,
+                                         @Value("${auth.internal.organization-identity-token:}") String organizationToken,
+                                         @Value("${auth.internal.exam-identity-token:}") String examToken,
                                          ObjectMapper json) {
         this.contactToken = contactToken.isBlank() ? null : contactToken.getBytes(StandardCharsets.UTF_8);
+        // Credential trống hoặc dùng chung với credential khác (cấu hình nhầm) bị vô hiệu: fail closed.
+        List<String> candidates = List.of(contactToken, organizationToken, examToken);
+        this.identityTokens = List.of(organizationToken, examToken).stream()
+                .filter(t -> !t.isBlank() && Collections.frequency(candidates, t) == 1)
+                .map(t -> t.getBytes(StandardCharsets.UTF_8))
+                .toList();
         this.json = json;
     }
 
@@ -54,7 +66,7 @@ public class InternalServiceAuthentication extends OncePerRequestFilter {
             throws ServletException, IOException {
         HttpServletRequest bounded;
         try {
-            authenticate(request);
+            authenticate(request, UrlPathHelper.defaultInstance.getPathWithinApplication(request));
             bounded = boundedBody(request);
         } catch (ResponseStatusException error) {
             ProblemDetail pd = ProblemDetail.forStatusAndDetail(error.getStatusCode(), error.getReason());
@@ -68,13 +80,20 @@ public class InternalServiceAuthentication extends OncePerRequestFilter {
         chain.doFilter(bounded, response);
     }
 
-    private void authenticate(HttpServletRequest request) {
+    private void authenticate(HttpServletRequest request, String path) {
         List<String> authorization = Collections.list(request.getHeaders("Authorization"));
         List<String> service = Collections.list(request.getHeaders("X-Service-Token"));
-        if (contactToken == null || !authorization.isEmpty() || service.size() != 1
-                || !MessageDigest.isEqual(contactToken, service.getFirst().getBytes(StandardCharsets.UTF_8))) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Xác thực không hợp lệ");
+        boolean ok = false;
+        if (authorization.isEmpty() && service.size() == 1) {
+            byte[] supplied = service.getFirst().getBytes(StandardCharsets.UTF_8);
+            // Mỗi route chỉ nhận credential của chính nó; so sánh hết để không lộ vị trí khớp.
+            if (path.equals(CONTACTS_PATH) && contactToken != null) {
+                ok = MessageDigest.isEqual(contactToken, supplied);
+            } else if (path.equals(IDENTITY_RESOLVE_PATH)) {
+                for (byte[] token : identityTokens) ok |= MessageDigest.isEqual(token, supplied);
+            }
         }
+        if (!ok) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Xác thực không hợp lệ");
     }
 
     private HttpServletRequest boundedBody(HttpServletRequest request) throws IOException {

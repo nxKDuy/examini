@@ -45,6 +45,9 @@ auth:
   internal:
     # Credential riêng cho Notification gọi POST /auth/internal/contacts; trống = từ chối mọi request.
     notification-contact-token: ${NOTIFICATION_CONTACT_TOKEN:}
+    # Credential riêng cho POST /auth/internal/identities/resolve; trống/trùng credential khác = bị vô hiệu.
+    organization-identity-token: ${ORGANIZATION_IDENTITY_TOKEN:}
+    exam-identity-token: ${EXAM_IDENTITY_TOKEN:}
 
 springdoc:
   api-docs:

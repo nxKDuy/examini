@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class InternalServiceAuthenticationTest {
 
     private MockHttpServletResponse call(String configured, String path, String supplied) throws Exception {
-        var filter = new InternalServiceAuthentication(configured, new ObjectMapper());
+        var filter = new InternalServiceAuthentication(configured, "", "", new ObjectMapper());
         var request = new MockHttpServletRequest("POST", path);
         request.setContent("{\"userIds\":[]}".getBytes());
         if (supplied != null) request.addHeader("X-Service-Token", supplied);
@@ -43,5 +43,26 @@ class InternalServiceAuthenticationTest {
         assertEquals(401, call("test-only-configured", "/auth/internal", null).getStatus());
         assertEquals(200, call("test-only-configured", "/auth/login", null).getStatus());
         assertEquals(200, call("test-only-configured", "/auth/internal/contacts", "test-only-configured").getStatus());
+    }
+
+    private int resolve(String contact, String org, String exam, String supplied) throws Exception {
+        var filter = new InternalServiceAuthentication(contact, org, exam, new ObjectMapper());
+        var request = new MockHttpServletRequest("POST", "/auth/internal/identities/resolve");
+        request.setContent("{}".getBytes());
+        if (supplied != null) request.addHeader("X-Service-Token", supplied);
+        var response = new MockHttpServletResponse();
+        filter.doFilter(request, response, new MockFilterChain());
+        return response.getStatus();
+    }
+
+    @Test
+    void emptyDuplicateOrSharedIdentityConfigFailsClosed() throws Exception {
+        assertEquals(401, resolve("", "", "", ""));
+        assertEquals(401, resolve("c", "", "", "c"));
+        assertEquals(401, resolve("c", "o", "o", "o"));      // org == exam
+        assertEquals(401, resolve("c", "c", "e", "c"));      // org == contact
+        assertEquals(200, resolve("c", "", "e", "e"));       // một consumer cấu hình riêng vẫn dùng được
+        assertEquals(200, resolve("c", "o", "e", "o"));
+        assertEquals(401, resolve("c", "o", "e", "c"));
     }
 }
