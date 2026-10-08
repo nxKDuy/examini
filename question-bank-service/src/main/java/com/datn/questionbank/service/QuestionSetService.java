@@ -51,6 +51,7 @@ public class QuestionSetService {
         return response(set,snapshot);
     }
     @Transactional public QuestionSetResponse update(UUID id,QuestionSetWrite request,QuestionActor actor) {
+        policy.requireAuthor(actor);
         var set=ownedForUpdate(id,actor);if(set.getStatus()!=QuestionSet.SetStatus.ACTIVE)throw conflict("Question Set đã archive");
         if(request.expectedVersion()==null||request.expectedVersion()!=set.getCurrentVersion())throw conflict("Set version đã thay đổi");
         var snapshot=resolve(request.items(),actor);set.setTitle(request.title().trim());set.setDescription(blankNull(request.description()));
@@ -67,9 +68,10 @@ public class QuestionSetService {
         var s=owned(id,actor);var v=versions.findById(new QuestionSetVersion.Key(id,version)).orElseThrow(this::missing);
         try{return response(s,json.readValue(v.getSnapshot(),SetSnapshot.class),v.getVersionNumber());}catch(Exception e){throw new IllegalStateException("Invalid Question Set snapshot",e);}
     }
-    @Transactional public void archive(UUID id,QuestionActor actor) {var s=ownedForUpdate(id,actor);s.setStatus(QuestionSet.SetStatus.ARCHIVED);s.setUpdatedAt(LocalDateTime.now());}
+    @Transactional public void archive(UUID id,QuestionActor actor) {policy.requireAuthor(actor);var s=ownedForUpdate(id,actor);s.setStatus(QuestionSet.SetStatus.ARCHIVED);s.setUpdatedAt(LocalDateTime.now());}
 
     @Transactional public PublicResponse publish(UUID id,PublishSetRequest versionRequest,QuestionActor actor) {
+        policy.requireAuthor(actor);
         var set=ownedForUpdate(id,actor);if(set.getStatus()!=QuestionSet.SetStatus.ACTIVE)throw conflict("Question Set đã archive");
         if(versionRequest.version()!=set.getCurrentVersion())throw conflict("Set version đã thay đổi");
         var existing=publications.findByQuestionSetIdAndQuestionSetVersion(id,set.getCurrentVersion());
@@ -78,6 +80,8 @@ public class QuestionSetService {
             return publicResponse(existing.get(),actor);
         }
         var versionSnapshot=readVersion(set);var questionsSnapshot=versionSnapshot.items();if(questionsSnapshot.isEmpty())throw bad("Set cần ít nhất một câu hỏi");
+        for(var item:questionsSnapshot)if(item.status()!=Question.QuestionStatus.ACTIVE)
+            throw conflict("Set item "+item.id()+" version "+item.questionVersion()+" chưa ACTIVE trong snapshot; activate và cập nhật Set trước khi publish");
         var first=questionsSnapshot.getFirst();var now=LocalDateTime.now();var idValue=UUID.randomUUID();
         var pub=publications.save(PublicQuestion.builder().id(idValue).bankId(banks.findByTypeAndDefaultBankTrue(QuestionBank.BankType.PUBLIC).orElseThrow().getId())
                 .contributionId(null).sourceQuestionId(first.id()).sourceQuestionVersion(first.questionVersion()).sourceBankId(first.bankId())
@@ -127,7 +131,8 @@ public class QuestionSetService {
             if(q.getScope()!=Question.QuestionScope.PERSONAL||q.getStatus()!=Question.QuestionStatus.ACTIVE||q.getQuestionVersion()!=request.questionVersion())
                 throw conflict("Set chỉ nhận Question cá nhân ACTIVE ở version hiện tại");
             var version=questionVersions.findByQuestionIdAndVersionNumber(q.getId(),q.getQuestionVersion()).orElseThrow(this::missing);
-            try{out.add(json.readValue(version.getSnapshot(),QuestionResponse.class));}catch(Exception e){throw new IllegalStateException("Invalid question snapshot",e);}
+            try{out.add(json.readValue(version.getSnapshot(),QuestionResponse.class).withContext(q.getStatus(),q.getUpdatedAt()));}
+            catch(Exception e){throw new IllegalStateException("Invalid question snapshot",e);}
         }
         return List.copyOf(out);
     }

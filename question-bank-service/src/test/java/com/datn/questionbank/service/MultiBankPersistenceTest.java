@@ -195,6 +195,46 @@ class MultiBankPersistenceTest {
         fails(409,()->eligibility.batch(List.of(item.id()),false,reviewer));
     }
 
+    @Test void forkedSetMustActivateCopiesAndCreateNewActiveSnapshotBeforePublishing() {
+        var source=active("Frozen source");
+        var ownerBank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var original=sets.create(ownerBank.getId(),new QuestionSetWrite("Original",null,List.of(new SetItemRequest(source.id(),1L)),null),owner);
+        assertEquals(QuestionStatus.ACTIVE,sets.version(original.id(),1,owner).items().getFirst().question().status());
+        var published=sets.publish(original.id(),new PublishSetRequest(1L),owner);
+        var forked=sets.fork(published.id(),new QuestionSetForkRequest(null),reviewer);
+        var child=forked.items().getFirst().question();
+        assertEquals(QuestionStatus.DRAFT,child.status());
+        fails(409,()->sets.publish(forked.id(),new PublishSetRequest(1L),reviewer));
+        assertEquals(QuestionStatus.DRAFT,sets.version(forked.id(),1,reviewer).items().getFirst().question().status());
+        questions.activate(child.id(),child.questionVersion(),reviewer);
+        fails(409,()->sets.publish(forked.id(),new PublishSetRequest(1L),reviewer));
+        var updated=sets.update(forked.id(),new QuestionSetWrite("Fork active",null,
+                List.of(new SetItemRequest(child.id(),child.questionVersion())),1L),reviewer);
+        assertEquals(2,updated.version());
+        assertEquals(QuestionStatus.ACTIVE,sets.version(forked.id(),2,reviewer).items().getFirst().question().status());
+        assertEquals(QuestionStatus.DRAFT,sets.version(forked.id(),1,reviewer).items().getFirst().question().status());
+        var republished=sets.publish(forked.id(),new PublishSetRequest(2L),reviewer);
+        assertEquals("Fork active",republished.title());
+        assertNotEquals(published.id(),republished.id());
+        assertEquals("Frozen source",banks.publicQuestion(published.id(),owner).items().getFirst().question().content());
+        assertTrue(eligibility.batch(List.of(republished.items().getFirst().id()),false,reviewer).getFirst().eligible());
+    }
+
+    @Test void setWritesRequireAuthorAndFrozenActiveSnapshotSurvivesLiveArchive() {
+        var source=active("Active at set creation");
+        var ownerBank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var set=sets.create(ownerBank.getId(),new QuestionSetWrite("Frozen active",null,List.of(new SetItemRequest(source.id(),1L)),null),owner);
+        var historicalStudent=new QuestionActor(owner.userId(),"STUDENT",false);
+        assertEquals(set.id(),sets.get(set.id(),historicalStudent).id());
+        fails(403,()->sets.update(set.id(),new QuestionSetWrite("Student edit",null,List.of(new SetItemRequest(source.id(),1L)),1L),historicalStudent));
+        fails(403,()->sets.publish(set.id(),new PublishSetRequest(1L),historicalStudent));
+        fails(403,()->sets.archive(set.id(),historicalStudent));
+        questions.archive(source.id(),1,owner);
+        var publicPost=sets.publish(set.id(),new PublishSetRequest(1L),owner);
+        assertEquals(QuestionStatus.ACTIVE,publicPost.items().getFirst().question().status());
+        assertTrue(eligibility.batch(List.of(publicPost.items().getFirst().id()),false,historicalStudent).getFirst().eligible());
+    }
+
     @Test void publicDiscoveryFiltersSetsAndCountsDistinctNonOwnerCopiesByRollingWindow() {
         var q=active("Ranking content");var single=banks.publish(q.id(),new ContributionRequest(1),owner);
         var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
