@@ -29,6 +29,7 @@ public class MultiBankService {
     private final QuestionLineageRepository lineage;
     private final PublicContributionRepository contributions;
     private final PublicQuestionRepository publications;
+    private final OrganizationQuestionRepository organizationQuestions;
     private final QuestionService core;
     private final QuestionPolicy policy;
     private final OrganizationAuthorizationClient organizationAuthorization;
@@ -90,9 +91,16 @@ public class MultiBankService {
         return new BankQuestion(bankId,core.createInBank(request,bankId,actor));
     }
     public LineageResponse lineage(UUID id,QuestionActor actor) {
-        core.findById(id,false,actor);
+        var copy=core.findById(id,false,actor);
         var l=lineage.findById(id).orElseThrow(()->missing("Không có lineage cho câu hỏi gốc"));
-        return new LineageResponse(l.getQuestionId(),l.getSourceQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),l.getSourceBankType(),l.getSourcePublicQuestionId(),l.getSourceOrganizationQuestionId(),l.getCopiedAt(),l.getCopiedBy());
+        var nodes=new ArrayList<LineageNode>();
+        var publication=lineagePublication(l,actor);
+        lineageSource(l,publication,actor).ifPresent(nodes::add);
+        publication.ifPresent(nodes::add);
+        nodes.add(new LineageNode(LineageRelation.COPY,copy.id(),copy.questionVersion(),copy.bankId(),copy.bankType(),
+                copy.status().name(),bankName(copy.bankId()),true,false));
+        return new LineageResponse(l.getQuestionId(),l.getSourceQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),
+                l.getSourceBankType(),l.getSourcePublicQuestionId(),l.getSourceOrganizationQuestionId(),l.getCopiedAt(),l.getCopiedBy(),nodes);
     }
     @Transactional
     public BankQuestion forkQuestion(UUID id,ForkRequest request,QuestionActor actor) {
@@ -175,10 +183,24 @@ public class MultiBankService {
     public ContributionResponse reviewContribution(UUID id,PublicReview request,QuestionActor actor) {
         throw new ResponseStatusException(HttpStatus.GONE,"Public không còn verification gate; legacy review chỉ đọc");
     }
-    public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,Pageable page) {
-        bounds(page);Specification<PublicQuestion> spec=(r,q,b)->b.equal(r.get("status"),PublicQuestion.PublicationStatus.PUBLISHED);
+    public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,
+            PublicQuestion.PublicationStatus publicationStatus,boolean mine,Pageable page,QuestionActor actor) {
+        bounds(page);
+        UUID effectiveOwner=owner;
+        if(mine) {
+            if(owner!=null&&!owner.equals(actor.userId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"mine chỉ được truy vấn publication của actor");
+            effectiveOwner=actor.userId();
+        }
+        if(publicationStatus==PublicQuestion.PublicationStatus.ARCHIVED&&!mine)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"ARCHIVED chỉ owner truy vấn qua mine=true");
+        Specification<PublicQuestion> spec=(mine&&publicationStatus==null)
+                ?(r,q,b)->b.equal(r.get("sourceOwnerUserId"),actor.userId())
+                :(r,q,b)->b.equal(r.get("status"),publicationStatus==null?PublicQuestion.PublicationStatus.PUBLISHED:publicationStatus);
         if(bankId!=null)spec=spec.and((r,q,b)->b.equal(r.get("bankId"),bankId));
-        if(owner!=null)spec=spec.and((r,q,b)->b.equal(r.get("sourceOwnerUserId"),owner));
+        if(effectiveOwner!=null) {
+            UUID ownerFilter=effectiveOwner;
+            spec=spec.and((r,q,b)->b.equal(r.get("sourceOwnerUserId"),ownerFilter));
+        }
         if(type!=null)spec=spec.and((r,q,b)->b.equal(r.get("questionType"),type));
         if(difficulty!=null)spec=spec.and((r,q,b)->b.equal(r.get("difficultyLevel"),difficulty));
         if(text!=null&&!text.isBlank()) {
@@ -202,6 +224,53 @@ public class MultiBankService {
         p.setStatus(PublicQuestion.PublicationStatus.ARCHIVED);p.setArchivedBy(actor.userId());p.setArchivedAt(LocalDateTime.now());
     }
     private PublicQuestion publication(UUID id) {return publications.findById(id).orElseThrow(()->missing("Không tìm thấy verified PublicQuestion"));}
+    private Optional<LineageNode> lineageSource(QuestionLineage l,Optional<LineageNode> publication,QuestionActor actor) {
+        if(l.getSourceBankType()==BankType.PUBLIC||l.getSourceBankType()==BankType.ORGANIZATION) {
+            if(publication.isEmpty()||!publication.get().available()) return Optional.of(unavailable(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),null,BankType.PERSONAL,true));
+            try {
+                UUID sourceBank;
+                String frozen;
+                if(l.getSourceBankType()==BankType.PUBLIC) {
+                    var p=publications.findById(l.getSourcePublicQuestionId()).orElseThrow();
+                    frozen=p.getSnapshot();sourceBank=p.getSourceBankId();
+                } else {
+                    var p=organizationQuestions.findById(l.getSourceOrganizationQuestionId()).orElseThrow();
+                    frozen=p.getSnapshot();sourceBank=p.getSourceBankId();
+                }
+                var q=read(frozen);
+                return Optional.of(new LineageNode(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),sourceBank,
+                        BankType.PERSONAL,q.status()==null?null:q.status().name(),bankName(sourceBank),true,true));
+            } catch(RuntimeException ignored) { return Optional.of(unavailable(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),null,BankType.PERSONAL,true)); }
+        }
+        try {
+            var source=questions.findById(l.getSourceQuestionId()).orElseThrow();policy.requireRead(source,actor);
+            var frozen=snapshot(l.getSourceQuestionId(),l.getSourceQuestionVersion());
+            return Optional.of(new LineageNode(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),
+                    l.getSourceBankType(),frozen.status()==null?null:frozen.status().name(),bankName(l.getSourceBankId()),true,true));
+        } catch(RuntimeException ignored) { return Optional.of(unavailable(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),l.getSourceBankType(),true)); }
+    }
+    private Optional<LineageNode> lineagePublication(QuestionLineage l,QuestionActor actor) {
+        if(l.getSourcePublicQuestionId()!=null) {
+            var p=publications.findById(l.getSourcePublicQuestionId());
+            if(p.isEmpty()||(p.get().getStatus()==PublicQuestion.PublicationStatus.ARCHIVED&&!p.get().getSourceOwnerUserId().equals(actor.userId())))
+                return Optional.of(unavailable(LineageRelation.PUBLICATION,l.getSourcePublicQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),BankType.PUBLIC,true));
+            return Optional.of(new LineageNode(LineageRelation.PUBLICATION,p.get().getId(),p.get().getSourceQuestionVersion(),p.get().getBankId(),BankType.PUBLIC,
+                    p.get().getStatus().name(),bankName(p.get().getBankId()),true,true));
+        }
+        if(l.getSourceOrganizationQuestionId()!=null) {
+            var p=organizationQuestions.findById(l.getSourceOrganizationQuestionId());
+            if(p.isEmpty()) return Optional.of(unavailable(LineageRelation.PUBLICATION,l.getSourceOrganizationQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),BankType.ORGANIZATION,true));
+            try { registry.requireRead(registry.get(p.get().getBankId()),actor); }
+            catch(RuntimeException denied) { return Optional.of(unavailable(LineageRelation.PUBLICATION,p.get().getId(),p.get().getSourceQuestionVersion(),p.get().getBankId(),BankType.ORGANIZATION,true)); }
+            return Optional.of(new LineageNode(LineageRelation.PUBLICATION,p.get().getId(),p.get().getSourceQuestionVersion(),p.get().getBankId(),BankType.ORGANIZATION,
+                    "APPROVED",bankName(p.get().getBankId()),true,true));
+        }
+        return Optional.empty();
+    }
+    private LineageNode unavailable(LineageRelation relation,UUID id,long version,UUID bankId,BankType type,boolean frozen) {
+        return new LineageNode(relation,id,version,bankId,type,null,null,false,frozen);
+    }
+    private String bankName(UUID bankId) {return banks.findById(bankId).map(QuestionBank::getName).orElse(null);}
     private QuestionResponse snapshot(UUID id,long version) {return read(versions.findByQuestionIdAndVersionNumber(id,version).orElseThrow(()->missing("Không tìm thấy version")).getSnapshot());}
     private QuestionResponse read(String value) {try{return json.readValue(value,QuestionResponse.class);}catch(JsonProcessingException e){throw new IllegalStateException("Invalid immutable snapshot",e);}}
     private String write(QuestionResponse value) {try{return json.writeValueAsString(value);}catch(JsonProcessingException e){throw new IllegalStateException("Invalid immutable snapshot",e);}}

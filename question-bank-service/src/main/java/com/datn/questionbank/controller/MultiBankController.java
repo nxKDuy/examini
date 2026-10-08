@@ -49,8 +49,9 @@ public class MultiBankController {
     @PostMapping("/public-contributions/{id}/review") public ContributionResponse review(@PathVariable UUID id,@Valid @RequestBody PublicReview b,HttpServletRequest r){return service.reviewContribution(id,b,actor(r));}
     @GetMapping("/public-questions") public Page<PublicResponse> publications(@RequestParam(required=false) UUID bankId,@RequestParam(required=false) UUID sourceOwnerUserId,
             @RequestParam(required=false) Question.QuestionType questionType,@RequestParam(required=false) Question.DifficultyLevel difficulty,
-            @RequestParam(required=false) String text,
-            @PageableDefault(size=20,sort="verifiedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){actor(r);return service.publicQuestions(bankId,sourceOwnerUserId,questionType,difficulty,text,p);}
+            @RequestParam(required=false) String text,@RequestParam(required=false) PublicQuestion.PublicationStatus publicationStatus,
+            @RequestParam(defaultValue="false") boolean mine,
+            @PageableDefault(size=20,sort="verifiedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){var actor=actor(r);return service.publicQuestions(bankId,sourceOwnerUserId,questionType,difficulty,text,publicationStatus,mine,p,actor);}
     @GetMapping("/public-questions/{id}") public PublicResponse publication(@PathVariable UUID id,HttpServletRequest r){return service.publicQuestion(id,actor(r));}
     @DeleteMapping("/public-questions/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void archivePublication(@PathVariable UUID id,HttpServletRequest r){service.archivePublic(id,actor(r));}
