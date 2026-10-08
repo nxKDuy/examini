@@ -34,9 +34,9 @@ export interface ResultRevision { resultRevision: number; releasedAt?: string; s
 export interface Result {
   sessionId: string; examId?: string; title: string; attemptNumber?: number; status: string; resultRevision?: number
   submittedAt?: string; gradedAt?: string; releasedAt?: string; score?: number; totalScore?: number; feedback?: string
-  questions?: ResultItem[]; history?: ResultRevision[]
+  questions?: ResultItem[]; history?: ResultRevision[]; invalidated?: boolean; invalidatedAt?: string; invalidationReason?: string
 }
-export interface SessionSummary { sessionId: string; userId: string; status: string; attemptNumber: number; startedAt: string; expiresAt: string }
+export interface SessionSummary { sessionId: string; userId: string; status: string; attemptNumber: number; startedAt: string; expiresAt: string; invalidated?: boolean; invalidatedAt?: string; invalidationReason?: string }
 export interface AuditEntry { id: string; examId: string; actorUserId: string; action: string; metadata: string | null; timestamp: string }
 
 // The create/update DTO still carries proctoring booleans; Phase 1 has no proctoring, so they stay off.
@@ -67,9 +67,6 @@ export const examApi = {
   removeMember: (id: string, userId: string) => api.delete(`/exams/${id}/members/${userId}`),
   invitations: () => api.get<Exam[]>('/exams/invitations').then(r => r.data),
   accept: (id: string) => api.post(`/exams/${id}/members/accept`),
-  participants: (id: string) => api.get<Record<string, string>>(`/exams/${id}/participants`).then(r => r.data),
-  assign: (id: string, userId: string) => api.put(`/exams/${id}/participants/${userId}`),
-  unassign: (id: string, userId: string) => api.delete(`/exams/${id}/participants/${userId}`),
   audit: (id: string) => api.get<AuditEntry[]>(`/exams/${id}/audit`).then(r => r.data),
   sessions: (id: string) => api.get<SessionSummary[]>(`/sessions/exam/${id}/monitor`).then(r => r.data),
   // Student

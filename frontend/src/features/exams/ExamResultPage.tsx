@@ -32,6 +32,8 @@ export default function ExamResultPage() {
       <PageHeader title={r.title || 'Kết quả bài thi'} crumbs={[{ label: 'Kỳ thi của tôi', to: '/my-exams' }, { label: 'Kết quả' }]}
         description={<span className="row"><ResultStatusBadge status={r.status} />{phase === 'PUBLISHED' && <Badge tone="success">Đã công bố</Badge>}{r.attemptNumber ? <span className="small muted">Lần làm #{r.attemptNumber}</span> : null}</span>} />
 
+      {r.invalidated && <Notice tone="danger" title="Lượt làm bài này đã bị vô hiệu hóa" live>Lý do: {r.invalidationReason?.trim() || 'không ghi'}. Kết quả này không được tính là kết quả hợp lệ. Nếu cần thi lại, hãy liên hệ giáo viên để được cấp thêm lượt.</Notice>}
+
       {phase === 'PUBLISHED' && (
         <Section title="Điểm của bạn">
           {hasScore ? (

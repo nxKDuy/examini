@@ -10,6 +10,8 @@ import { StateBadge } from '../calendar/ExamCard'
 import FollowButton from '../calendar/FollowButton'
 import { useBoundaryRefetch, useNow, useViewerZone } from '../calendar/useCalendar'
 import { useAuthStore } from '../../store/authStore'
+import StudentAttempts, { RevokedNotice } from '../participants/StudentAttempts'
+import { useParticipation } from '../participants/useParticipation'
 import { ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { errorStatus, errorText } from '../../lib/errors'
 import { EXAM_TYPE_LABEL, formatScore } from '../../lib/format'
@@ -30,6 +32,9 @@ export default function ExamLobbyPage() {
     retry: false, refetchOnWindowFocus: true, refetchInterval: 30_000,
   })
   const a = avail.data?.a
+  const part = useParticipation(id)
+  const mine = part.data ?? null
+  const revoked = mine?.status === 'REVOKED'
   const nowMs = useNow(avail.data?.clockOffset ?? 0)
   // Re-ask the backend just after the window opens/closes or the attempt expires; the clock only triggers the question.
   useBoundaryRefetch(a ? [a] : [], avail.data?.clockOffset ?? 0, avail.refetch)
@@ -95,6 +100,9 @@ export default function ExamLobbyPage() {
         </Notice>
       )}
 
+      {mine && revoked && <RevokedNotice mine={mine} />}
+      {mine && <StudentAttempts examId={id!} mine={mine} />}
+
       <Section title="Lịch và thời gian làm bài">
         <dl className="meta">
           <div><dt>Cửa sổ làm bài</dt><dd style={{ fontSize: '1rem' }}>{w.primary}{w.zone && <><br /><span className="muted">{w.zone}</span></>}</dd></div>
@@ -133,7 +141,7 @@ export default function ExamLobbyPage() {
         </Notice>
       )}
 
-      {!preview && !resumeId && (
+      {!preview && !resumeId && !revoked && (
         <section className="card card-body stack">
           {why ? <Notice tone="info" title="Chưa bắt đầu được">{why}</Notice> : <p className="small">Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.</p>}
           {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.</span></label>}

@@ -31,6 +31,7 @@ export default function SubmissionQueue({ data, loading, error, onRetry, activeI
             </div>
             <div className="row" style={{ marginTop: 6, gap: 6 }}>
               <PublicationBadge s={s} />
+              {s.invalidated && <Badge tone="danger" title={s.invalidationReason ?? undefined}>Đã vô hiệu</Badge>}
               {s.pendingManualItemCount > 0 && <Badge tone="warning">{s.pendingManualItemCount} câu chờ</Badge>}
             </div>
             <div className="spread xsmall muted" style={{ marginTop: 6 }}>

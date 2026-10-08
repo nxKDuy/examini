@@ -42,6 +42,35 @@ createServer(async (req, res) => {
     else if (parts[2] === 'audit') data = page([{ id: 'a1', actorUserId: 'm-owner-0000', action: 'ORGANIZATION_CREATED', occurredAt: '2026-10-01T00:00:00Z' }])
     else data = page([])
   }
+  // Participant/attempt fixtures (browser checks of the Participants UI only; the real contract is participant-attempt.md)
+  else if (/^\/exams\/e1(\/|$)/.test(url.pathname) || /^\/sessions\//.test(url.pathname)) {
+    const parts = url.pathname.split('/').filter(Boolean)
+    const exam = { id: 'e1', code: 'ABC123', title: 'Kỳ thi thử', description: null, ownerUserId: 'teacher', type: 'EXAM', durationMinutes: 30, totalScore: 10, passingScore: null, questions: [], questionIds: [], shuffleQuestions: false, shuffleOptions: false, status: 'OPEN', accessMode: 'ASSIGNED', maxParticipants: 30, maxConcurrentSessions: 5, attemptLimit: 1, startTime: null, endTime: null, createdAt: '2026-10-01T00:00:00Z' }
+    const counts = { registered: 3, eligible: 2, revoked: 1 }
+    const row = (id, name, status, extra = {}) => ({ userId: `${id}-1111-2222-3333-444444444444`, ...(name ? { displayName: name } : {}), source: 'ASSIGNED', status, joinedAt: '2026-10-01T00:00:00Z', extraAttempts: 0, attemptLimit: 1, effectiveAttemptLimit: 1, attempts: { used: 1, valid: 1, invalidated: 0, remaining: 0, active: false }, ...extra })
+    const att = (n, extra = {}) => ({ sessionId: `s${n}`, userId: 'x', attemptNumber: n, status: 'SUBMITTED', startedAt: '2026-10-05T01:00:00', invalidated: false, ...extra })
+    const nowIso = new Date().toISOString()
+    if (url.pathname === '/exams/e1') data = exam
+    else if (parts[2] === 'members') data = {}
+    else if (parts[2] === 'schedule') data = { examId: 'e1', startAt: null, endAt: null, timezone: 'UTC', deadlineRule: 'FULL_DURATION', autoOpen: false, autoClose: false, reminderOffsetsMinutes: [], scheduleRevision: 1, lifecycleRevision: 1, serverNow: nowIso }
+    else if (parts[2] === 'lobby') data = exam
+    else if (parts[2] === 'availability') data = { examId: 'e1', examTitle: exam.title, status: 'OPEN', startAt: null, endAt: null, timezone: 'UTC', durationMinutes: 30, deadlineRule: 'FULL_DURATION', canJoin: false, canStart: false, canResume: false, reasonCode: 'ATTEMPT_LIMIT', attemptsRemaining: 0, effectiveExpiresAt: null, followed: false, participant: true, calendarState: 'CLOSED', latestSessionId: 's2', latestSessionStatus: 'SUBMITTED', canView: true, scheduleRevision: 1, serverNow: nowIso }
+    else if (parts[2] === 'participation') data = identity === 'student' && url.searchParams.get('revoked') !== null ? {} : { examId: 'e1', status: 'ACTIVE', source: 'ASSIGNED', joinedAt: '2026-10-01T00:00:00Z', attemptLimit: 1, extraAttempts: 1, effectiveAttemptLimit: 2, used: 2, remaining: 0, activeAttempt: false, followed: false,
+      attempts: [{ sessionId: 's1', attemptNumber: 1, status: 'SUBMITTED', startedAt: '2026-10-05T01:00:00', invalidated: true, invalidationReason: 'Sai phòng thi' }, { sessionId: 's2', attemptNumber: 2, status: 'SUBMITTED', startedAt: '2026-10-06T01:00:00', invalidated: false }],
+      grants: [{ grantId: 'g1', quantity: 1, reason: 'Sự cố mạng', createdAt: '2026-10-05T10:00:00Z' }] }
+    else if (parts[2] === 'participants' && parts.length === 3 && req.method === 'GET') data = { content: [row('aaaa1111', 'Học sinh A', 'ACTIVE'), row('bbbb2222', null, 'ACTIVE', { extraAttempts: 1, effectiveAttemptLimit: 2 }), row('cccc3333', 'Học sinh C', 'REVOKED', { revocationReason: 'Nghỉ học' })], page: 0, size: 50, totalElements: 3, totalPages: 1, counts }
+    else if (parts[2] === 'participants' && parts.length === 3 && req.method === 'POST') {
+      const inputs = body.userIds ?? body.emails ?? []
+      data = { results: inputs.map((input, i) => ({ input, ...(i === 0 ? { userId: 'aaaa1111-1111-2222-3333-444444444444', displayName: 'Học sinh A' } : {}), outcome: i === 0 ? 'ASSIGNED' : i === 1 ? 'NOT_FOUND' : 'NOT_A_STUDENT' })), counts }
+    }
+    else if (parts[4] === 'attempt-grants' && req.method === 'POST') data = { userId: parts[3], extraAttempts: 1, effectiveAttemptLimit: 2, grant: { grantId: 'g2', quantity: body.quantity, createdAt: nowIso }, replayed: false }
+    else if (parts[4] === 'attempt-grants') data = [{ id: 'g1', quantity: 1, reason: 'Sự cố mạng', createdAt: '2026-10-05T10:00:00Z' }]
+    else if (parts[4] === 'revoke') data = row(parts[3].slice(0, 8), 'Học sinh A', 'REVOKED')
+    else if (parts[3] === 'attempts') data = [att(1, { invalidated: true, invalidationReason: 'Sai phòng thi', invalidatedAt: nowIso }), att(2)]
+    else if (parts[2] === 'invalidate') { if (body.reason === 'conflict') { res.statusCode = 409; res.end(JSON.stringify({ status: 409, detail: 'Phiên đã thay đổi' })); return } data = att(2, { invalidated: true, invalidationReason: body.reason }) }
+    else if (parts[3] === 'monitor' || parts[2] === 'monitor') data = []
+    else data = []
+  }
   // Grading fixtures (browser checks of the unsaved-draft guard only; the real contract is manual-grading-api.md)
   else if (url.pathname === '/exams' && req.method === 'GET') data = { content: [{ id: 'e1', title: 'Fixture exam', status: 'CLOSED', questionIds: [] }, { id: 'e2', title: 'Other exam', status: 'CLOSED', questionIds: [] }], totalElements: 2, totalPages: 1, number: 0 }
   else if (url.pathname === '/submissions/overview') data = { totalSubmissions: 2, needsReview: 1, pending: 0, graded: 1, released: 1, pendingManualItems: 1 }

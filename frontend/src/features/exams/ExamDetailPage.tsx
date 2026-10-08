@@ -12,6 +12,7 @@ import { EXAM_STATUS, QUESTION_STATUS } from '../../components/statusDefs'
 import { ConfirmDialog } from '../../components/Dialog'
 import { calendarApi, type Schedule } from '../calendar/calendarApi'
 import { gradingApi } from '../grading/gradingApi'
+import ParticipantsSection from '../participants/ParticipantsSection'
 import { ruleLabel, RULE_HELP, windowText, toMs } from '../calendar/calendarModel'
 import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
 import ScheduleDialog from '../calendar/ScheduleDialog'
@@ -214,16 +215,12 @@ function Participation({ exam, manage }: { exam: Exam; manage: boolean }) {
   const qc = useQueryClient()
   const editable = manage && exam.status === 'DRAFT'
   const [policy, setPolicy] = useState<Policy>({ accessMode: exam.accessMode, maxParticipants: exam.maxParticipants, maxConcurrentSessions: exam.maxConcurrentSessions, attemptLimit: exam.attemptLimit })
-  const [userId, setUserId] = useState('')
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
-  const participants = useQuery({ queryKey: ['participants', exam.id], queryFn: () => examApi.participants(exam.id) })
   const run = useMutation({
     mutationFn: (fn: () => Promise<unknown>) => fn(),
     onSuccess: async () => { await Promise.all([qc.invalidateQueries({ queryKey: ['exam', exam.id] }), qc.invalidateQueries({ queryKey: ['participants', exam.id] })]) },
     onError: e => setMessage({ tone: 'danger', text: errorText(e) }),
   })
-  const entries = Object.entries(participants.data ?? {})
-
   function savePolicy(e: FormEvent) {
     e.preventDefault()
     const problem = policyError(policy)
@@ -232,13 +229,6 @@ function Participation({ exam, manage }: { exam: Exam; manage: boolean }) {
     run.mutate(() => examApi.policy(exam.id, { ...policy, joinCode: policy.accessMode === 'JOIN_CODE' ? policy.joinCode : undefined })
       .then(() => setMessage({ tone: 'success', text: 'Đã lưu chính sách tham gia.' })))
   }
-  function assign(e: FormEvent) {
-    e.preventDefault()
-    if (!UUID.test(userId.trim())) { setMessage({ tone: 'danger', text: 'Nhập mã người dùng (UUID) hợp lệ.' }); return }
-    setMessage(null)
-    run.mutate(() => examApi.assign(exam.id, userId.trim()).then(() => { setUserId(''); setMessage({ tone: 'success', text: 'Đã phân công thí sinh.' }) }))
-  }
-
   return (
     <div className="stack-lg">
       {message && <Notice tone={message.tone} live>{message.text}</Notice>}
@@ -259,30 +249,8 @@ function Participation({ exam, manage }: { exam: Exam; manage: boolean }) {
           </dl>
         )}
       </Section>
-      <Section title="Thí sinh" bodyClassName="" description={participants.data ? `${entries.length}/${exam.maxParticipants} người đã được phân công hoặc đã tham gia` : undefined}>
-        {editable && (
-          <form onSubmit={assign} className="card-body stack-sm" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <label className="field-label" htmlFor="assign-user">Phân công thí sinh theo mã người dùng</label>
-            <div className="row" style={{ flexWrap: 'nowrap' }}>
-              <input id="assign-user" className="input mono" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value={userId} onChange={e => setUserId(e.target.value)} />
-              <button type="submit" className="btn btn-secondary" disabled={run.isPending || !userId.trim()}><UserPlus size={16} aria-hidden /> Phân công</button>
-            </div>
-            <span className="field-hint">Phase 1 chưa có tra cứu người dùng; nhập mã người dùng do thí sinh cung cấp. Chỉ áp dụng khi đề còn là Bản nháp.</span>
-          </form>
-        )}
-        {participants.isLoading ? <LoadingState rows={2} /> : participants.isError ? <ErrorState error={participants.error} onRetry={() => void participants.refetch()} />
-          : entries.length === 0 ? <EmptyState title="Chưa có thí sinh" description={exam.accessMode === 'ASSIGNED' ? 'Phân công thí sinh để họ thấy kỳ thi.' : 'Thí sinh xuất hiện ở đây khi tham gia.'} />
-          : <div className="table-wrap"><table className="table">
-              <thead><tr><th scope="col">Mã người dùng</th><th scope="col">Nguồn</th>{editable && <th scope="col"><span className="sr-only">Thao tác</span></th>}</tr></thead>
-              <tbody>{entries.map(([uid, source]) => (
-                <tr key={uid}>
-                  <td className="mono small">{uid}</td>
-                  <td className="small">{ACCESS_MODE_LABEL[source] ?? source}</td>
-                  {editable && <td style={{ textAlign: 'right' }}><button type="button" className="btn btn-danger-ghost btn-sm" disabled={run.isPending}
-                    onClick={() => run.mutate(() => examApi.unassign(exam.id, uid))}>Bỏ phân công</button></td>}
-                </tr>
-              ))}</tbody>
-            </table></div>}
+      <Section title="Thí sinh" description="Danh sách, số liệu và lượt làm bài lấy từ máy chủ. Người xem Giám thị chỉ xem." bodyClassName="card-body">
+        <ParticipantsSection examId={exam.id} examStatus={exam.status} maxParticipants={exam.maxParticipants} manage={manage} />
       </Section>
     </div>
   )
@@ -358,12 +326,13 @@ function Attempts({ exam }: { exam: Exam }) {
       description={sessions.data ? `${sessions.data.length} lượt · ${active}/${exam.maxConcurrentSessions} phiên đang làm` : undefined}
       actions={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void sessions.refetch()} disabled={sessions.isFetching}><RefreshCw size={14} aria-hidden /> Làm mới</button>}>
       {sessions.isLoading ? <LoadingState rows={3} /> : sessions.isError ? <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} />
-        : sessions.data!.length === 0 ? <EmptyState title="Chưa có lượt làm bài" description="Lượt làm bài xuất hiện khi thí sinh bắt đầu trong kỳ thi đang mở." />
+        : sessions.data!.length === 0 ? <EmptyState title="Chưa có lượt làm bài" description="Lượt làm bài xuất hiện khi thí sinh bắt đầu trong kỳ thi đang mở. Muốn vô hiệu hóa một lượt, mở thí sinh ở tab Tham gia." />
         : <div className="table-wrap"><table className="table">
-            <thead><tr><th scope="col">Thí sinh</th><th scope="col">Lượt</th><th scope="col">Trạng thái</th><th scope="col">Bắt đầu</th><th scope="col">Hết giờ</th></tr></thead>
+            <thead><tr><th scope="col">Thí sinh</th><th scope="col">Lượt</th><th scope="col">Trạng thái</th><th scope="col">Hiệu lực</th><th scope="col">Bắt đầu</th><th scope="col">Hết giờ</th></tr></thead>
             <tbody>{sessions.data!.map(s => (
               <tr key={s.sessionId}>
                 <td className="mono small">{shortId(s.userId)}</td><td className="mono">{s.attemptNumber}</td><td><SessionStatusBadge status={s.status} /></td>
+                <td className="small">{s.invalidated ? <><Badge tone="danger">Đã vô hiệu</Badge>{s.invalidationReason && <span className="xsmall muted" style={{ display: 'block' }}>{s.invalidationReason}</span>}</> : 'Hợp lệ'}</td>
                 <td className="small">{formatDateTime(s.startedAt)}</td><td className="small">{formatDateTime(s.expiresAt)}</td>
               </tr>
             ))}</tbody>
