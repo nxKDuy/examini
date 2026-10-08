@@ -5,7 +5,7 @@ import com.datn.questionbank.entity.QuestionOption;
 import java.net.URI;
 import java.util.HashSet;
 
-/** One validator for manual create, edit, submit/review and CSV. */
+/** One validator for manual create, edit, activation, publication and CSV. */
 public final class QuestionValidation {
     private QuestionValidation() {}
     public static void validate(Question q) {

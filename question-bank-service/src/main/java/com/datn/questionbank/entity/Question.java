@@ -43,6 +43,9 @@ public class Question {
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
+    @Column(name = "bank_id", nullable = false, updatable = false)
+    private UUID bankId;
+
     @Column(length = 500)
     private String source;
 
@@ -93,7 +96,7 @@ public class Question {
     @Column(name = "lock_version", nullable = false)
     private long lockVersion;
 
-    public enum QuestionStatus { DRAFT, PENDING_REVIEW, APPROVED, REJECTED, ARCHIVED }
+    public enum QuestionStatus { DRAFT, ACTIVE, ARCHIVED, /* historical snapshots only */ PENDING_REVIEW, APPROVED, REJECTED }
     public enum QuestionScope { PERSONAL, ORGANIZATION, SYSTEM }
     public enum CreationMethod { MANUAL, IMPORT, AI_GENERATED, COPIED }
     public enum SourceType { NONE, USER_DOCUMENT, EXTERNAL_WEB, ORGANIZATION_BANK, PUBLIC_BANK, SYSTEM_BANK }
