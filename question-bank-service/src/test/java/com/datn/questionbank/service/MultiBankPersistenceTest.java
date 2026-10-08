@@ -18,9 +18,11 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Validator;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.sql.DriverManager;
 import java.util.*;
+import java.util.concurrent.*;
 
 import static com.datn.questionbank.entity.Question.*;
 import static com.datn.questionbank.entity.QuestionBank.BankType;
@@ -94,6 +96,61 @@ class MultiBankPersistenceTest {
         assertEquals("Public frozen v1",banks.publicQuestion(publication.id(),reviewer).question().content());
     }
 
+    @Test void publicRatingsAreExactEditableUniqueSafeAndRequirePublishedNonOwner() throws Exception {
+        var q=active("Rating target");var post=banks.publish(q.id(),new ContributionRequest(1),owner);
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        var first=banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("9.50")),reviewer);
+        assertEquals(new java.math.BigDecimal("9.50"),first.myRating());assertEquals(1,first.ratingCount());
+        var updated=banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("8.5")),reviewer);
+        assertEquals(new java.math.BigDecimal("8.5"),updated.myRating());assertEquals(1,updated.ratingCount());
+        var second=banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("8.25")),student);
+        assertEquals(2,second.ratingCount());assertEquals(new java.math.BigDecimal("8.38"),second.averageRating());
+        banks.recordPublicView(post.id(),student);banks.recordPublicView(post.id(),student);
+        banks.recordPublicView(post.id(),reviewer);var viewed=banks.recordPublicView(post.id(),owner);
+        assertEquals(2,viewed.views24h());assertEquals(2,viewed.views30d());
+        jdbc.update("INSERT INTO public_question_view_events(publication_id,actor_user_id,event_day,created_at) VALUES(:post,:actor,(timezone('UTC',CURRENT_TIMESTAMP)::date-40),timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '40 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",UUID.randomUUID()));
+        assertEquals(3,banks.recordPublicView(post.id(),student).views365d());
+        fails(403,()->banks.recordPublicView(post.id(),systemAdmin));
+        assertEquals(3,banks.publicQuestion(post.id(),student).views365d());
+        var safe=json.writeValueAsString(banks.publicQuestion(post.id(),student));
+        assertTrue(safe.contains("\"ratingCount\":2"));assertTrue(safe.contains("\"myRating\":8.25"));
+        assertFalse(safe.contains("actorUserId"));assertFalse(safe.contains("@"));assertFalse(safe.contains("correct"));
+        assertFalse(validator.validate(new PublicRatingRequest(new java.math.BigDecimal("10.01"))).isEmpty());
+        assertFalse(validator.validate(new PublicRatingRequest(new java.math.BigDecimal("-0.01"))).isEmpty());
+        fails(403,()->banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("5")),owner));
+        fails(403,()->banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("5")),systemAdmin));
+        banks.archivePublic(post.id(),owner);
+        fails(404,()->banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("5")),student));
+    }
+
+    @Test @Transactional(propagation=Propagation.NOT_SUPPORTED)
+    void concurrentSetPublishIsSerializedAndIdempotent() throws Exception {
+        var q=active("Concurrent publication");var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var set=sets.create(bank.getId(),new QuestionSetWrite("Concurrent set",null,List.of(new SetItemRequest(q.id(),1L)),null),owner);
+        try {
+            var pool=Executors.newFixedThreadPool(2);
+            try {
+                var futures=pool.invokeAll(List.of(
+                        (Callable<UUID>)()->sets.publish(set.id(),new PublishSetRequest(1L),owner).id(),
+                        (Callable<UUID>)()->sets.publish(set.id(),new PublishSetRequest(1L),owner).id()));
+                assertEquals(futures.get(0).get(),futures.get(1).get());
+                UUID publication=futures.get(0).get();var viewer=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+                var views=pool.invokeAll(List.of((Callable<Long>)()->banks.recordPublicView(publication,viewer).views24h(),
+                        (Callable<Long>)()->banks.recordPublicView(publication,viewer).views24h()));
+                assertEquals(1,views.getLast().get());
+            } finally {pool.shutdownNow();}
+        } finally {
+            jdbc.update("DELETE FROM public_questions WHERE question_set_id=:id",Map.of("id",set.id()));
+            jdbc.update("DELETE FROM question_set_versions WHERE question_set_id=:id",Map.of("id",set.id()));
+            jdbc.update("DELETE FROM question_sets WHERE id=:id",Map.of("id",set.id()));
+            jdbc.update("DELETE FROM question_reviews WHERE question_id=:id",Map.of("id",q.id()));
+            jdbc.update("DELETE FROM question_lifecycle_migrations WHERE question_id=:id",Map.of("id",q.id()));
+            jdbc.update("DELETE FROM question_versions WHERE question_id=:id",Map.of("id",q.id()));
+            jdbc.update("DELETE FROM questions WHERE id=:id",Map.of("id",q.id()));
+        }
+    }
+
     @Test void personalSetVersionsPublishFrozenItemsAndForkSingleOrWholeSet() throws Exception {
         var one=active("Set frozen one");var two=active("Set frozen two");
         var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
@@ -106,9 +163,14 @@ class MultiBankPersistenceTest {
                 new SetItemRequest(two.id(),1L)),1L),owner);
         assertEquals(2,edited.version());assertEquals(1,edited.items().size());
         assertEquals(2,sets.version(created.id(),1,owner).items().size());
+        assertEquals("Algebra set",sets.version(created.id(),1,owner).title());
+        assertEquals("description",sets.version(created.id(),1,owner).description());
+        assertEquals(1,sets.version(created.id(),1,owner).version());
+        fails(409,()->sets.update(created.id(),new QuestionSetWrite("stale",null,List.of(new SetItemRequest(one.id(),1L)),1L),owner));
         var post=sets.publish(created.id(),new PublishSetRequest(2L),owner);
         assertEquals(PublicQuestion.PostType.QUESTION_SET,post.postType());assertEquals(2,post.postVersion());assertEquals(1,post.itemCount());
         assertNotEquals(postV1.id(),post.id());assertEquals(2,banks.publicQuestion(postV1.id(),owner).itemCount());
+        assertEquals(post.id(),sets.publish(created.id(),new PublishSetRequest(2L),owner).id());
         String safe=json.writeValueAsString(post);assertFalse(safe.contains("correct"));assertFalse(safe.contains("expectedAnswer"));assertFalse(safe.contains("@"));
         var item=post.items().getFirst();var selected=eligibility.batch(List.of(item.id()),false,new QuestionActor(UUID.randomUUID(),"STUDENT",false)).getFirst();
         assertTrue(selected.eligible());assertEquals(item.id(),selected.id());assertEquals("Set frozen two",selected.content());
@@ -151,6 +213,22 @@ class MultiBankPersistenceTest {
         var counted=top.getContent().stream().filter(p->p.id().equals(single.id())).findFirst().orElseThrow();
         assertEquals(2,counted.copies24h());assertEquals(2,counted.copies30d());assertEquals(3,counted.copies365d());
         assertEquals(1,top.getContent().stream().filter(p->p.id().equals(post.id())).findFirst().orElseThrow().copies24h());
+        banks.ratePublic(single.id(),new PublicRatingRequest(new java.math.BigDecimal("10")),reviewer);
+        banks.ratePublic(single.id(),new PublicRatingRequest(new java.math.BigDecimal("9")),actorB);
+        banks.ratePublic(post.id(),new PublicRatingRequest(new java.math.BigDecimal("8")),actorA);
+        jdbc.update("INSERT INTO public_question_ratings(publication_id,actor_user_id,rating,created_at,updated_at) VALUES(:post,:actor,10,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '40 days',timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '40 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",UUID.randomUUID()));
+        jdbc.update("INSERT INTO public_question_ratings(publication_id,actor_user_id,rating,created_at,updated_at) VALUES(:post,:actor,10,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '40 days',timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '40 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",UUID.randomUUID()));
+        var copyTop=banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"COPY_DAY",page,owner);
+        assertEquals(single.id(),copyTop.getContent().getFirst().id());
+        assertEquals(single.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"COPY_MONTH",page,owner).getContent().getFirst().id());
+        assertEquals(single.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"COPY_YEAR",page,owner).getContent().getFirst().id());
+        var ratingTop=banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"RATING_DAY",page,owner);
+        assertEquals(single.id(),ratingTop.getContent().getFirst().id());
+        assertEquals(single.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"RATING_MONTH",page,owner).getContent().getFirst().id());
+        var ratingYear=banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"RATING_YEAR",page,owner);
+        assertEquals(post.id(),ratingYear.getContent().getFirst().id());
         assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,null,null,PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
         fails(409,()->banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"DAY",page,owner));
         assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,null,category,PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
@@ -170,6 +248,11 @@ class MultiBankPersistenceTest {
                 List.of(new SetItemRequest(first.id(),1L),new SetItemRequest(second.id(),1L)),null),owner);
         var post=sets.publish(set.id(),new PublishSetRequest(1L),owner);
         assertEquals(2,post.subjects().size());assertEquals(2,post.categories().size());
+        categories.findById(biologyCategory.getId()).orElseThrow().setName("Plants renamed");
+        subjectRepo.findById(biology.getId()).orElseThrow().setName("Life Science");
+        var frozen=banks.publicQuestion(post.id(),reviewer);
+        assertTrue(frozen.subjects().stream().anyMatch(s->s.name().equals("Biology")));
+        assertTrue(frozen.categories().stream().anyMatch(c->c.name().equals("Plants")&&c.path().contains("Plants")));
         var page=org.springframework.data.domain.PageRequest.of(0,20);
         assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,biology.getId(),null,
                 PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
@@ -441,6 +524,15 @@ class MultiBankPersistenceTest {
                 try(var rows=sql.executeQuery("SELECT p.id,p.post_type,p.item_count,i.id,i.snapshot FROM public_questions p JOIN public_question_items i ON i.publication_id=p.id")){
                     assertTrue(rows.next());assertEquals(rows.getObject(1),rows.getObject(4));assertEquals("SINGLE_QUESTION",rows.getString(2));
                     assertEquals(1,rows.getInt(3));assertNotNull(rows.getString(5));
+                }
+                try(var rows=sql.executeQuery("SELECT count(*) FROM information_schema.columns WHERE table_schema='"+schema+"' AND table_name='public_question_items' AND column_name IN ('subject_name','category_name','category_path')")){
+                    assertTrue(rows.next());assertEquals(3,rows.getInt(1));
+                }
+                try(var rows=sql.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_schema='"+schema+"' AND table_name='public_question_ratings'")){
+                    assertTrue(rows.next());assertEquals(1,rows.getInt(1));
+                }
+                try(var rows=sql.executeQuery("SELECT i.subject_name,i.category_name,i.category_path FROM public_question_items i")){
+                    assertTrue(rows.next());assertNotNull(rows.getString(1));assertNotNull(rows.getString(2));assertTrue(rows.getString(3).startsWith("["));
                 }
                 assertThrows(java.sql.SQLException.class,()->sql.executeUpdate("UPDATE public_questions SET status='ARCHIVED'"));
             }}

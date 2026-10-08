@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 
 @Service @RequiredArgsConstructor
@@ -48,7 +50,7 @@ public class QuestionSetService {
         return response(set,snapshot);
     }
     @Transactional public QuestionSetResponse update(UUID id,QuestionSetWrite request,QuestionActor actor) {
-        var set=owned(id,actor);if(set.getStatus()!=QuestionSet.SetStatus.ACTIVE)throw conflict("Question Set đã archive");
+        var set=ownedForUpdate(id,actor);if(set.getStatus()!=QuestionSet.SetStatus.ACTIVE)throw conflict("Question Set đã archive");
         if(request.expectedVersion()==null||request.expectedVersion()!=set.getCurrentVersion())throw conflict("Set version đã thay đổi");
         var snapshot=resolve(request.items(),actor);set.setTitle(request.title().trim());set.setDescription(blankNull(request.description()));
         set.setCurrentVersion(set.getCurrentVersion()+1);set.setUpdatedAt(LocalDateTime.now());
@@ -62,17 +64,17 @@ public class QuestionSetService {
     public QuestionSetResponse get(UUID id,QuestionActor actor) {var s=owned(id,actor);return response(s,readVersion(s));}
     public QuestionSetResponse version(UUID id,long version,QuestionActor actor) {
         var s=owned(id,actor);var v=versions.findById(new QuestionSetVersion.Key(id,version)).orElseThrow(this::missing);
-        try{return response(s,json.readValue(v.getSnapshot(),SetSnapshot.class));}catch(Exception e){throw new IllegalStateException("Invalid Question Set snapshot",e);}
+        try{return response(s,json.readValue(v.getSnapshot(),SetSnapshot.class),v.getVersionNumber());}catch(Exception e){throw new IllegalStateException("Invalid Question Set snapshot",e);}
     }
-    @Transactional public void archive(UUID id,QuestionActor actor) {var s=owned(id,actor);s.setStatus(QuestionSet.SetStatus.ARCHIVED);s.setUpdatedAt(LocalDateTime.now());}
+    @Transactional public void archive(UUID id,QuestionActor actor) {var s=ownedForUpdate(id,actor);s.setStatus(QuestionSet.SetStatus.ARCHIVED);s.setUpdatedAt(LocalDateTime.now());}
 
     @Transactional public PublicResponse publish(UUID id,PublishSetRequest versionRequest,QuestionActor actor) {
-        var set=owned(id,actor);if(set.getStatus()!=QuestionSet.SetStatus.ACTIVE)throw conflict("Question Set đã archive");
+        var set=ownedForUpdate(id,actor);if(set.getStatus()!=QuestionSet.SetStatus.ACTIVE)throw conflict("Question Set đã archive");
         if(versionRequest.version()!=set.getCurrentVersion())throw conflict("Set version đã thay đổi");
         var existing=publications.findByQuestionSetIdAndQuestionSetVersion(id,set.getCurrentVersion());
         if(existing.isPresent()) {
             if(existing.get().getStatus()==PublicQuestion.PublicationStatus.ARCHIVED)throw conflict("Set version đã unpublish; tạo version mới để publish lại");
-            return publicResponse(existing.get());
+            return publicResponse(existing.get(),actor);
         }
         var versionSnapshot=readVersion(set);var questionsSnapshot=versionSnapshot.items();if(questionsSnapshot.isEmpty())throw bad("Set cần ít nhất một câu hỏi");
         var first=questionsSnapshot.getFirst();var now=LocalDateTime.now();var idValue=UUID.randomUUID();
@@ -88,9 +90,10 @@ public class QuestionSetService {
             var q=questionsSnapshot.get(i);items.save(PublicQuestionItem.builder().id(UUID.randomUUID()).publicationId(pub.getId()).position(i)
                     .sourceQuestionId(q.id()).sourceQuestionVersion(q.questionVersion()).sourceBankId(q.bankId()).sourceOwnerUserId(actor.userId())
                     .snapshot(write(q)).searchContent(q.content()).questionType(q.questionType()).difficultyLevel(q.difficultyLevel())
-                    .categoryId(q.categoryId()).subjectId(questionSubject(q.categoryId())).build());
+                    .categoryId(q.categoryId()).subjectId(questionSubject(q.categoryId())).categoryName(categoryName(q.categoryId()))
+                    .subjectName(subjectName(q.categoryId())).categoryParentId(categoryParent(q.categoryId())).categoryPath(categoryPath(q.categoryId())).build());
         }
-        return publicResponse(pub);
+        return publicResponse(pub,actor);
     }
     @Transactional public QuestionSetResponse fork(UUID publicationId,QuestionSetForkRequest request,QuestionActor actor) {
         policy.requireAuthor(actor);var publication=publications.findById(publicationId).orElseThrow(this::missing);
@@ -110,7 +113,7 @@ public class QuestionSetService {
                 .title(publication.getTitle()==null?"Forked public questions":publication.getTitle())
                 .description(publication.getDescription()).currentVersion(1).status(QuestionSet.SetStatus.ACTIVE).createdAt(now).updatedAt(now).build());
         saveVersion(set,set.getTitle(),set.getDescription(),copied,actor);
-        if(!publication.getSourceOwnerUserId().equals(actor.userId()))jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id) VALUES(:post,:actor)",
+        if(!publication.getSourceOwnerUserId().equals(actor.userId()))jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,timezone('UTC',CURRENT_TIMESTAMP))",
                 new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",publicationId).addValue("actor",actor.userId()));
         return response(set,copied);
     }
@@ -128,6 +131,10 @@ public class QuestionSetService {
         return List.copyOf(out);
     }
     private UUID questionSubject(UUID categoryId){return categories.findById(categoryId).map(c->c.getSubject().getId()).orElse(null);}
+    private String categoryName(UUID id){return categories.findById(id).map(Category::getName).orElse(null);}
+    private String subjectName(UUID id){return categories.findById(id).map(c->c.getSubject().getName()).orElse(null);}
+    private UUID categoryParent(UUID id){return categories.findById(id).map(c->c.getParent()==null?null:c.getParent().getId()).orElse(null);}
+    private String categoryPath(UUID id){try{var c=categories.findById(id).orElse(null);var names=new ArrayList<String>();for(;c!=null;c=c.getParent())names.add(c.getName());Collections.reverse(names);return json.writeValueAsString(names);}catch(Exception e){throw new IllegalStateException(e);}}
     private void saveVersion(QuestionSet set,String title,String description,List<QuestionResponse> snapshot,QuestionActor actor){
         try{versions.save(new QuestionSetVersion(set.getId(),set.getCurrentVersion(),json.writeValueAsString(new SetSnapshot(title,blankNull(description),snapshot)),actor.userId(),LocalDateTime.now()));}
         catch(Exception e){throw new IllegalStateException("Cannot serialize Question Set version",e);}
@@ -137,24 +144,30 @@ public class QuestionSetService {
         try{return json.readValue(v.getSnapshot(),SetSnapshot.class);}catch(Exception e){throw new IllegalStateException("Invalid Question Set snapshot",e);}
     }
     private record SetSnapshot(String title,String description,List<QuestionResponse> items) {}
-    private QuestionSetResponse response(QuestionSet set,SetSnapshot setSnapshot){return response(set,setSnapshot.items());}
+    private QuestionSetResponse response(QuestionSet set,SetSnapshot setSnapshot){return response(set,setSnapshot,set.getCurrentVersion());}
+    private QuestionSetResponse response(QuestionSet set,SetSnapshot setSnapshot,long version){
+        var safe=new ArrayList<PublicPostItemResponse>();for(int i=0;i<setSnapshot.items().size();i++){var q=setSnapshot.items().get(i);safe.add(new PublicPostItemResponse(q.id(),i,q.id(),q.questionVersion(),q.withoutAnswers()));}
+        return new QuestionSetResponse(set.getId(),set.getBankId(),set.getOwnerUserId(),setSnapshot.title(),setSnapshot.description(),version,set.getStatus(),set.getUpdatedAt(),safe);
+    }
     private QuestionSetResponse response(QuestionSet set,List<QuestionResponse> snapshot){
         var safe=new ArrayList<PublicPostItemResponse>();for(int i=0;i<snapshot.size();i++){var q=snapshot.get(i);safe.add(new PublicPostItemResponse(q.id(),i,q.id(),q.questionVersion(),q.withoutAnswers()));}
         return new QuestionSetResponse(set.getId(),set.getBankId(),set.getOwnerUserId(),set.getTitle(),set.getDescription(),set.getCurrentVersion(),set.getStatus(),set.getUpdatedAt(),safe);
     }
-    private PublicResponse publicResponse(PublicQuestion p){
+    private PublicResponse publicResponse(PublicQuestion p,QuestionActor actor){
         var itemRows=items.findByPublicationIdOrderByPosition(p.getId());
         var listed=itemRows.stream().map(i->{try{var q=json.readValue(i.getSnapshot(),QuestionResponse.class);return new PublicPostItemResponse(i.getId(),i.getPosition(),i.getSourceQuestionId(),i.getSourceQuestionVersion(),q.withoutAnswers());}catch(Exception e){throw new IllegalStateException(e);}}).toList();
-        var categoryRows=categories.findAllById(itemRows.stream().map(PublicQuestionItem::getCategoryId).filter(Objects::nonNull).distinct().toList());
-        var subjectRows=subjects.findAllById(itemRows.stream().map(PublicQuestionItem::getSubjectId).filter(Objects::nonNull).distinct().toList());
-        var subjectNames=new HashMap<UUID,String>();subjectRows.forEach(s->subjectNames.put(s.getId(),s.getName()));
-        var publicSubjects=subjectRows.stream().map(s->new PublicSubject(s.getId(),s.getName())).toList();
-        var publicCategories=categoryRows.stream().map(c->new PublicCategory(c.getId(),c.getName(),c.getSubject().getId(),subjectNames.get(c.getSubject().getId()),c.getParent()==null?null:c.getParent().getId())).toList();
-        var q=read(p.getSnapshot());return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),q.withoutAnswers(),p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),listed,publicSubjects,publicCategories,0,0,0);
+        var publicSubjects=itemRows.stream().filter(i->i.getSubjectId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getSubjectId,i->new PublicSubject(i.getSubjectId(),i.getSubjectName()),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
+        var publicCategories=itemRows.stream().filter(i->i.getCategoryId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getCategoryId,i->new PublicCategory(i.getCategoryId(),i.getCategoryName(),i.getSubjectId(),i.getSubjectName(),i.getCategoryParentId(),readPath(i.getCategoryPath())),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
+        var q=read(p.getSnapshot());var summary=ratingResponse(p.getId(),actor);var views=viewResponse(p.getId());return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),q.withoutAnswers(),p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),listed,publicSubjects,publicCategories,copyCount(p.getId(),24),copyCount(p.getId(),30),copyCount(p.getId(),365),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.views24h(),views.views30d(),views.views365d());
     }
+    private List<String> readPath(String value){try{return value==null?List.of():json.readValue(value,new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});}catch(Exception e){return List.of();}}
+    private PublicRatingResponse ratingResponse(UUID id,QuestionActor actor){var summary=jdbc.queryForMap("SELECT COALESCE(AVG(rating),0)::numeric AS average_rating,COUNT(*) AS rating_count FROM public_question_ratings WHERE publication_id=:id",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id));var my=actor.userId()==null?null:jdbc.query("SELECT rating FROM public_question_ratings WHERE publication_id=:id AND actor_user_id=:actor",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id).addValue("actor",actor.userId()),(row,n)->row.getBigDecimal(1)).stream().findFirst().orElse(null);return new PublicRatingResponse(id,((BigDecimal)summary.get("average_rating")).setScale(2,RoundingMode.HALF_UP),((Number)summary.get("rating_count")).longValue(),my);}
+    private PublicViewResponse viewResponse(UUID id){var p=jdbc.queryForMap("SELECT (SELECT count(*) FROM public_question_view_events WHERE publication_id=:id AND created_at>=timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '24 hours') AS d1,(SELECT count(*) FROM public_question_view_events WHERE publication_id=:id AND created_at>=timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '30 days') AS d30,(SELECT count(*) FROM public_question_view_events WHERE publication_id=:id AND created_at>=timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '365 days') AS d365",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id));return new PublicViewResponse(id,((Number)p.get("d1")).longValue(),((Number)p.get("d30")).longValue(),((Number)p.get("d365")).longValue());}
+    private long copyCount(UUID id,int days){return jdbc.queryForObject("SELECT count(DISTINCT actor_user_id) FROM public_question_copy_events WHERE publication_id=:id AND actor_user_id<>(SELECT source_owner_user_id FROM public_questions WHERE id=:id) AND copied_at>=timezone('UTC',CURRENT_TIMESTAMP)-(:days * INTERVAL '1 day')",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id).addValue("days",days),Long.class);}
     private QuestionResponse read(String s){try{return json.readValue(s,QuestionResponse.class);}catch(Exception e){throw new IllegalStateException(e);}}
     private String write(QuestionResponse q){try{return json.writeValueAsString(q);}catch(Exception e){throw new IllegalStateException(e);}}
     private QuestionSet owned(UUID id,QuestionActor actor){var s=sets.findById(id).orElseThrow(this::missing);if(!s.getOwnerUserId().equals(actor.userId()))throw missing();return s;}
+    private QuestionSet ownedForUpdate(UUID id,QuestionActor actor){var s=sets.findByIdForUpdate(id).orElseThrow(this::missing);if(!s.getOwnerUserId().equals(actor.userId()))throw missing();return s;}
     private void bounds(Pageable page){if(page.getPageSize()>100)throw bad("size tối đa 100");}
     private String blankNull(String s){return s==null||s.isBlank()?null:s.trim();}
     private ResponseStatusException missing(){return new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy tài nguyên");}

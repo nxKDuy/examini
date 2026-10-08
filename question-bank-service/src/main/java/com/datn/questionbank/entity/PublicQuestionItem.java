@@ -20,4 +20,8 @@ public class PublicQuestionItem {
     @Enumerated(EnumType.STRING) @Column(name="difficulty_level",nullable=false,updatable=false,length=10) private Question.DifficultyLevel difficultyLevel;
     @Column(name="category_id") private UUID categoryId;
     @Column(name="subject_id") private UUID subjectId;
+    @Column(name="subject_name",length=255,updatable=false) private String subjectName;
+    @Column(name="category_name",length=255,updatable=false) private String categoryName;
+    @Column(name="category_parent_id",updatable=false) private UUID categoryParentId;
+    @Column(name="category_path",nullable=false,columnDefinition="TEXT",updatable=false) private String categoryPath;
 }

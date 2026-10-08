@@ -5,6 +5,7 @@ import jakarta.validation.constraints.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.List;
+import java.math.BigDecimal;
 public class BankDto {
     public record CreateBank(@NotNull QuestionBank.BankType type,@NotBlank @Size(max=200) String name,UUID organizationId) {}
     public record BankResponse(UUID id,QuestionBank.BankType type,UUID ownerUserId,UUID organizationId,String name,QuestionBank.BankStatus status,boolean defaultBank,LocalDateTime createdAt) {}
@@ -24,11 +25,15 @@ public class BankDto {
         String sourceOwnerDisplayName,PublicQuestion.PublicationStatus publicationStatus,UUID publishedBy,LocalDateTime publishedAt,
         UUID archivedBy,LocalDateTime archivedAt,QuestionDto.SafeQuestionResponse question,PublicQuestion.PostType postType,String title,
         String description,long postVersion,int itemCount,List<PublicPostItemResponse> items,List<PublicSubject> subjects,
-        List<PublicCategory> categories,long copies24h,long copies30d,long copies365d) {}
+        List<PublicCategory> categories,long copies24h,long copies30d,long copies365d,BigDecimal averageRating,long ratingCount,BigDecimal myRating,
+        long views24h,long views30d,long views365d) {}
+    public record PublicRatingRequest(@NotNull @DecimalMin("0.0") @DecimalMax("10.0") BigDecimal rating) {}
+    public record PublicRatingResponse(UUID publicationId,BigDecimal averageRating,long ratingCount,BigDecimal myRating) {}
+    public record PublicViewResponse(UUID publicationId,long views24h,long views30d,long views365d) {}
     public record PublicPostItemResponse(UUID id,int position,UUID sourceQuestionId,long sourceQuestionVersion,
         QuestionDto.SafeQuestionResponse question) {}
     public record PublicSubject(UUID id,String name) {}
-    public record PublicCategory(UUID id,String name,UUID subjectId,String subjectName,UUID parentCategoryId) {}
+    public record PublicCategory(UUID id,String name,UUID subjectId,String subjectName,UUID parentCategoryId,List<String> path) {}
     public record SetItemRequest(@NotNull UUID questionId,@NotNull @Positive Long questionVersion) {}
     public record QuestionSetWrite(@NotBlank @Size(max=200) String title,@Size(max=2000) String description,
         @NotNull @Size(min=1,max=100) List<@NotNull @Valid SetItemRequest> items,@Positive Long expectedVersion) {}
