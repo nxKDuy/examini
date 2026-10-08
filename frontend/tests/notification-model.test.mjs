@@ -88,3 +88,12 @@ test('grading notification deep links: Teacher queue of one Exam and Student own
   assert.equal(m.notificationTarget({ entityType: 'EXAM_SESSION', entityId: 's1', metadata: { link: 'https://evil.example/x' } }, true), '/exam/result/s1')
   assert.equal(m.notificationTarget({ entityType: 'EXAM_SESSION', entityId: 's1', metadata: { link: '//evil.example' } }, true), '/exam/result/s1')
 })
+
+test('organization notification targets: invitations open the invitation block, org events open that organization; foreign links ignored', () => {
+  const t = (n) => m.notificationTarget(n, false)
+  assert.equal(t({ entityType: 'ORGANIZATION', entityId: 'o1', metadata: { link: '/organizations/o1' } }), '/organizations/o1')
+  assert.equal(t({ entityType: 'ORGANIZATION', entityId: 'o1', metadata: {} }), '/organizations/o1')
+  assert.equal(t({ entityType: 'ORGANIZATION_INVITATION', entityId: 'i1', metadata: { link: '/organizations/invitations' } }), '/organizations/invitations')
+  assert.equal(t({ entityType: 'ORGANIZATION_INVITATION', entityId: 'i1', metadata: {} }), '/organizations?tab=invitations')
+  assert.equal(t({ entityType: 'ORGANIZATION', entityId: 'o1', metadata: { link: 'https://evil.example/' } }), '/organizations/o1')
+})

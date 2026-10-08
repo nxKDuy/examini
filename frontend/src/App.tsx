@@ -13,6 +13,8 @@ import ExamListPage from './features/exams/ExamListPage'
 const ExamEditorPage = lazy(() => import('./features/exams/ExamEditorPage'))
 const ExamDetailPage = lazy(() => import('./features/exams/ExamDetailPage'))
 const GradingPage = lazy(() => import('./features/grading/GradingPage'))
+const OrganizationsPage = lazy(() => import('./features/organizations/OrganizationsPage'))
+const OrganizationDetailPage = lazy(() => import('./features/organizations/OrganizationDetailPage'))
 import MyExamsPage from './features/exams/MyExamsPage'
 import ExamLobbyPage from './features/exams/ExamLobbyPage'
 import StudentExamPage from './features/exams/StudentExamPage'
@@ -36,6 +38,9 @@ function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/organizations" element={<OrganizationsPage />} />
+          <Route path="/organizations/invitations" element={<Navigate to="/organizations?tab=invitations" replace />} />
+          <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
         </Route>
 
         <Route element={<ProtectedRoute persona="STUDENT"><AppLayout /></ProtectedRoute>}>

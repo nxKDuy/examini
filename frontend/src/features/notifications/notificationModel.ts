@@ -15,6 +15,8 @@ export function notificationTarget(n: Pick<AppNotification, 'entityType' | 'enti
   if (typeof link === 'string' && /^\/(?![/\\])/.test(link)) return link
   if (n.entityType === 'EXAM_SESSION') return `/exam/result/${n.entityId}`
   if (n.entityType === 'EXAM') return student ? `/exam/lobby/${n.entityId}` : `/exams/${n.entityId}`
+  if (n.entityType === 'ORGANIZATION') return `/organizations/${n.entityId}`
+  if (n.entityType === 'ORGANIZATION_INVITATION') return '/organizations?tab=invitations'
   if (n.entityType === 'QUESTION') return '/questions'
   return '/dashboard'
 }
