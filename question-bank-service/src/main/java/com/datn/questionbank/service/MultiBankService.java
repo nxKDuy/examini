@@ -43,6 +43,7 @@ public class MultiBankService {
     private final AuthIdentityClient identities;
     private final ObjectMapper json;
     private final NamedParameterJdbcTemplate jdbc;
+    private final PublicPostStatistics statistics;
     private final EntityManager entityManager;
 
     @Transactional
@@ -257,6 +258,46 @@ public class MultiBankService {
             throw missing("Không tìm thấy PublicQuestion");
         return publicResponse(p,actor);
     }
+    public Page<?> publicTaxonomy(PublicTaxonomyKind kind,String text,UUID subjectId,Pageable page,QuestionActor actor) {
+        if(actor.internal()||actor.userId()==null)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Yêu cầu tài khoản người dùng");
+        bounds(page);
+        if(text!=null&&text.length()>100)throw bad("text tối đa 100 ký tự");
+        String term=text==null?"":text.trim().toLowerCase(Locale.ROOT);
+        boolean category=kind==PublicTaxonomyKind.CATEGORY;
+        entityManager.flush();
+        String base=category?"""
+            WITH choices AS (
+              SELECT DISTINCT ON (i.category_id) i.category_id AS id,i.category_name AS name,
+                     i.subject_id,i.subject_name,i.category_parent_id,i.category_path
+              FROM public_question_items i JOIN public_questions p ON p.id=i.publication_id
+              WHERE p.status='PUBLISHED' AND i.category_id IS NOT NULL AND i.category_name IS NOT NULL
+                AND (CAST(:subject AS uuid) IS NULL OR i.subject_id=CAST(:subject AS uuid))
+              ORDER BY i.category_id,p.verified_at DESC,p.id DESC,i.id DESC
+            )
+            """:"""
+            WITH choices AS (
+              SELECT DISTINCT ON (i.subject_id) i.subject_id AS id,i.subject_name AS name
+              FROM public_question_items i JOIN public_questions p ON p.id=i.publication_id
+              WHERE p.status='PUBLISHED' AND i.subject_id IS NOT NULL AND i.subject_name IS NOT NULL
+                AND (CAST(:subject AS uuid) IS NULL OR i.subject_id=CAST(:subject AS uuid))
+              ORDER BY i.subject_id,p.verified_at DESC,p.id DESC,i.id DESC
+            )
+            """;
+        String filter=" FROM choices WHERE position(CAST(:text AS text) in lower(name))>0";
+        var args=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                .addValue("subject",subjectId).addValue("text",term).addValue("limit",page.getPageSize()).addValue("offset",page.getOffset());
+        long total=jdbc.queryForObject(base+"SELECT count(*)"+filter,args,Long.class);
+        if(category) {
+            var items=jdbc.query(base+"SELECT id,name,subject_id,subject_name,category_parent_id,category_path"+filter+
+                    " ORDER BY lower(name),id LIMIT :limit OFFSET :offset",args,(row,n)->new PublicCategory(
+                    row.getObject("id",UUID.class),row.getString("name"),row.getObject("subject_id",UUID.class),
+                    row.getString("subject_name"),row.getObject("category_parent_id",UUID.class),readPath(row.getString("category_path"))));
+            return new PageImpl<>(items,page,total);
+        }
+        var items=jdbc.query(base+"SELECT id,name"+filter+" ORDER BY lower(name),id LIMIT :limit OFFSET :offset",args,
+                (row,n)->new PublicSubject(row.getObject("id",UUID.class),row.getString("name")));
+        return new PageImpl<>(items,page,total);
+    }
     private String rankingOrder(String ranking) {
         if("NEWEST".equals(ranking))return " ORDER BY p.verified_at DESC,p.id ASC";
         String interval;String mode;
@@ -291,10 +332,8 @@ public class MultiBankService {
         var p=publications.findByIdForUpdate(id).orElseThrow(()->missing("Không tìm thấy Public post"));
         if(p.getStatus()!=PublicQuestion.PublicationStatus.PUBLISHED)throw missing("Không tìm thấy Public post");
         if(!p.getSourceOwnerUserId().equals(actor.userId()))jdbc.update("INSERT INTO public_question_view_events(publication_id,actor_user_id,event_day,created_at) VALUES(:post,:actor,timezone('UTC',CURRENT_TIMESTAMP)::date,timezone('UTC',CURRENT_TIMESTAMP)) ON CONFLICT(publication_id,actor_user_id,event_day) DO NOTHING",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",id).addValue("actor",actor.userId()));
-        return viewResponse(id);
+        return statistics.viewResponse(id);
     }
-    private PublicViewResponse viewResponse(UUID id){return new PublicViewResponse(id,viewCount(id,24),viewCount(id,30),viewCount(id,365));}
-    private long viewCount(UUID id,int days){return jdbc.queryForObject("SELECT count(*) FROM public_question_view_events WHERE publication_id=:id AND event_day>timezone('UTC',CURRENT_TIMESTAMP)::date-:days AND created_at>=timezone('UTC',CURRENT_TIMESTAMP)-(:days * INTERVAL '1 day')",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id).addValue("days",days),Long.class);}
     @Transactional
     public void archivePublic(UUID id,QuestionActor actor) {
         var p=publications.findByIdForUpdate(id).orElseThrow(()->missing("Không tìm thấy verified PublicQuestion"));
@@ -373,15 +412,11 @@ public class MultiBankService {
         var publicSubjects=itemEntities.stream().filter(i->i.getSubjectId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getSubjectId,i->new PublicSubject(i.getSubjectId(),i.getSubjectName()),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         var publicCategories=itemEntities.stream().filter(i->i.getCategoryId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getCategoryId,i->new PublicCategory(i.getCategoryId(),i.getCategoryName(),i.getSubjectId(),i.getSubjectName(),i.getCategoryParentId(),readPath(i.getCategoryPath())),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         var summary=ratingResponse(p.getId(),actor);
-        var views=viewResponse(p.getId());
-        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copyCount(p.getId(),24),copyCount(p.getId(),30),copyCount(p.getId(),365),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.views24h(),views.views30d(),views.views365d());
+        var views=statistics.views(p.getId());var copies=statistics.copies(p.getId());
+        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total());
     }
     private List<String> readPath(String value) {try{return value==null?List.of():json.readValue(value,new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});}catch(Exception e){return List.of();}}
     private String writeCategoryPath(Category category) {try{var names=new ArrayList<String>();for(var c=category;c!=null;c=c.getParent())names.add(c.getName());Collections.reverse(names);return json.writeValueAsString(names);}catch(Exception e){throw new IllegalStateException("Cannot serialize taxonomy snapshot",e);}}
-    private long copyCount(UUID publicationId,int days) {
-        return jdbc.queryForObject("SELECT count(DISTINCT actor_user_id) FROM public_question_copy_events WHERE publication_id=:id AND actor_user_id<>(SELECT source_owner_user_id FROM public_questions WHERE id=:id) AND copied_at>=timezone('UTC',CURRENT_TIMESTAMP)-(:days * INTERVAL '1 day')",
-                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",publicationId).addValue("days",days),Long.class);
-    }
     private void systemAuthority(QuestionActor actor) {if(!actor.systemAdmin())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Yêu cầu signed systemPrivilege=ADMIN");}
     private void bounds(Pageable p) {if(p.getPageSize()>100)throw bad("size tối đa 100");}
     private ResponseStatusException bad(String s){return new ResponseStatusException(HttpStatus.BAD_REQUEST,s);}

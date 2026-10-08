@@ -25,11 +25,12 @@ public class BankDto {
         String sourceOwnerDisplayName,PublicQuestion.PublicationStatus publicationStatus,UUID publishedBy,LocalDateTime publishedAt,
         UUID archivedBy,LocalDateTime archivedAt,QuestionDto.SafeQuestionResponse question,PublicQuestion.PostType postType,String title,
         String description,long postVersion,int itemCount,List<PublicPostItemResponse> items,List<PublicSubject> subjects,
-        List<PublicCategory> categories,long copies24h,long copies30d,long copies365d,BigDecimal averageRating,long ratingCount,BigDecimal myRating,
-        long views24h,long views30d,long views365d) {}
+        List<PublicCategory> categories,long copies24h,long copies30d,long copies365d,long copiesTotal,BigDecimal averageRating,long ratingCount,BigDecimal myRating,
+        long views24h,long views30d,long views365d,long viewsTotal) {}
     public record PublicRatingRequest(@NotNull @DecimalMin("0.0") @DecimalMax("10.0") BigDecimal rating) {}
     public record PublicRatingResponse(UUID publicationId,BigDecimal averageRating,long ratingCount,BigDecimal myRating) {}
-    public record PublicViewResponse(UUID publicationId,long views24h,long views30d,long views365d) {}
+    public record PublicViewResponse(UUID publicationId,long views24h,long views30d,long views365d,long viewsTotal) {}
+    public enum PublicTaxonomyKind { SUBJECT, CATEGORY }
     public record PublicPostItemResponse(UUID id,int position,UUID sourceQuestionId,long sourceQuestionVersion,
         QuestionDto.SafeQuestionResponse question) {}
     public record PublicSubject(UUID id,String name) {}

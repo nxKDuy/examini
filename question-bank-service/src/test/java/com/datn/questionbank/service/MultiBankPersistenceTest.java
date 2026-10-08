@@ -235,6 +235,69 @@ class MultiBankPersistenceTest {
         assertEquals(post.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getContent().getFirst().id());
     }
 
+    @Test void publicCountsUseActualRollingHoursAndAllTimeDistinctActors() {
+        var q=active("Statistics boundary");var post=banks.publish(q.id(),new ContributionRequest(1),owner);
+        var visitor=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        var copier=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+        banks.recordPublicView(post.id(),visitor);
+        banks.forkPublic(post.id(),new ForkRequest(1,null),copier);
+        UUID recent=UUID.randomUUID(),old=UUID.randomUUID(),ancient=UUID.randomUUID();
+        jdbc.update("INSERT INTO public_question_view_events(publication_id,actor_user_id,event_day,created_at) VALUES(:post,:actor,(timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '23 hours')::date,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '23 hours')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",recent));
+        jdbc.update("INSERT INTO public_question_view_events(publication_id,actor_user_id,event_day,created_at) VALUES(:post,:actor,(timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '49 hours')::date,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '49 hours')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",old));
+        jdbc.update("INSERT INTO public_question_view_events(publication_id,actor_user_id,event_day,created_at) VALUES(:post,:actor,(timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '400 days')::date,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '400 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",ancient));
+        jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '49 hours')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",old));
+        jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '23 hours')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",recent));
+        jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '400 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",ancient));
+        jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,timezone('UTC',CURRENT_TIMESTAMP)-INTERVAL '400 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.id()).addValue("actor",copier.userId()));
+        var detail=banks.publicQuestion(post.id(),visitor);
+        assertEquals(2,detail.views24h());assertEquals(3,detail.views30d());assertEquals(3,detail.views365d());assertEquals(4,detail.viewsTotal());
+        assertEquals(2,detail.copies24h());assertEquals(3,detail.copies30d());assertEquals(3,detail.copies365d());assertEquals(4,detail.copiesTotal());
+        var list=banks.publicQuestions(null,null,null,null,null,null,false,org.springframework.data.domain.PageRequest.of(0,20),visitor);
+        var card=list.getContent().stream().filter(p->p.id().equals(post.id())).findFirst().orElseThrow();
+        assertEquals(detail.views24h(),card.views24h());assertEquals(detail.copies24h(),card.copies24h());
+        assertEquals(4,banks.recordPublicView(post.id(),visitor).viewsTotal());
+        assertEquals(2,banks.recordPublicView(post.id(),visitor).views24h());
+        assertEquals(post.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"COPY_DAY",org.springframework.data.domain.PageRequest.of(0,1),visitor).getContent().getFirst().id());
+    }
+
+    @Test void publicTaxonomySearchIsPublishedOnlyFrozenAndPaginated() throws Exception {
+        var first=active("Taxonomy search");var single=banks.publish(first.id(),new ContributionRequest(1),owner);
+        var bio=subjectRepo.save(Subject.builder().name("Biology").build());
+        var plant=categories.save(Category.builder().subject(bio).name("Plants").build());
+        var second=questions.create(new CreateRequest(plant.getId(),"Plant",QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,
+                "Book",List.of(new OptionRequest("Yes",true,(short)0),new OptionRequest("No",false,(short)1)),null,
+                QuestionScope.PERSONAL,SourceType.NONE,null,null,null,null),owner);
+        questions.activate(second.id(),1,owner);
+        var published=banks.publish(second.id(),new ContributionRequest(1),owner);
+        var visitor=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        var subjectsPage1=banks.publicTaxonomy(PublicTaxonomyKind.SUBJECT,"",null,org.springframework.data.domain.PageRequest.of(0,1),visitor);
+        var subjectsPage2=banks.publicTaxonomy(PublicTaxonomyKind.SUBJECT,"",null,org.springframework.data.domain.PageRequest.of(1,1),visitor);
+        assertEquals(2,subjectsPage1.getTotalElements());assertEquals(1,subjectsPage1.getContent().size());
+        assertEquals(1,subjectsPage2.getContent().size());assertNotEquals(subjectsPage1.getContent().getFirst(),subjectsPage2.getContent().getFirst());
+        assertEquals(1,banks.publicTaxonomy(PublicTaxonomyKind.SUBJECT,"bio",null,org.springframework.data.domain.PageRequest.of(0,10),visitor).getTotalElements());
+        var categoryPage=banks.publicTaxonomy(PublicTaxonomyKind.CATEGORY,"plant",bio.getId(),org.springframework.data.domain.PageRequest.of(0,10),visitor);
+        var frozen=(PublicCategory)categoryPage.getContent().getFirst();
+        assertEquals("Plants",frozen.name());assertEquals(bio.getId(),frozen.subjectId());
+        assertTrue(frozen.path().contains("Plants"));
+        String safe=json.writeValueAsString(categoryPage);
+        assertFalse(safe.contains("correct"));assertFalse(safe.contains("expectedAnswer"));assertFalse(safe.contains("@"));
+        categories.findById(plant.getId()).orElseThrow().setName("Renamed");
+        assertEquals("Plants",((PublicCategory)banks.publicTaxonomy(PublicTaxonomyKind.CATEGORY,"plant",bio.getId(),org.springframework.data.domain.PageRequest.of(0,10),visitor).getContent().getFirst()).name());
+        banks.archivePublic(published.id(),owner);
+        assertEquals(0,banks.publicTaxonomy(PublicTaxonomyKind.CATEGORY,"plant",bio.getId(),org.springframework.data.domain.PageRequest.of(0,10),visitor).getTotalElements());
+        assertEquals(1,banks.publicTaxonomy(PublicTaxonomyKind.CATEGORY,"",null,org.springframework.data.domain.PageRequest.of(0,10),visitor).getTotalElements());
+        assertEquals(1,banks.publicTaxonomy(PublicTaxonomyKind.SUBJECT,"",null,org.springframework.data.domain.PageRequest.of(0,10),visitor).getTotalElements());
+        assertEquals(single.id(),banks.publicQuestion(single.id(),visitor).id());
+        fails(400,()->banks.publicTaxonomy(PublicTaxonomyKind.SUBJECT,"a".repeat(101),null,org.springframework.data.domain.PageRequest.of(0,10),visitor));
+    }
+
     @Test void setCanSpanSubjectsAndCategoriesAndDiscoveryFiltersAnyItemOnce() {
         var first=active("Math topic");
         var biology=subjectRepo.save(Subject.builder().name("Biology").description("Test taxonomy").build());

@@ -64,6 +64,9 @@ public class MultiBankController {
             @RequestParam(defaultValue="false") boolean mine,@RequestParam(required=false) UUID subjectId,@RequestParam(required=false) UUID categoryId,
             @RequestParam(required=false) PublicQuestion.PostType postType,@RequestParam(defaultValue="NEWEST") String ranking,
             @PageableDefault(size=20,sort="verifiedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){var actor=actor(r);return service.publicQuestions(bankId,sourceOwnerUserId,questionType,difficulty,text,publicationStatus,mine,subjectId,categoryId,postType,ranking,p,actor);}
+    @GetMapping("/public-questions/taxonomy") public Page<?> publicTaxonomy(@RequestParam PublicTaxonomyKind kind,
+            @RequestParam(required=false) String text,@RequestParam(required=false) UUID subjectId,
+            @PageableDefault(size=20) Pageable p,HttpServletRequest r){return service.publicTaxonomy(kind,text,subjectId,p,actor(r));}
     @GetMapping("/public-questions/{id}") public PublicResponse publication(@PathVariable UUID id,HttpServletRequest r){return service.publicQuestion(id,actor(r));}
     @PutMapping("/public-questions/{id}/rating") public PublicRatingResponse ratePublic(@PathVariable UUID id,@Valid @RequestBody PublicRatingRequest b,HttpServletRequest r){return service.ratePublic(id,b,actor(r));}
     @PostMapping("/public-questions/{id}/view") public PublicViewResponse recordPublicView(@PathVariable UUID id,HttpServletRequest r){return service.recordPublicView(id,actor(r));}
