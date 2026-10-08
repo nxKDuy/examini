@@ -54,6 +54,10 @@ public class ExamSession {
 
     @Column(name="expires_at",nullable=false) private java.time.Instant expiresAt;
     @Column(name="attempt_number",nullable=false) private int attemptNumber;
+    @Column(name="invalidated_at") private java.time.Instant invalidatedAt;
+    @Column(name="invalidated_by") private UUID invalidatedBy;
+    @Column(name="invalidation_reason",columnDefinition="TEXT") private String invalidationReason;
+    public boolean isInvalidated(){return invalidatedAt!=null;}
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name="questions",columnDefinition="jsonb",nullable=false)
     @Builder.Default private java.util.List<com.datn.examsession.client.ExamClient.Question> questions = new java.util.ArrayList<>();

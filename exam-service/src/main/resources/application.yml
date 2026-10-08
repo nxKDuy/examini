@@ -6,6 +6,10 @@ exam:
     platform-limit: ${EXAM_PLATFORM_CONCURRENT_LIMIT:100}
 question-bank:
   internal-token: ${QB_INTERNAL_TOKEN:}
+identity:
+  # Dedicated Auth identity-resolution credential (contracts/identity-resolution.md); empty fails closed.
+  token: ${EXAM_IDENTITY_TOKEN:}
+  auth-url: ${AUTH_SERVICE_URL:}
 
 server:
   port: 8083

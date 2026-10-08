@@ -13,6 +13,7 @@ public class RabbitMQConfig {
     public Queue examSubmittedQueue() {
         return new Queue(EXAM_SUBMITTED_QUEUE, true); // durable = true
     }
+    @Bean public Queue attemptInvalidatedQueue(){return new Queue("exam.attempt.invalidated.queue",true);}
     @Bean public TopicExchange gradingEventsExchange(){return new TopicExchange("examini.grading.events",true,false);}
     @Bean public TopicExchange notificationEventsExchange(){return new TopicExchange("examini.events",true,false);}
 }

@@ -12,6 +12,7 @@ public interface ExamClient {
     @PostMapping("/{examId}/internal/start-admissions/{admissionId}/claim") ScheduleAdmission claimStart(@PathVariable UUID examId,@PathVariable UUID admissionId,@RequestParam UUID user,@RequestHeader("X-Service-Token")String token);
     @PostMapping("/{examId}/internal/start-admissions/{admissionId}/confirm") void confirmStart(@PathVariable UUID examId,@PathVariable UUID admissionId,@RequestParam UUID sessionId,@RequestHeader("X-Service-Token")String token);
     @PostMapping("/{examId}/internal/start-admissions/{admissionId}/release") void releaseStart(@PathVariable UUID examId,@PathVariable UUID admissionId,@RequestHeader("X-Service-Token")String token);
+    @GetMapping("/{id}/internal/attempt-limit") Integer attemptLimit(@PathVariable UUID id,@RequestParam UUID user,@RequestHeader("X-Service-Token")String token);
     @GetMapping("/{id}/internal/safe") List<Question> safe(@PathVariable UUID id,@RequestHeader("X-Service-Token")String token);
     @GetMapping("/{id}/internal/permission") String permission(@PathVariable UUID id,@RequestParam UUID actor,@RequestParam boolean manage,@RequestHeader("X-Service-Token")String token);
     record ExamDto(UUID id,String title,int durationMinutes,int maxConcurrentSessions,int attemptLimit,LocalDateTime endTime,boolean shuffleQuestions,boolean shuffleOptions){}

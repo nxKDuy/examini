@@ -18,6 +18,12 @@ public class SessionController {
     @GetMapping("/exam/{id}/internal/availability") public SessionService.ScheduleAvailability availability(@PathVariable UUID id,@RequestParam UUID user){return service.availability(id,user);}
     @GetMapping("/exam/{id}/internal/recipient-progress") public List<SessionService.RecipientProgress> recipientProgress(@PathVariable UUID id,@RequestParam List<UUID> userIds){return service.recipientProgress(id,userIds);}
     @GetMapping("/exam/{examId}/internal/start-admissions/{admissionId}") public SessionService.AdmissionStatus admissionStatus(@PathVariable UUID examId,@PathVariable UUID admissionId){return service.admissionStatus(examId,admissionId);}
+    @GetMapping("/exam/{id}/mine") public List<SessionService.AttemptDto> mine(@PathVariable UUID id,@RequestAttribute UUID actor){return service.myAttempts(id,actor);}
+    @GetMapping("/exam/{id}/attempts") public List<SessionService.StaffAttemptDto> attempts(@PathVariable UUID id,@RequestParam UUID userId,@RequestAttribute UUID actor){return service.staffAttempts(id,userId,actor);}
+    @PostMapping("/{id}/invalidate") public SessionService.StaffAttemptDto invalidate(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody InvalidateRequest req){return service.invalidate(id,actor,req==null?null:req.reason());}
+    @GetMapping("/exam/{id}/internal/attempt-summary") public List<SessionService.AttemptSummary> attemptSummary(@PathVariable UUID id,@RequestParam List<UUID> userIds){return service.attemptSummary(id,userIds);}
+    @GetMapping("/exam/{id}/internal/attempts") public List<SessionService.AttemptDto> internalAttempts(@PathVariable UUID id,@RequestParam UUID user){return service.myAttempts(id,user);}
+    public record InvalidateRequest(String reason){}
     public record Eligibility(long attempts,boolean resumable){}
     public record Answer(String content){}
 }

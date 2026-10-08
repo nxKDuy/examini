@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(SchedulingAcceptanceTest.ClockConfig.class)
 class SchedulingAcceptanceTest {
     @Autowired ExamRepository exams;
+    @Autowired com.datn.exam.repository.ExamParticipantRepository participantRows;
     @Autowired ExamOutboxRepository outbox;
     @Autowired ExamCore core;
     @Autowired ScheduleService schedules;
@@ -139,7 +140,7 @@ class SchedulingAcceptanceTest {
         Exam earlyClosed=exam(Exam.Status.CLOSED,base.minusSeconds(60),base.plusSeconds(3600),Exam.DeadlineRule.FULL_DURATION,false,false);
         Exam endedAtRangeStart=exam(Exam.Status.PUBLISHED,base.minusSeconds(3600),base,Exam.DeadlineRule.FULL_DURATION,false,false);
         Exam publicExam=exam(Exam.Status.PUBLISHED,base.plusSeconds(3600),base.plusSeconds(7200),Exam.DeadlineRule.FULL_DURATION,false,false);
-        publicExam.setAccessMode(Exam.AccessMode.PUBLIC);publicExam.getParticipants().clear();exams.saveAndFlush(publicExam);
+        publicExam.setAccessMode(Exam.AccessMode.PUBLIC);exams.saveAndFlush(publicExam);participantRows.deleteById(new com.datn.exam.entity.ExamParticipant.Key(publicExam.getId(),student));
 
         var initial=schedules.calendar(student,"STUDENT",base.minusSeconds(10000),base.plusSeconds(10000),true,PageRequest.of(0,100));
         var missedItem=initial.stream().filter(item->item.examId().equals(missed.getId())).findFirst().orElseThrow();
@@ -166,8 +167,9 @@ class SchedulingAcceptanceTest {
         Exam exam=Exam.builder().code(UUID.randomUUID().toString()).title("Scheduling").durationMinutes(30).status(status).createdBy(owner)
                 .startAt(start).endAt(end).timezone("UTC").deadlineRule(rule).autoOpen(autoOpen).autoClose(autoClose)
                 .snapshots(new ArrayList<>(List.of(new Snapshot(q,1,"MULTIPLE_CHOICE","Question",List.of(new Snapshot.Option(option,"A",0,true),new Snapshot.Option(UUID.randomUUID(),"B",1,false)),BigDecimal.ONE,null,0)))).build();
-        exam.getParticipants().put(student,"ASSIGNED");exam.getMembers().put(manager,Exam.MemberRole.MANAGER);exam.getMembers().put(proctor,Exam.MemberRole.PROCTOR);
-        return exams.saveAndFlush(exam);
+        exam.getMembers().put(manager,Exam.MemberRole.MANAGER);exam.getMembers().put(proctor,Exam.MemberRole.PROCTOR);
+        exam=exams.saveAndFlush(exam);participantRows.saveAndFlush(new com.datn.exam.entity.ExamParticipant(exam.getId(),student,"ASSIGNED",owner,java.time.Instant.now()));
+        return exam;
     }
 
     private static void assertStatus(int expected,Runnable operation) {

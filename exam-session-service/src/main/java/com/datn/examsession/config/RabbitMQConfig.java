@@ -9,6 +9,9 @@ public class RabbitMQConfig {
 
     public static final String EXAM_SUBMITTED_QUEUE = "exam.submitted.queue";
 
+    public static final String ATTEMPT_INVALIDATED_QUEUE = "exam.attempt.invalidated.queue";
+    @Bean public Queue attemptInvalidatedQueue(){return new Queue(ATTEMPT_INVALIDATED_QUEUE,true);}
+    @Bean public org.springframework.amqp.core.TopicExchange examEventsExchange(){return new org.springframework.amqp.core.TopicExchange("examini.events",true,false);}
     @Bean
     public Queue examSubmittedQueue() {
         return new Queue(EXAM_SUBMITTED_QUEUE, true);

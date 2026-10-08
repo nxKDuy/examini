@@ -29,6 +29,7 @@ class StartAdmissionRecoveryTest {
     @Autowired StartAdmissionService admissions;
     @Autowired StartAdmissionRepository admissionRepository;
     @Autowired ExamRepository exams;
+    @Autowired com.datn.exam.repository.ExamParticipantRepository participantRows;
     @Autowired ScheduleService schedules;
     @Autowired JdbcTemplate jdbc;
     @MockBean SessionClient sessions;
@@ -40,7 +41,7 @@ class StartAdmissionRecoveryTest {
         Exam exam=Exam.builder().code(UUID.randomUUID().toString()).title("Admission").durationMinutes(30)
                 .status(Exam.Status.OPEN).createdBy(owner).startAt(Instant.now().minusSeconds(60))
                 .endAt(Instant.now().plusSeconds(7200)).scheduleRevision(3).build();
-        exam.getParticipants().put(user,"ASSIGNED");examId=exams.saveAndFlush(exam).getId();
+        examId=exams.saveAndFlush(exam).getId();participantRows.saveAndFlush(new com.datn.exam.entity.ExamParticipant(examId,user,"ASSIGNED",owner,Instant.now()));
         when(sessions.eligibility(eq(examId),eq(user),eq("test-internal"))).thenReturn(new SessionClient.Eligibility(0,false));
         when(sessions.started(eq(examId),eq("test-internal"))).thenReturn(false);
     }

@@ -59,9 +59,9 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}
     }
     private boolean isScheduleInternal(String path) {
-        return path.matches("/exams/[^/]+/internal/start-admissions(?:/[^/]+/(?:claim|confirm|release))?|/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+)");
+        return path.matches("/exams/[^/]+/internal/start-admissions(?:/[^/]+/(?:claim|confirm|release))?|/exams/[^/]+/internal/attempt-limit|/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+)");
     }
     private boolean isScheduleStudentRoute(String method,String path) {
-        return ("GET".equals(method) && path.equals("/exams/calendar")) || path.matches("/exams/[^/]+/(availability|follow)") || path.endsWith("/preview");
+        return ("GET".equals(method) && path.equals("/exams/calendar")) || path.matches("/exams/[^/]+/(availability|follow|participation/me)") || path.endsWith("/preview");
     }
 }

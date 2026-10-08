@@ -132,13 +132,6 @@ public class Exam {
     private java.util.Map<UUID, MemberRole> members = new java.util.HashMap<>();
 
     @ElementCollection
-    @CollectionTable(name = "exam_participants", joinColumns = @JoinColumn(name = "exam_id"))
-    @MapKeyColumn(name = "user_id")
-    @Column(name = "source", nullable = false)
-    @Builder.Default
-    private java.util.Map<UUID, String> participants = new java.util.HashMap<>();
-
-    @ElementCollection
     @CollectionTable(name="exam_followers",joinColumns=@JoinColumn(name="exam_id"))
     @MapKeyColumn(name="user_id")
     @Column(name="created_at",nullable=false)

@@ -18,6 +18,7 @@ import java.time.*;
 public class SessionService {
     private final SessionRepository sessions;private final SessionAnswerRepository answers;
     private final SubmissionEventRepository events;private final ExamClient exams;private final EntityManager em;
+    private final AttemptEventRepository attemptEvents;private final com.fasterxml.jackson.databind.ObjectMapper json;
     @Value("${exam.internal-token:}") private String token="";
     @Value("${exam.capacity.platform-limit:100}") private int platformLimit=100;
     private static ResponseStatusException error(int code,String msg){return new ResponseStatusException(HttpStatus.valueOf(code),msg);}
@@ -50,7 +51,9 @@ public class SessionService {
             }
         });
         long attempts=sessions.countByExamIdAndUserId(examId,user);
-        if(attempts>=exam.attemptLimit())throw error(409,"Attempt limit reached");
+        var granted=exams.attemptLimit(examId,user,token);
+        // Grants only ever add attempts, so the effective limit can never be below the Exam limit.
+        if(attempts>=(granted==null?exam.attemptLimit():Math.max(exam.attemptLimit(),granted)))throw error(409,"Attempt limit reached");
         int limit=Math.min(platformLimit,exam.maxConcurrentSessions());
         if(sessions.countByExamIdAndStatus(examId,ExamSession.Status.IN_PROGRESS)>=limit)
             throw error(409,"Kỳ thi hiện đã đạt giới hạn người đang làm bài. Vui lòng thử lại sau.");
@@ -64,9 +67,12 @@ public class SessionService {
             .expiresAt(now.plusSeconds(exam.durationMinutes()*60L)).status(ExamSession.Status.IN_PROGRESS)
             .attemptNumber(Math.toIntExact(attempts+1)).questions(questions).examTitle(exam.title()).build();
         s.setExpiresAt(admission.deadlineAt());s.setScheduleRevision(admission.scheduleRevision());s.setStartAdmissionId(admission.admissionId());
+        s.setAttemptNumber(nextAttemptNumber(examId,user)); // monotonic and never reused, independent of how many rows exist
         // Immutable snapshot order is persisted for this attempt and reused on refresh.
         sessions.saveAndFlush(s);persistedSessionId[0]=s.getId();return response(s);
     }
+    /** Attempt numbers are monotonic per participant and never reused, independent of how many rows exist. */
+    private int nextAttemptNumber(UUID examId,UUID user){return sessions.findTopByExamIdAndUserIdOrderByAttemptNumberDesc(examId,user).map(s->Math.addExact(s.getAttemptNumber(),1)).orElse(1);}
     public StartSessionResponse get(UUID id,UUID user) {var s=owned(id,user);expire(s);return response(s);}
     private ExamSession owned(UUID id,UUID user) {var s=load(id);if(!s.getUserId().equals(user))throw error(403,"Not your session");return s;}
     private ExamSession load(UUID id){var s=sessions.lockById(id).orElseThrow(()->error(404,"Session not found"));em.refresh(s);return s;}
@@ -85,7 +91,7 @@ public class SessionService {
     }
     public void submitExam(UUID id,UUID user){var s=owned(id,user);expire(s);if(s.getStatus()==ExamSession.Status.IN_PROGRESS)finish(s,ExamSession.Status.SUBMITTED);}
     public void autoSubmitExam(UUID id){expire(load(id));}
-    public SessionDetailDto getSessionDetails(UUID id){var s=load(id);expire(s);return new SessionDetailDto(s.getId(),s.getExamId(),s.getUserId(),s.getStatus().name(),s.getExamTitle(),s.getAttemptNumber(),s.getStartTime(),s.getEndTime(),answers.findBySessionId(id).stream().map(a->new SessionDetailDto.AnswerDto(a.getQuestionId(),a.getAnswerContent())).toList());}
+    public SessionDetailDto getSessionDetails(UUID id){var s=load(id);expire(s);return new SessionDetailDto(s.getId(),s.getExamId(),s.getUserId(),s.getStatus().name(),s.getExamTitle(),s.getAttemptNumber(),s.getStartTime(),s.getEndTime(),answers.findBySessionId(id).stream().map(a->new SessionDetailDto.AnswerDto(a.getQuestionId(),a.getAnswerContent())).toList(),s.getInvalidatedAt(),s.getInvalidationReason());}
     public boolean resumable(UUID exam,UUID user){return sessions.findActiveSession(exam,user).filter(s->s.getExpiresAt().isAfter(Instant.now())).isPresent();}
     public long attempts(UUID exam,UUID user){return sessions.countByExamIdAndUserId(exam,user);}
     public boolean hasStarted(UUID exam){return sessions.existsByExamId(exam);}
@@ -120,12 +126,67 @@ public class SessionService {
         return new AdmissionStatus(exam,admission,session==null?null:session.getId(),session!=null);
     }
     public UUID owner(UUID id){return load(id).getUserId();}
-    public List<Monitor> monitor(UUID examId,UUID actor){exams.permission(examId,actor,false,token);return sessions.findByExamId(examId).stream().map(s->{s=load(s.getId());expire(s);return new Monitor(s.getId(),s.getUserId(),s.getStatus().name(),s.getAttemptNumber(),s.getStartTime(),s.getExpiresAt());}).toList();}
+    public List<Monitor> monitor(UUID examId,UUID actor){exams.permission(examId,actor,false,token);return sessions.findByExamId(examId).stream().map(s->{s=load(s.getId());expire(s);return new Monitor(s.getId(),s.getUserId(),s.getStatus().name(),s.getAttemptNumber(),s.getStartTime(),s.getExpiresAt(),s.isInvalidated(),s.getInvalidatedAt(),s.getInvalidationReason());}).toList();}
+    // ---- Participant & Attempt management: attempt history, summary and invalidation ----
+    public record AttemptDto(UUID sessionId,int attemptNumber,String status,LocalDateTime startedAt,LocalDateTime endedAt,Instant expiresAt,boolean invalidated,Instant invalidatedAt,String invalidationReason){}
+    public record StaffAttemptDto(UUID sessionId,UUID userId,int attemptNumber,String status,LocalDateTime startedAt,LocalDateTime endedAt,Instant expiresAt,boolean invalidated,Instant invalidatedAt,UUID invalidatedBy,String invalidationReason){}
+    /** Attempts consumed by a Start (invalidated ones included: invalidation never refunds). */
+    public record AttemptSummary(UUID userId,long used,long valid,long invalidated,boolean active,UUID latestSessionId,String latestStatus,Integer latestAttemptNumber){}
+    private static AttemptDto attempt(SessionRepository.AttemptRow r){return new AttemptDto(r.sessionId(),r.attemptNumber(),r.status().name(),r.startTime(),r.endTime(),r.expiresAt(),r.invalidatedAt()!=null,r.invalidatedAt(),r.invalidationReason());}
+    @Transactional(readOnly=true)
+    public List<AttemptDto> myAttempts(UUID exam,UUID user){return sessions.attemptRows(exam,List.of(user)).stream().map(SessionService::attempt).toList();}
+    @Transactional(readOnly=true)
+    public List<StaffAttemptDto> staffAttempts(UUID exam,UUID student,UUID actor){
+        exams.permission(exam,actor,false,token);
+        return sessions.attemptRows(exam,List.of(student)).stream().map(r->new StaffAttemptDto(r.sessionId(),r.userId(),r.attemptNumber(),r.status().name(),r.startTime(),r.endTime(),r.expiresAt(),r.invalidatedAt()!=null,r.invalidatedAt(),null,r.invalidationReason())).toList();
+    }
+    /** One batched query for a roster page; no per-participant calls. */
+    @Transactional(readOnly=true)
+    public List<AttemptSummary> attemptSummary(UUID exam,List<UUID> users){
+        if(users==null||users.isEmpty()||users.size()>100)throw error(400,"Between 1 and 100 user IDs are required");
+        Instant now=Instant.now();var byUser=new LinkedHashMap<UUID,List<SessionRepository.AttemptRow>>();
+        users.stream().distinct().forEach(u->byUser.put(u,new ArrayList<>()));
+        sessions.attemptRows(exam,byUser.keySet()).forEach(r->byUser.get(r.userId()).add(r));
+        return byUser.entrySet().stream().map(e->{
+            var rows=e.getValue();var latest=rows.stream().max(Comparator.comparingInt(SessionRepository.AttemptRow::attemptNumber)).orElse(null);
+            long invalid=rows.stream().filter(r->r.invalidatedAt()!=null).count();
+            boolean active=rows.stream().anyMatch(r->r.status()==ExamSession.Status.IN_PROGRESS&&r.expiresAt().isAfter(now));
+            return new AttemptSummary(e.getKey(),rows.size(),rows.size()-invalid,invalid,active,latest==null?null:latest.sessionId(),latest==null?null:latest.status().name(),latest==null?null:latest.attemptNumber());
+        }).toList();
+    }
+    /**
+     * Invalidation keeps the session, answers, result and audit but marks the attempt invalid and stops an active one.
+     * It never refunds the consumed attempt; a new attempt needs an explicit grant in exam-service.
+     */
+    public StaffAttemptDto invalidate(UUID sessionId,UUID actor,String reason){
+        String publicReason=reason==null?"":reason.strip();
+        if(publicReason.isEmpty())throw error(400,"Public invalidation reason required");
+        if(publicReason.length()>1000)throw error(400,"Invalidation reason too long");
+        if(token.isBlank())throw error(503,"Exam service integration not configured");
+        var probe=sessions.findById(sessionId).orElseThrow(()->error(404,"Session not found"));
+        exams.permission(probe.getExamId(),actor,true,token);
+        examLock(probe.getExamId());
+        var s=load(sessionId);expire(s);
+        if(!s.isInvalidated()){
+            Instant now=Instant.now();
+            if(s.getStatus()==ExamSession.Status.IN_PROGRESS){s.setStatus(ExamSession.Status.CANCELLED);s.setEndTime(LocalDateTime.now(ZoneOffset.UTC));}
+            s.setInvalidatedAt(now);s.setInvalidatedBy(actor);s.setInvalidationReason(publicReason);
+            sessions.saveAndFlush(s);
+            try{
+                var payload=new java.util.LinkedHashMap<String,Object>();
+                payload.put("sessionId",s.getId());payload.put("examId",s.getExamId());payload.put("userId",s.getUserId());
+                payload.put("attemptNumber",s.getAttemptNumber());payload.put("status",s.getStatus().name());
+                payload.put("reason",publicReason);payload.put("actor",actor);payload.put("invalidatedAt",now.toString());
+                attemptEvents.save(new AttemptEvent(UUID.randomUUID(),"exam.attempt.invalidated",s.getId(),json.writeValueAsString(payload),now));
+            }catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("Cannot encode attempt event",e);}
+        }
+        return new StaffAttemptDto(s.getId(),s.getUserId(),s.getAttemptNumber(),s.getStatus().name(),s.getStartTime(),s.getEndTime(),s.getExpiresAt(),true,s.getInvalidatedAt(),s.getInvalidatedBy(),s.getInvalidationReason());
+    }
     private StartSessionResponse response(ExamSession s){var saved=new HashMap<UUID,String>();answers.findBySessionId(s.getId()).forEach(a->saved.put(a.getQuestionId(),a.getAnswerContent()));return new StartSessionResponse(s.getId(),s.getExamId(),s.getExamTitle(),s.getStatus().name(),s.getAttemptNumber(),s.getExpiresAt(),Instant.now(),s.getQuestions(),saved);}
     public record StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers){}
     public record ScheduleAvailability(long attempts,boolean resumable,Instant activeExpiresAt,long activeSessions,UUID latestSessionId,String latestSessionStatus){}
     public record RecipientProgress(UUID userId,boolean started,boolean submitted){}
     public record AdmissionStatus(UUID examId,UUID admissionId,UUID sessionId,boolean started){}
-    public record Monitor(UUID sessionId,UUID userId,String status,int attemptNumber,LocalDateTime startedAt,Instant expiresAt){}
-    public record SessionDetailDto(UUID sessionId,UUID examId,UUID userId,String status,String examTitle,int attemptNumber,LocalDateTime startedAt,LocalDateTime submittedAt,List<AnswerDto> answers){public record AnswerDto(UUID questionId,String answerContent){}}
+    public record Monitor(UUID sessionId,UUID userId,String status,int attemptNumber,LocalDateTime startedAt,Instant expiresAt,boolean invalidated,Instant invalidatedAt,String invalidationReason){}
+    public record SessionDetailDto(UUID sessionId,UUID examId,UUID userId,String status,String examTitle,int attemptNumber,LocalDateTime startedAt,LocalDateTime submittedAt,List<AnswerDto> answers,Instant invalidatedAt,String invalidationReason){public record AnswerDto(UUID questionId,String answerContent){}}
 }

@@ -3,6 +3,8 @@ package com.datn.exam.service;
 import com.datn.exam.client.SessionClient;
 import com.datn.exam.dto.ScheduleDto;
 import com.datn.exam.entity.Exam;
+import com.datn.exam.entity.ExamParticipant;
+import com.datn.exam.repository.ExamParticipantRepository;
 import com.datn.exam.repository.ExamRepository;
 import com.datn.exam.repository.StartAdmissionRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,6 +24,7 @@ import java.util.*;
 public class ScheduleService {
     private final ExamCore core;
     private final ExamRepository exams;
+    private final ExamParticipantRepository participants;
     private final StartAdmissionRepository admissions;
     private final SessionClient sessions;
     private final ExamEventPublisher events;
@@ -79,19 +82,19 @@ public class ScheduleService {
         Exam exam=core.load(id);
         if(exam.getAccessMode()!=Exam.AccessMode.PUBLIC)throw ExamCore.error(404,"PUBLIC_EXAM_NOT_AVAILABLE");
         boolean wasFollowing=exam.getFollowers().containsKey(actor);
-        if(wasFollowing==follow)return new ScheduleDto.FollowResponse(id,follow,exam.getParticipants().containsKey(actor));
+        if(wasFollowing==follow)return new ScheduleDto.FollowResponse(id,follow,participants.existsByExamIdAndUserIdAndStatus(id,actor,ExamParticipant.Status.ACTIVE));
         if(follow && exam.getStatus()!=Exam.Status.PUBLISHED && exam.getStatus()!=Exam.Status.OPEN)
             throw ExamCore.error(404,"PUBLIC_EXAM_NOT_AVAILABLE");
         if(follow)exam.getFollowers().put(actor,clock.instant());else exam.getFollowers().remove(actor);
         exam.setRecipientRevision(exam.getRecipientRevision()+1);
         events.recipientsChanged(exam,follow?"FOLLOWED":"UNFOLLOWED",actor);
         core.audit(exam,actor,follow?"PUBLIC_EXAM_FOLLOWED":"PUBLIC_EXAM_UNFOLLOWED",null);
-        return new ScheduleDto.FollowResponse(id,follow,exam.getParticipants().containsKey(actor));
+        return new ScheduleDto.FollowResponse(id,follow,participants.existsByExamIdAndUserIdAndStatus(id,actor,ExamParticipant.Status.ACTIVE));
     }
 
     public ScheduleDto.Availability availability(UUID id,UUID actor,String code) {
         Exam exam=exams.findById(id).orElseThrow(()->ExamCore.error(404,"Exam not found"));
-        return availability(exam,actor,code);
+        return availability(exam,actor,code,participants.findByExamIdAndUserId(id,actor).orElse(null),participants.countByExamIdAndStatus(id,ExamParticipant.Status.ACTIVE));
     }
 
     public Page<ScheduleDto.CalendarItem> calendar(UUID actor,String role,Instant from,Instant to,boolean includeUnscheduled,Pageable pageable) {
@@ -101,7 +104,14 @@ public class ScheduleService {
         boolean teacher="TEACHER".equals(role);
         Page<Exam> page=teacher?exams.findTeacherCalendar(actor,from,to,includeUnscheduled,pageable):
                 exams.findStudentCalendar(actor,from,to,includeUnscheduled,List.of(Exam.Status.PUBLISHED,Exam.Status.OPEN,Exam.Status.CLOSED),pageable);
-        return page.map(e->calendarItem(e,actor,teacher));
+        // Two batched queries for the whole page instead of per-item participant lookups.
+        List<UUID> ids=page.getContent().stream().map(Exam::getId).toList();
+        Map<UUID,ExamParticipant> rows=new HashMap<>();Map<UUID,Long> active=new HashMap<>();
+        if(!ids.isEmpty()) {
+            if(!teacher)participants.findByUserIdAndExamIdIn(actor,ids).forEach(r->rows.put(r.getExamId(),r));
+            participants.activeCounts(ids).forEach(r->active.put((UUID)r[0],(Long)r[1]));
+        }
+        return page.map(e->calendarItem(e,actor,teacher,rows.get(e.getId()),active.getOrDefault(e.getId(),0L)));
     }
 
     public List<Exam> myExams(UUID actor) {
@@ -123,7 +133,7 @@ public class ScheduleService {
             e.getMembers().forEach((user,memberRole)->{if(memberRole==Exam.MemberRole.MANAGER)putRelation(relations,user,"MANAGER");});
         }
         if(e.getStatus()!=Exam.Status.DRAFT && e.getStatus()!=Exam.Status.COMPLETED) {
-            e.getParticipants().forEach((user,source)->putRelation(relations,user,"ASSIGNED".equals(source)?"ASSIGNED":"JOINED"));
+            participants.findByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE).forEach(p->putRelation(relations,p.getUserId(),"ASSIGNED".equals(p.getSource())?"ASSIGNED":"JOINED"));
             e.getFollowers().keySet().forEach(user->putRelation(relations,user,"FOLLOWER"));
         }
         Map<UUID,ScheduleDto.Progress> progress=new HashMap<>();
@@ -141,47 +151,49 @@ public class ScheduleService {
         return new ScheduleDto.RecipientSnapshot(e.getId(),e.getTitle(),e.getStatus().name(),e.getScheduleRevision(),e.getLifecycleRevision(),e.getRecipientRevision(),e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDeadlineRule(),List.copyOf(e.getReminderOffsetsMinutes()),recipients);
     }
 
-    private ScheduleDto.CalendarItem calendarItem(Exam e,UUID actor,boolean teacher) {
-        ScheduleDto.Availability a=availability(e,actor,null);
-        String relation=teacher?core.role(e,actor):e.getParticipants().containsKey(actor)?("ASSIGNED".equals(e.getParticipants().get(actor))?"ASSIGNED":"JOINED"):e.getFollowers().containsKey(actor)?"FOLLOWER":"NONE";
-        return new ScheduleDto.CalendarItem(e.getId(),e.getTitle(),e.getStatus().name(),e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDurationMinutes(),e.getDeadlineRule(),a.canJoin(),a.canStart(),a.canResume(),a.reasonCode(),a.attemptsRemaining(),a.effectiveExpiresAt(),relation,e.getFollowers().containsKey(actor),e.getParticipants().containsKey(actor),teacher?(long)e.getParticipants().size():null,teacher?e.getMaxParticipants():null,a.serverNow(),a.calendarState(),teacher?null:a.latestSessionId(),teacher?null:a.latestSessionStatus());
+    private ScheduleDto.CalendarItem calendarItem(Exam e,UUID actor,boolean teacher,ExamParticipant row,long eligible) {
+        ScheduleDto.Availability a=availability(e,actor,null,row,eligible);
+        String relation=teacher?core.role(e,actor):row!=null?(!row.isActive()?"REVOKED":"ASSIGNED".equals(row.getSource())?"ASSIGNED":"JOINED"):e.getFollowers().containsKey(actor)?"FOLLOWER":"NONE";
+        return new ScheduleDto.CalendarItem(e.getId(),e.getTitle(),e.getStatus().name(),e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDurationMinutes(),e.getDeadlineRule(),a.canJoin(),a.canStart(),a.canResume(),a.reasonCode(),a.attemptsRemaining(),a.effectiveExpiresAt(),relation,e.getFollowers().containsKey(actor),row!=null&&row.isActive(),teacher?(Long)eligible:null,teacher?e.getMaxParticipants():null,a.serverNow(),a.calendarState(),teacher?null:a.latestSessionId(),teacher?null:a.latestSessionStatus());
     }
 
-    private ScheduleDto.Availability availability(Exam e,UUID actor,String code) {
+    private ScheduleDto.Availability availability(Exam e,UUID actor,String code,ExamParticipant row,long eligible) {
         boolean staff=!"NONE".equals(core.role(e,actor));
-        boolean participant=e.getParticipants().containsKey(actor),followed=e.getFollowers().containsKey(actor);
+        boolean registered=row!=null,participant=row!=null&&row.isActive(),revoked=registered&&!participant,followed=e.getFollowers().containsKey(actor);
+        long limit=(long)e.getAttemptLimit()+(row==null?0:row.getExtraAttempts());
         boolean published=e.getStatus()!=Exam.Status.DRAFT && e.getStatus()!=Exam.Status.COMPLETED;
         boolean publicBrowse=e.getAccessMode()==Exam.AccessMode.PUBLIC && (e.getStatus()==Exam.Status.PUBLISHED || e.getStatus()==Exam.Status.OPEN);
         boolean codePreview=code!=null && e.getAccessMode()==Exam.AccessMode.JOIN_CODE && e.getCode().equals(code) && published;
-        boolean canView=staff || published && (participant || followed || publicBrowse || codePreview);
+        boolean canView=staff || published && (registered || followed || publicBrowse || codePreview);
         if(!canView)throw ExamCore.error(404,"EXAM_NOT_AVAILABLE");
-        Instant now=clock.instant();boolean access=e.getAccessMode()==Exam.AccessMode.PUBLIC || participant || e.getAccessMode()==Exam.AccessMode.JOIN_CODE && code!=null && e.getCode().equals(code);
+        Instant now=clock.instant();boolean access=!revoked && (e.getAccessMode()==Exam.AccessMode.PUBLIC || participant) || e.getAccessMode()==Exam.AccessMode.JOIN_CODE && code!=null && e.getCode().equals(code);
         boolean timeForJoin=(e.getStartAt()==null || !now.isBefore(e.getStartAt())) && (e.getEndAt()==null || now.isBefore(e.getEndAt()));
         long attempts=0,active=0;boolean resume=false;Instant activeExpiry=null;UUID latestId=null;String latestStatus=null;
-        if(!staff && canView && access && internalToken.isBlank())throw ExamCore.error(503,"Session integration not configured");
-        if(!staff && canView && access) {
+        if(!staff && canView && (access || revoked) && internalToken.isBlank())throw ExamCore.error(503,"Session integration not configured");
+        if(!staff && canView && (access || revoked)) {
             var status=sessions.availability(e.getId(),actor,internalToken);
             attempts=status.attempts();active=status.activeSessions();resume=status.resumable();activeExpiry=status.activeExpiresAt();latestId=status.latestSessionId();latestStatus=status.latestSessionStatus();
         }
         boolean canJoin=!staff && published && (e.getStatus()==Exam.Status.PUBLISHED || e.getStatus()==Exam.Status.OPEN) && access && timeForJoin &&
-                attempts<e.getAttemptLimit() && (participant || e.getParticipants().size()<e.getMaxParticipants());
-        long remaining=Math.max(0,e.getAttemptLimit()-attempts);
-        String reason=reason(e,actor,canView,participant,resume,attempts,active,now);
+                attempts<limit && (participant || eligible<e.getMaxParticipants());
+        long remaining=Math.max(0,limit-attempts);
+        String reason=reason(e,actor,canView,participant,revoked,resume,attempts,limit,active,now);
         boolean canStart=reason==null;
         Instant effectiveExpiry=resume?activeExpiry:canStart?ScheduleRules.deadline(now,e.getDurationMinutes(),e.getEndAt(),e.getDeadlineRule()):null;
         return new ScheduleDto.Availability(e.getId(),e.getTitle(),e.getStatus().name(),now,e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDurationMinutes(),e.getDeadlineRule(),canView,canJoin,canStart,resume,reason,remaining,effectiveExpiry,followed,participant,e.getScheduleRevision(),staff?e.getStatus().name():calendarState(e,reason,canStart,resume,attempts,latestStatus,now),staff?null:latestId,staff?null:latestStatus);
     }
 
-    private String reason(Exam e,UUID actor,boolean canView,boolean participant,boolean resumable,long attempts,long active,Instant now) {
+    private String reason(Exam e,UUID actor,boolean canView,boolean participant,boolean revoked,boolean resumable,long attempts,long limit,long active,Instant now) {
         if(!canView)return "NOT_AUTHORIZED";
         if(resumable)return null;
+        if(revoked)return "PARTICIPATION_REVOKED";
         if(e.getStatus()==Exam.Status.DRAFT)return "EXAM_NOT_PUBLISHED";
         if(e.getStatus()==Exam.Status.CLOSED || e.getStatus()==Exam.Status.COMPLETED)return "EXAM_CLOSED";
         if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))return "BEFORE_START_AT";
         if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))return "AFTER_END_AT";
         if(e.getStatus()!=Exam.Status.OPEN)return "EXAM_NOT_OPEN";
         if(!participant)return "JOIN_REQUIRED";
-        if(attempts>=e.getAttemptLimit())return "ATTEMPT_LIMIT";
+        if(attempts>=limit)return "ATTEMPT_LIMIT";
         if(e.getDeadlineRule()==Exam.DeadlineRule.REQUIRE_FULL_WINDOW && Duration.between(now,e.getEndAt()).compareTo(Duration.ofMinutes(e.getDurationMinutes()))<0)return "INSUFFICIENT_TIME";
         if(active>=Math.min(platformLimit(),e.getMaxConcurrentSessions()))return "CAPACITY_FULL";
         if(e.getSnapshots().isEmpty())return "SNAPSHOT_UNAVAILABLE";

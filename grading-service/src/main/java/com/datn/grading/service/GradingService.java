@@ -44,7 +44,7 @@ public class GradingService {
         var result=ExamResult.builder().sessionId(sessionId).examId(session.examId()).userId(session.userId()).status(ExamResult.Status.GRADED)
                 .examTitle(session.examTitle()).submittedAt(session.submittedAt().toInstant(ZoneOffset.UTC))
                 .durationSeconds(Math.toIntExact(Duration.between(session.startedAt(),session.submittedAt()).getSeconds()))
-                .attemptNumber(session.attemptNumber()).resultRevision(1).gradingMode("AUTO").build();
+                .attemptNumber(session.attemptNumber()).resultRevision(1).gradingMode("AUTO").invalidatedAt(session.invalidatedAt()).invalidationReason(session.invalidationReason()).build();
         float max=0;
         for(var q:keys){
             max+=q.points().floatValue();String answer=answers.get(q.questionId());
@@ -62,9 +62,28 @@ public class GradingService {
         result.setMaxScore(max);result.setTotalScore(derived(result));result.setPendingManualItemCount(pending(result));
         if(result.getStatus()==ExamResult.Status.GRADED)result.setGradedAt(now);
         results.saveAndFlush(result);audit(result,null,"RESULT_CREATED",null,null,now);
-        if(result.getStatus()==ExamResult.Status.GRADED&&policy.autoRelease())releaseCurrent(result,false,now);
+        if(result.getStatus()==ExamResult.Status.GRADED&&policy.autoRelease()&&!result.isInvalidated())releaseCurrent(result,false,now);
         events.recorded(result,session.attemptNumber());
-        if(result.getStatus()==ExamResult.Status.NEEDS_REVIEW)events.reviewRequired(result);
+        if(result.getStatus()==ExamResult.Status.NEEDS_REVIEW&&!result.isInvalidated())events.reviewRequired(result);
+    }
+
+    /** Attempt invalidation is owned by exam-session-service; grading only mirrors it and never reverses it. */
+    @RabbitListener(queues="exam.attempt.invalidated.queue")
+    public void processAttemptInvalidated(String message){
+        try{
+            var node=json.readTree(message);
+            UUID sessionId=UUID.fromString(node.path("sessionId").asText());
+            Instant at=Instant.parse(node.path("invalidatedAt").asText());
+            String reason=node.path("reason").asText(null);UUID actor=node.hasNonNull("actor")?UUID.fromString(node.get("actor").asText()):null;
+            em.createNativeQuery("select pg_advisory_xact_lock(hashtextextended(cast(:session as text),0))").setParameter("session",sessionId.toString()).getSingleResult();
+            var found=results.findBySessionId(sessionId);
+            if(found.isEmpty()||found.get().isInvalidated())return;
+            var result=results.lockById(found.get().getId()).orElseThrow();
+            result.setInvalidatedAt(at);result.setInvalidationReason(reason);
+            audit(result,actor,"RESULT_INVALIDATED",reason,null,at);
+        }catch(com.fasterxml.jackson.core.JsonProcessingException|IllegalArgumentException|java.time.format.DateTimeParseException malformed){
+            throw new org.springframework.amqp.AmqpRejectAndDontRequeueException("Malformed attempt invalidation event",malformed);
+        }
     }
 
     public Page<SubmissionDto.SummaryResponse> getSubmissions(UUID exam,String status,Boolean released,Pageable page,UUID actor){
@@ -72,11 +91,12 @@ public class GradingService {
         ExamResult.Status filter=null;if(status!=null&&!status.isBlank())try{filter=ExamResult.Status.valueOf(status);}catch(IllegalArgumentException e){throw error(400,"Unknown grading status");}
         return results.searchResults(exam,filter,released,page).map(this::summary);
     }
-    public SubmissionDto.Overview overview(UUID exam,UUID actor){manage(exam,actor);return new SubmissionDto.Overview(results.countByExamId(exam),results.countByExamIdAndStatus(exam,ExamResult.Status.NEEDS_REVIEW),results.countByExamIdAndStatus(exam,ExamResult.Status.PENDING),results.countByExamIdAndStatus(exam,ExamResult.Status.GRADED),results.countByExamIdAndReleasedRevisionIsNotNull(exam),results.sumPendingManualItems(exam));}
+    public SubmissionDto.Overview overview(UUID exam,UUID actor){manage(exam,actor);return new SubmissionDto.Overview(results.countByExamIdAndInvalidatedAtIsNull(exam),results.countByExamIdAndStatusAndInvalidatedAtIsNull(exam,ExamResult.Status.NEEDS_REVIEW),results.countByExamIdAndStatusAndInvalidatedAtIsNull(exam,ExamResult.Status.PENDING),results.countByExamIdAndStatusAndInvalidatedAtIsNull(exam,ExamResult.Status.GRADED),results.countByExamIdAndReleasedRevisionIsNotNullAndInvalidatedAtIsNull(exam),results.sumPendingManualItems(exam),results.countByExamIdAndInvalidatedAtIsNotNull(exam));}
     public SubmissionDto.DetailResponse detail(UUID id,UUID actor){var r=load(id,false);manage(r.getExamId(),actor);return detail(r);}
 
     public SubmissionDto.DetailResponse saveDraft(UUID id,SubmissionDto.SaveDraftRequest request,UUID actor){
         var result=load(id,true);manage(result.getExamId(),actor);expected(result,request.expectedRevision());
+        notInvalidated(result);
         if(result.getStatus()==ExamResult.Status.GRADED)throw error(409,"Start an explicit regrade before changing a finalized result");
         if(request.items()==null)throw error(400,"items required");
         var byId=result.getQuestionGrades().stream().collect(Collectors.toMap(QuestionGrade::getQuestionId,Function.identity()));
@@ -100,6 +120,7 @@ public class GradingService {
 
     public SubmissionDto.DetailResponse finalizeResult(UUID id,long expectedRevision,UUID actor){
         var result=load(id,true);manage(result.getExamId(),actor);expected(result,expectedRevision);
+        notInvalidated(result);
         if(result.getStatus()==ExamResult.Status.GRADED)throw error(409,"Result already finalized");
         for(var item:result.getQuestionGrades()){
             if(item.isNeedsReview()||item.getScore()==null)throw error(400,"All required items must be resolved");
@@ -113,6 +134,7 @@ public class GradingService {
 
     public SubmissionDto.DetailResponse release(UUID id,long expectedRevision,UUID actor){
         var result=load(id,true);manage(result.getExamId(),actor);expected(result,expectedRevision);
+        notInvalidated(result);
         if(result.getStatus()!=ExamResult.Status.GRADED)throw error(409,"Finalize the result before release");
         if(Objects.equals(result.getReleasedRevision(),result.getResultRevision()))return detail(result);
         boolean regraded=result.getReleasedRevision()!=null;next(result);Instant now=Instant.now();audit(result,actor,"RESULT_RELEASED",result.getPendingPublicReason(),result.getPendingPrivateAuditNote(),now);
@@ -121,6 +143,7 @@ public class GradingService {
 
     public SubmissionDto.DetailResponse beginRegrade(UUID id,SubmissionDto.RegradeRequest request,UUID actor){
         var result=load(id,true);manage(result.getExamId(),actor);expected(result,request.expectedRevision());
+        notInvalidated(result);
         if(result.getStatus()!=ExamResult.Status.GRADED)throw error(409,"Only finalized results can be regraded");
         String reason=required(request.publicReason(),1000,"Public regrade reason");String privateNote=text(request.privateAuditNote(),5000,"Private audit note");
         result.setPendingPublicReason(reason);result.setPendingPrivateAuditNote(privateNote);result.setStatus(ExamResult.Status.PENDING);result.setGradedAt(null);result.setGradingMode("MANUAL");next(result);
@@ -129,10 +152,10 @@ public class GradingService {
 
     public SubmissionDto.StudentResult student(UUID sessionId,UUID actor){
         var optional=results.findBySessionId(sessionId);
-        if(optional.isEmpty()){var session=sessions.get(sessionId,configured());if(!session.userId().equals(actor))throw error(403,"Not your result");String status=Set.of("SUBMITTED","AUTO_SUBMITTED").contains(session.status())?"SUBMITTED":session.status();return new SubmissionDto.StudentResult(sessionId,session.examId(),session.examTitle(),session.attemptNumber(),status,null,toInstant(session.submittedAt()),null,null,null,null,null,List.of(),List.of());}
+        if(optional.isEmpty()){var session=sessions.get(sessionId,configured());if(!session.userId().equals(actor))throw error(403,"Not your result");String status=Set.of("SUBMITTED","AUTO_SUBMITTED").contains(session.status())?"SUBMITTED":session.status();return new SubmissionDto.StudentResult(sessionId,session.examId(),session.examTitle(),session.attemptNumber(),status,null,toInstant(session.submittedAt()),null,null,null,null,null,List.of(),List.of(),session.invalidatedAt()!=null,session.invalidatedAt(),session.invalidationReason());}
         var result=optional.get();if(!result.getUserId().equals(actor))throw error(403,"Not your result");
         var latest=publications.findTopByResultIdOrderByResultRevisionDesc(result.getId());
-        if(latest.isEmpty()){String status=switch(result.getStatus()){case NEEDS_REVIEW->"NEEDS_REVIEW";case PENDING->"GRADING";case GRADED->"GRADED_UNRELEASED";};return new SubmissionDto.StudentResult(sessionId,result.getExamId(),result.getExamTitle(),result.getAttemptNumber(),status,null,result.getSubmittedAt(),result.getGradedAt(),null,null,null,null,List.of(),List.of());}
+        if(latest.isEmpty()){String status=switch(result.getStatus()){case NEEDS_REVIEW->"NEEDS_REVIEW";case PENDING->"GRADING";case GRADED->"GRADED_UNRELEASED";};return new SubmissionDto.StudentResult(sessionId,result.getExamId(),result.getExamTitle(),result.getAttemptNumber(),status,null,result.getSubmittedAt(),result.getGradedAt(),null,null,null,null,List.of(),List.of(),result.isInvalidated(),result.getInvalidatedAt(),result.getInvalidationReason());}
         var policy=policy(result);var p=policy.policy();var publication=latest.get();var publishedItems=readItems(publication).stream().collect(Collectors.toMap(PublicationItem::questionId,Function.identity()));
         Map<UUID,ExamClient.Question> keys=Map.of();boolean reveal=p.showCorrectAnswers()&&"CLOSED".equals(policy.examStatus());
         if(reveal)keys=exams.key(result.getExamId(),token).stream().collect(Collectors.toMap(ExamClient.Question::questionId,Function.identity()));
@@ -144,7 +167,7 @@ public class GradingService {
         }).toList();
         var history=publications.findByResultIdOrderByResultRevisionAsc(result.getId()).stream().map(h->new SubmissionDto.PublishedRevision(h.getResultRevision(),h.getReleasedAt(),p.showScore()?h.getTotalScore():null,p.showScore()?result.getMaxScore():null,h.getPublicReason())).toList();
         return new SubmissionDto.StudentResult(sessionId,result.getExamId(),result.getExamTitle(),result.getAttemptNumber(),"GRADED",publication.getResultRevision(),result.getSubmittedAt(),publication.getGradedAt(),publication.getReleasedAt(),
-                p.showScore()?publication.getTotalScore():null,p.showScore()?result.getMaxScore():null,p.showFeedback()?publication.getFeedback():null,items,history);
+                p.showScore()?publication.getTotalScore():null,p.showScore()?result.getMaxScore():null,p.showFeedback()?publication.getFeedback():null,items,history,result.isInvalidated(),result.getInvalidatedAt(),result.getInvalidationReason());
     }
 
     private ExamResult load(UUID id,boolean lock){return (lock?results.lockById(id):results.findById(id)).orElseThrow(()->error(404,"Result not found"));}
@@ -152,6 +175,7 @@ public class GradingService {
     private String configured(){if(token.isBlank())throw error(503,"Exam service integration not configured");return token;}
     private ExamClient.ResultPolicy policy(ExamResult result){return exams.resultPolicy(result.getExamId(),configured());}
     private int attempt(ExamResult result){return result.getAttemptNumber();}
+    private void notInvalidated(ExamResult result){if(result.isInvalidated())throw error(409,"RESULT_INVALIDATED");}
     private void expected(ExamResult result,long expected){if(expected!=result.getResultRevision())throw error(409,"STALE_RESULT_REVISION");}
     private void next(ExamResult result){result.setResultRevision(Math.addExact(result.getResultRevision(),1));}
     private static float derived(ExamResult r){double total=r.getQuestionGrades().stream().filter(q->q.getScore()!=null).mapToDouble(QuestionGrade::getScore).sum();if(!Double.isFinite(total)||total>Float.MAX_VALUE)throw error(400,"Invalid derived score");return (float)total;}
@@ -171,8 +195,8 @@ public class GradingService {
     }
     private List<PublicationItem> readItems(ResultPublication publication){try{return json.readValue(publication.getItems(),new TypeReference<>(){});}catch(Exception e){throw new IllegalStateException("Invalid published result snapshot",e);}}
     private static List<String> correct(ExamClient.Question q){if(q==null)return List.of();if("SHORT_ANSWER".equals(q.questionType()))return q.expectedAnswer()==null?List.of():List.of(q.expectedAnswer());return q.options().stream().filter(ExamClient.Option::correct).map(ExamClient.Option::content).toList();}
-    private SubmissionDto.SummaryResponse summary(ExamResult r){return new SubmissionDto.SummaryResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision());}
-    private SubmissionDto.DetailResponse detail(ExamResult r){return new SubmissionDto.DetailResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->new SubmissionDto.ItemResponse(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),q.getSelectedOptionContent(),q.getAutoScore(),q.getManualScore(),q.getScore(),q.isNeedsReview(),q.getFeedback(),q.getManualGradedBy(),q.getManualGradedAt())).toList());}
+    private SubmissionDto.SummaryResponse summary(ExamResult r){return new SubmissionDto.SummaryResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
+    private SubmissionDto.DetailResponse detail(ExamResult r){return new SubmissionDto.DetailResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->new SubmissionDto.ItemResponse(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),q.getSelectedOptionContent(),q.getAutoScore(),q.getManualScore(),q.getScore(),q.isNeedsReview(),q.getFeedback(),q.getManualGradedBy(),q.getManualGradedAt())).toList(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
     private record AuditChange(UUID questionId,Float oldScore,Float newScore,String oldFeedback,String newFeedback,String reason,String action){}
     public record PublicationItem(UUID questionId,Float score,String feedback){}
 }

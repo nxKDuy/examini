@@ -20,6 +20,10 @@ public interface SessionRepository extends JpaRepository<ExamSession, UUID> {
     java.util.List<ExamSession> findByExamIdAndStatus(UUID examId,ExamSession.Status status);
     java.util.List<ExamSession> findByStatusAndExpiresAtLessThanEqual(ExamSession.Status status,java.time.Instant expiresAt);
     java.util.List<ExamSession> findByExamId(UUID examId);
+    @Query("select new com.datn.examsession.repository.SessionRepository$AttemptRow(s.id,s.userId,s.attemptNumber,s.status,s.startTime,s.endTime,s.expiresAt,s.invalidatedAt,s.invalidationReason) from ExamSession s where s.examId=:examId and s.userId in :userIds order by s.userId,s.attemptNumber")
+    java.util.List<AttemptRow> attemptRows(UUID examId,java.util.Collection<UUID> userIds);
+    /** Light projection: never loads the frozen question jsonb of every attempt. */
+    record AttemptRow(UUID sessionId,UUID userId,int attemptNumber,ExamSession.Status status,java.time.LocalDateTime startTime,java.time.LocalDateTime endTime,java.time.Instant expiresAt,java.time.Instant invalidatedAt,String invalidationReason){}
     
     // Tìm session đang diễn ra (để chặn thi lại nếu đang thi)
     @Query("SELECT s FROM ExamSession s WHERE s.examId = :examId AND s.userId = :userId AND s.status = 'IN_PROGRESS'")

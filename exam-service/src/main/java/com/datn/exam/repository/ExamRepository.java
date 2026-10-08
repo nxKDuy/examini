@@ -16,11 +16,11 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
     Optional<Exam> lockById(UUID id);
     @org.springframework.data.jpa.repository.Query("select distinct e from Exam e left join e.members m where e.createdBy = :userId or key(m) = :userId")
     Page<Exam> findVisible(UUID userId, Pageable pageable);
-    @org.springframework.data.jpa.repository.Query("select distinct e from Exam e join e.participants p where key(p) = :userId")
+    @org.springframework.data.jpa.repository.Query("select e from Exam e where exists (select 1 from ExamParticipant p where p.examId=e.id and p.userId=:userId)")
     List<Exam> findAssigned(UUID userId);
     @org.springframework.data.jpa.repository.Query("select e from Exam e join e.followers f where key(f)=:userId")
     List<Exam> findFollowed(@Param("userId") UUID userId);
-    @org.springframework.data.jpa.repository.Query("select distinct e from Exam e left join e.participants p left join e.followers f where (key(p)=:userId or key(f)=:userId) and e.status in :statuses and ((e.startAt is not null and e.startAt<:toAt and (e.endAt is null or e.endAt>:fromAt)) or (e.startAt is null and e.endAt is not null and e.endAt>:fromAt and e.endAt<:toAt) or (:includeUnscheduled=true and e.startAt is null and e.endAt is null))")
+    @org.springframework.data.jpa.repository.Query("select distinct e from Exam e left join e.followers f where (key(f)=:userId or exists (select 1 from ExamParticipant p where p.examId=e.id and p.userId=:userId)) and e.status in :statuses and ((e.startAt is not null and e.startAt<:toAt and (e.endAt is null or e.endAt>:fromAt)) or (e.startAt is null and e.endAt is not null and e.endAt>:fromAt and e.endAt<:toAt) or (:includeUnscheduled=true and e.startAt is null and e.endAt is null))")
     Page<Exam> findStudentCalendar(@Param("userId") UUID userId,@Param("fromAt") java.time.Instant fromAt,@Param("toAt") java.time.Instant toAt,@Param("includeUnscheduled") boolean includeUnscheduled,@Param("statuses") List<Exam.Status> statuses,Pageable pageable);
     @org.springframework.data.jpa.repository.Query("select distinct e from Exam e left join e.members m where (e.createdBy=:userId or key(m)=:userId) and ((e.startAt is not null and e.startAt<:toAt and (e.endAt is null or e.endAt>:fromAt)) or (e.startAt is null and e.endAt is not null and e.endAt>:fromAt and e.endAt<:toAt) or (:includeUnscheduled=true and e.startAt is null and e.endAt is null))")
     Page<Exam> findTeacherCalendar(@Param("userId") UUID userId,@Param("fromAt") java.time.Instant fromAt,@Param("toAt") java.time.Instant toAt,@Param("includeUnscheduled") boolean includeUnscheduled,Pageable pageable);

@@ -39,11 +39,11 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             var claims=Jwts.parser().verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8))).build().parseSignedClaims(bearer.substring(7)).getPayload();
             String role=claims.get("role",String.class);
             if(!"access".equals(claims.get("type",String.class)) || claims.getExpiration()==null || !Set.of("TEACHER","ADMIN","STUDENT").contains(role)) throw new IllegalArgumentException();
-            if(mapped.endsWith("/monitor") && "STUDENT".equals(role))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Teacher role required");
+            if((mapped.endsWith("/monitor") || mapped.endsWith("/attempts") || mapped.endsWith("/invalidate")) && "STUDENT".equals(role))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Teacher role required");
             req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}
     }
     private boolean isScheduleInternal(String path) {
-        return path.matches("/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+)");
+        return path.matches("/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+|attempt-summary|attempts)");
     }
 }

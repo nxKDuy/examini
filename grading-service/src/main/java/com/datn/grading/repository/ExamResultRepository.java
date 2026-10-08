@@ -19,8 +19,12 @@ public interface ExamResultRepository extends JpaRepository<ExamResult, UUID> {
 
     @Query("SELECT r FROM ExamResult r WHERE r.examId=:examId AND (:status IS NULL OR r.status=:status) AND (:released IS NULL OR (:released=true AND r.releasedRevision IS NOT NULL) OR (:released=false AND r.releasedRevision IS NULL))")
     Page<ExamResult> searchResults(@Param("examId") UUID examId,@Param("status") ExamResult.Status status,@Param("released")Boolean released,Pageable pageable);
+    long countByExamIdAndInvalidatedAtIsNull(UUID examId);
+    long countByExamIdAndStatusAndInvalidatedAtIsNull(UUID examId,ExamResult.Status status);
+    long countByExamIdAndReleasedRevisionIsNotNullAndInvalidatedAtIsNull(UUID examId);
+    long countByExamIdAndInvalidatedAtIsNotNull(UUID examId);
     long countByExamId(UUID examId);
     long countByExamIdAndStatus(UUID examId,ExamResult.Status status);
     long countByExamIdAndReleasedRevisionIsNotNull(UUID examId);
-    @Query("select coalesce(sum(r.pendingManualItemCount),0) from ExamResult r where r.examId=:examId") long sumPendingManualItems(@Param("examId")UUID examId);
+    @Query("select coalesce(sum(r.pendingManualItemCount),0) from ExamResult r where r.examId=:examId and r.invalidatedAt is null") long sumPendingManualItems(@Param("examId")UUID examId);
 }

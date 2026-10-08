@@ -59,6 +59,10 @@ public class ExamResult {
     @Column(columnDefinition="TEXT") private String pendingPublicReason;
     @Column(columnDefinition="TEXT") private String pendingPrivateAuditNote;
     @Column(nullable=false,length=16) @Builder.Default private String gradingMode="AUTO";
+    /** Set from the source-owned attempt invalidation; a result never becomes valid again. */
+    private Instant invalidatedAt;
+    @Column(columnDefinition="TEXT") private String invalidationReason;
+    public boolean isInvalidated(){return invalidatedAt!=null;}
     public enum Status {
         PENDING, NEEDS_REVIEW, GRADED
     }

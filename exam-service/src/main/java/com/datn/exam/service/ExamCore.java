@@ -17,6 +17,8 @@ import java.time.*;
 public class ExamCore {
     private final ExamRepository exams;
     private final ExamAuditRepository audits;
+    private final ExamParticipantRepository participants;
+    private final AttemptGrantRepository grants;
     private final StartAdmissionRepository admissions;
     private final QuestionBankClient questions;
     private final com.datn.exam.client.SessionClient sessions;
@@ -68,7 +70,7 @@ public class ExamCore {
     public void policy(UUID id, UUID actor, Policy p) {
         Exam e=load(id);require(e,actor,true);draft(e);
         validatePolicy(p);
-        if(e.getParticipants().size()>p.maxParticipants()) throw error(409,"Existing participants exceed new limit");
+        if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>p.maxParticipants()) throw error(409,"Existing participants exceed new limit");
         if(p.joinCode()!=null){if(!p.joinCode().matches("[A-Za-z0-9_-]{4,50}"))throw error(400,"Join code must be 4 to 50 letters/digits/_/-");if(!p.joinCode().equals(e.getCode()) && exams.existsByCode(p.joinCode()))throw error(409,"Join code already used");e.setCode(p.joinCode());}
         e.setAccessMode(p.accessMode());e.setMaxParticipants(p.maxParticipants());
         e.setMaxConcurrentSessions(p.maxConcurrentSessions());e.setAttemptLimit(p.attemptLimit());
@@ -80,17 +82,73 @@ public class ExamCore {
             throw error(400,"Invalid policy/capacity; platform limit "+platformLimit);
     }
     public void assign(UUID id, UUID actor, UUID user, boolean remove) {
-        Exam e=load(id);require(e,actor,true);draft(e);
+        Exam e=load(id);require(e,actor,true);
         if(user==null) throw error(400,"User required");
-        boolean existed=e.getParticipants().containsKey(user);
-        if(remove) {if(!existed)return;e.getParticipants().remove(user);} else {if(existed)return;register(e,user,"ASSIGNED");}
-        audit(e,actor,remove?"PARTICIPANT_REMOVED":"PARTICIPANT_ASSIGNED",user.toString());
-        recipientChanged(e,remove?"UNASSIGNED":"ASSIGNED",actor);
+        if(remove) {revoke(e,actor,user,null);return;}
+        if(addParticipant(e,actor,user)==AssignOutcome.CAPACITY_FULL)throw error(409,"Participant capacity full");
     }
-    private void register(Exam e, UUID user, String source) {
-        if(e.getParticipants().containsKey(user)) return;
-        if(e.getParticipants().size()>=e.getMaxParticipants()) throw error(409,"Participant capacity full");
-        e.getParticipants().put(user,source);
+    public enum AssignOutcome { ASSIGNED, REINSTATED, ALREADY_PARTICIPANT, CAPACITY_FULL }
+    /** Caller holds the Exam row lock and has verified OWNER/MANAGER. Capacity counts eligible (ACTIVE) participants only. */
+    public AssignOutcome addParticipant(Exam e,UUID actor,UUID user) {
+        if(e.getStatus()!=Exam.Status.DRAFT && e.getStatus()!=Exam.Status.PUBLISHED && e.getStatus()!=Exam.Status.OPEN)
+            throw error(409,"PARTICIPANTS_LOCKED_FOR_CLOSED_EXAM");
+        var row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
+        if(row!=null && row.isActive())return AssignOutcome.ALREADY_PARTICIPANT;
+        if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>=e.getMaxParticipants())return AssignOutcome.CAPACITY_FULL;
+        Instant now=clock.instant();AssignOutcome outcome;
+        if(row==null){row=new ExamParticipant(e.getId(),user,"ASSIGNED",actor,now);outcome=AssignOutcome.ASSIGNED;}
+        else {row.reinstate(actor,now);outcome=AssignOutcome.REINSTATED;}
+        participants.saveAndFlush(row);
+        audit(e,actor,outcome==AssignOutcome.ASSIGNED?"PARTICIPANT_ASSIGNED":"PARTICIPANT_REINSTATED",user.toString());
+        recipientChanged(e,"ASSIGNED",actor);
+        events.participantChanged(e,user,outcome.name(),actor,null,null,counts(e.getId()));
+        return outcome;
+    }
+    /** Revocation is a state: Join/Start are blocked, history and any active attempt are kept. Idempotent. */
+    public void revoke(Exam e,UUID actor,UUID user,String reason) {
+        var row=participants.findByExamIdAndUserId(e.getId(),user).orElseThrow(()->error(404,"PARTICIPANT_NOT_FOUND"));
+        if(!row.isActive())return;
+        String publicReason=reason==null||reason.isBlank()?null:reason.strip();
+        if(publicReason!=null&&publicReason.length()>1000)throw error(400,"Revocation reason too long");
+        row.revoke(actor,clock.instant(),publicReason);participants.saveAndFlush(row);
+        audit(e,actor,"PARTICIPANT_REVOKED",user+(publicReason==null?"":" reason="+publicReason));
+        recipientChanged(e,"UNASSIGNED",actor);
+        events.participantChanged(e,user,"REVOKED",actor,null,publicReason,counts(e.getId()));
+    }
+    public record GrantResult(ExamParticipant participant,AttemptGrant grant,boolean replayed){}
+    /** Positive per-Student grant: public reason mandatory, idempotent on requestId, never touches the Exam limit, schedule or capacity. */
+    public GrantResult grantAttempts(Exam e,UUID actor,UUID user,Integer quantity,String reason,String requestId) {
+        int qty=quantity==null?1:quantity;
+        if(qty<1||qty>100)throw error(400,"Grant quantity must be between 1 and 100");
+        String publicReason=reason==null?"":reason.strip();
+        if(publicReason.isEmpty())throw error(400,"Public grant reason required");
+        if(publicReason.length()>1000)throw error(400,"Grant reason too long");
+        String key=requestId==null?"":requestId.strip();
+        if(key.length()<8||key.length()>100)throw error(400,"requestId (8-100 characters) required for idempotent grants");
+        var row=participants.findByExamIdAndUserId(e.getId(),user).orElseThrow(()->error(404,"PARTICIPANT_NOT_FOUND"));
+        var existing=grants.findByExamIdAndUserIdAndRequestId(e.getId(),user,key);
+        if(existing.isPresent()) {
+            var g=existing.get();
+            if(g.getQuantity()!=qty||!g.getReason().equals(publicReason))throw error(409,"IDEMPOTENCY_CONFLICT");
+            return new GrantResult(row,g,true);
+        }
+        if(!row.isActive())throw error(409,"PARTICIPANT_REVOKED");
+        try{row.addExtraAttempts(qty);}catch(ArithmeticException overflow){throw error(409,"Grant total too large");}
+        var grant=grants.saveAndFlush(new AttemptGrant(e.getId(),user,qty,publicReason,actor,key,clock.instant()));
+        participants.saveAndFlush(row);
+        audit(e,actor,"ATTEMPT_GRANTED",user+" +"+qty+" reason="+publicReason);
+        events.participantChanged(e,user,"ATTEMPT_GRANTED",actor,qty,publicReason,counts(e.getId()));
+        return new GrantResult(row,grant,false);
+    }
+    public ParticipantCounts counts(UUID examId) {
+        long active=0,revoked=0;
+        for(Object[] r:participants.countsByStatus(examId)) {if(r[0]==ExamParticipant.Status.ACTIVE)active=(Long)r[1];else revoked=(Long)r[1];}
+        return new ParticipantCounts(active+revoked,active,revoked);
+    }
+    /** registered = every row ever created (history), eligible = ACTIVE rows that count against maxParticipants. */
+    public record ParticipantCounts(long registered,long eligible,long revoked){}
+    public int effectiveAttemptLimit(Exam e,UUID user) {
+        return Math.addExact(e.getAttemptLimit(),participants.findByExamIdAndUserId(e.getId(),user).map(ExamParticipant::getExtraAttempts).orElse(0));
     }
     public Exam join(UUID id, UUID user, String code) {
         Exam e=load(id);if(user==null)throw error(401,"Authentication required");
@@ -98,24 +156,31 @@ public class ExamCore {
         Instant now=clock.instant();
         if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))throw error(409,"Join is not available before startAt");
         if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Exam schedule has ended");
-        if(e.getAccessMode()==Exam.AccessMode.ASSIGNED && !e.getParticipants().containsKey(user)) throw error(403,"Not assigned");
-        if(e.getAccessMode()==Exam.AccessMode.JOIN_CODE && !e.getCode().equals(code)) throw error(403,"Invalid join code");
-        checkAttempts(e,user);
-        if(!e.getParticipants().containsKey(user)) {
-            register(e,user,e.getAccessMode().name());
+        var row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
+        if(row!=null && !row.isActive()) throw error(403,"PARTICIPATION_REVOKED");
+        if(e.getAccessMode()==Exam.AccessMode.ASSIGNED && row==null) throw error(403,"Not assigned");
+        if(e.getAccessMode()==Exam.AccessMode.JOIN_CODE && row==null && !e.getCode().equals(code)) throw error(403,"Invalid join code");
+        checkAttempts(e,user,row);
+        if(row==null) {
+            if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>=e.getMaxParticipants()) throw error(409,"Participant capacity full");
+            participants.saveAndFlush(new ExamParticipant(e.getId(),user,e.getAccessMode().name(),null,now));
             recipientChanged(e,"JOINED",user);
+            events.participantChanged(e,user,"JOINED",user,null,null,counts(e.getId()));
         }
         return e;
     }
-    private void checkAttempts(Exam e,UUID user){
+    private void checkAttempts(Exam e,UUID user,ExamParticipant row){
         if(internalToken.isBlank())throw error(503,"Session integration not configured");
         var eligibility=sessions.eligibility(e.getId(),user,internalToken);
-        if(!eligibility.resumable() && eligibility.attempts()>=e.getAttemptLimit())throw error(409,"Attempt limit reached");
+        long limit=(long)e.getAttemptLimit()+(row==null?0:row.getExtraAttempts());
+        if(!eligibility.resumable() && eligibility.attempts()>=limit)throw error(409,"Attempt limit reached");
     }
     public Exam authorizeStart(UUID id, UUID user) {
         Exam e=load(id);startWindow(e);
-        if(!e.getParticipants().containsKey(user)) throw error(403,"Join required before Start");
-        checkAttempts(e,user);return e;
+        var row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
+        if(row==null) throw error(403,"Join required before Start");
+        if(!row.isActive()) throw error(403,"PARTICIPATION_REVOKED");
+        checkAttempts(e,user,row);return e;
     }
     public void startWindow(Exam e) {
         if(e.getStatus()!=Exam.Status.OPEN) throw error(409,"EXAM_NOT_OPEN");
