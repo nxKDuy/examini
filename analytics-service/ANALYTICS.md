@@ -127,3 +127,23 @@ keys; until Exam accepts it, every request fails closed with 503), RabbitMQ conn
 
 `mvn -f analytics-service/pom.xml test` with a PostgreSQL database `analytics_test` on
 `localhost:5432` (override with `ANALYTICS_TEST_DATABASE_URL/_USER/_PASSWORD`).
+
+## Participant counts and invalidated attempts (APPROVED `contracts/participant-attempt.md`)
+
+Consumed from the shared `examini.events` topic into `analytics.exam-events.queue`
+(DLQ `analytics.exam-events.dlq`), bindings `exam.participant.changed` and
+`exam.attempt.invalidated`. Envelope v1 is strict: `eventVersion` must be the JSON integer 1,
+`occurredAt` an ISO-8601 instant, integer fields JSON integers, routing key = `eventType`;
+anything else is dead-lettered without retry and does not consume its `eventId`.
+
+- `exam.participant.changed`: latest snapshot per exam by highest `recipientRevision`
+  (`exam_participation_projection`); older/equal revisions are ignored. `ATTEMPT_GRANTED`
+  never changes counts. `registeredCount` must equal `eligibleCount + revokedCount`.
+- `exam.attempt.invalidated`: one row per session in `attempt_invalidation` (reason/actor are
+  validated but not stored). Aggregates exclude a result with `NOT EXISTS` against this table,
+  so arrival order (before/after the result) and a missing result (CANCELLED) are all safe.
+- `eventId` deduplication (`processed_event`) is written in the same transaction as the projection.
+- Summary additions: `registeredCount`, `eligibleCount` (null until a snapshot exists, never 0),
+  `invalidatedCount`, `submissionRate` = candidates with a valid submission / `eligibleCount`
+  (null when eligible is null or 0). Invalidated results stay in `/results` with `invalidated: true`.
+- Not provided: pass rate (no passing score in any event).

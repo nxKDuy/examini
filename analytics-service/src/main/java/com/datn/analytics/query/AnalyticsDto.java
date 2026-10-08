@@ -9,6 +9,13 @@ public final class AnalyticsDto {
     private AnalyticsDto() {}
 
     /**
+     * Invalidated attempts are excluded from every figure here (candidates, submissions, scores,
+     * distribution, submissionRate) and counted only in invalidatedCount.
+     * registeredCount/eligibleCount come from Exam's latest participant snapshot and are null
+     * (not 0) until one has been received. submissionRate = candidates with at least one valid
+     * submission / eligibleCount (0..1, 4 decimals; may exceed 1 if a since-revoked participant
+     * submitted); null when eligibleCount is null or 0. Attempt-level pass rate is not reported:
+     * no passing score is carried by the events.
      * Score statistics cover GRADED results only; NEEDS_REVIEW/PENDING totals are provisional.
      * Percentages are 0-100 relative to each result's snapshot maxScore.
      */
@@ -24,7 +31,11 @@ public final class AnalyticsDto {
             BigDecimal minScore,
             BigDecimal maxScore,
             BigDecimal averagePercent,
-            List<ScoreBucket> scoreDistribution
+            List<ScoreBucket> scoreDistribution,
+            Integer registeredCount,
+            Integer eligibleCount,
+            long invalidatedCount,
+            BigDecimal submissionRate
     ) {}
 
     /** Half-open percent range [fromPercent, toPercent); the last bucket includes 100. */
@@ -52,7 +63,7 @@ public final class AnalyticsDto {
             BigDecimal averageAwardedPoints
     ) {}
 
-    /** One graded attempt. score is null until the result is GRADED. */
+    /** One attempt result. score is null until GRADED; invalidated results stay listed for trace only. */
     public record CandidateResult(
             UUID sessionId,
             UUID resultId,
@@ -62,7 +73,8 @@ public final class AnalyticsDto {
             BigDecimal score,
             BigDecimal maxScore,
             Instant submittedAt,
-            Instant gradedAt
+            Instant gradedAt,
+            boolean invalidated
     ) {}
 
     public record PageResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}

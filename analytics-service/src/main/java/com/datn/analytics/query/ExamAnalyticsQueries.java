@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,8 +28,8 @@ public class ExamAnalyticsQueries {
         long[] histogram = new long[BUCKETS];
         jdbc.query("""
                 SELECT LEAST(width_bucket(total_score * 100 / max_score, 0, 100, :buckets), :buckets) AS bucket, count(*) AS n
-                FROM exam_result_projection
-                WHERE exam_id = :exam AND status = 'GRADED' AND max_score > 0
+                FROM exam_result_projection r
+                WHERE exam_id = :exam AND status = 'GRADED' AND max_score > 0 AND NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = r.session_id)
                 GROUP BY 1
                 """, new MapSqlParameterSource("exam", examId).addValue("buckets", BUCKETS),
                 rs -> { histogram[rs.getInt("bucket") - 1] = rs.getLong("n"); });
@@ -46,12 +47,22 @@ public class ExamAnalyticsQueries {
                        min(total_score) FILTER (WHERE status = 'GRADED') AS min_score,
                        max(total_score) FILTER (WHERE status = 'GRADED') AS max_score,
                        round(avg(total_score * 100 / max_score) FILTER (WHERE status = 'GRADED' AND max_score > 0), 4) AS avg_percent
-                FROM exam_result_projection WHERE exam_id = :exam
-                """, exam, (rs, i) -> new ExamSummary(examId,
-                rs.getLong("candidates"), rs.getLong("submissions"), rs.getLong("graded"),
-                rs.getLong("needs_review"), rs.getLong("pending"), rs.getBigDecimal("max_possible"),
-                rs.getBigDecimal("avg_score"), rs.getBigDecimal("min_score"), rs.getBigDecimal("max_score"),
-                rs.getBigDecimal("avg_percent"), buckets));
+                FROM exam_result_projection r WHERE exam_id = :exam AND NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = r.session_id)
+                """, exam, (rs, i) -> {
+            Integer registered = null, eligible = null;
+            var participation = jdbc.query("SELECT registered_count, eligible_count FROM exam_participation_projection WHERE exam_id = :exam",
+                    exam, (p, n) -> new Integer[]{p.getInt(1), p.getInt(2)});
+            if (!participation.isEmpty()) { registered = participation.get(0)[0]; eligible = participation.get(0)[1]; }
+            long candidates = rs.getLong("candidates");
+            // Null (never 0) while no participant projection exists or nobody is eligible.
+            BigDecimal rate = eligible == null || eligible == 0 ? null
+                    : BigDecimal.valueOf(candidates).divide(BigDecimal.valueOf(eligible), 4, java.math.RoundingMode.HALF_UP);
+            long invalidated = jdbc.queryForObject("SELECT count(*) FROM attempt_invalidation WHERE exam_id = :exam", exam, Long.class);
+            return new ExamSummary(examId, candidates, rs.getLong("submissions"), rs.getLong("graded"),
+                    rs.getLong("needs_review"), rs.getLong("pending"), rs.getBigDecimal("max_possible"),
+                    rs.getBigDecimal("avg_score"), rs.getBigDecimal("min_score"), rs.getBigDecimal("max_score"),
+                    rs.getBigDecimal("avg_percent"), buckets, registered, eligible, invalidated, rate);
+        });
     }
 
     public List<QuestionStats> questions(UUID examId) {
@@ -67,7 +78,8 @@ public class ExamAnalyticsQueries {
                        round(count(*) FILTER (WHERE outcome = 'CORRECT')::numeric
                              / NULLIF(count(*) FILTER (WHERE outcome <> 'PENDING_REVIEW'), 0), 4) AS correct_rate,
                        round(avg(awarded_points), 4) AS avg_awarded
-                FROM question_outcome_projection WHERE exam_id = :exam
+                FROM question_outcome_projection o WHERE exam_id = :exam
+                  AND NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = o.session_id)
                 GROUP BY question_id, question_version
                 ORDER BY position, question_id, question_version
                 """, new MapSqlParameterSource("exam", examId), (rs, i) -> new QuestionStats(
@@ -80,18 +92,20 @@ public class ExamAnalyticsQueries {
     public PageResponse<CandidateResult> results(UUID examId, String status, int page, int size) {
         var params = new MapSqlParameterSource("exam", examId).addValue("status", status)
                 .addValue("limit", size).addValue("offset", (long) page * size);
-        String filter = "exam_id = :exam AND (CAST(:status AS VARCHAR) IS NULL OR status = :status)";
-        long total = jdbc.queryForObject("SELECT count(*) FROM exam_result_projection WHERE " + filter, params, Long.class);
+        String filter = "r.exam_id = :exam AND (CAST(:status AS VARCHAR) IS NULL OR r.status = :status)";
+        long total = jdbc.queryForObject("SELECT count(*) FROM exam_result_projection r WHERE " + filter, params, Long.class);
         var rows = jdbc.query("""
-                SELECT session_id, result_id, candidate_id, attempt_number, status, total_score, max_score, submitted_at, graded_at
-                FROM exam_result_projection WHERE %s
-                ORDER BY submitted_at DESC NULLS LAST, session_id
+                SELECT r.session_id, r.result_id, r.candidate_id, r.attempt_number, r.status, r.total_score, r.max_score, r.submitted_at, r.graded_at,
+                       EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = r.session_id) AS invalidated
+                FROM exam_result_projection r WHERE %s
+                ORDER BY r.submitted_at DESC NULLS LAST, r.session_id
                 LIMIT :limit OFFSET :offset
                 """.formatted(filter), params, (rs, i) -> new CandidateResult(
                 rs.getObject("session_id", UUID.class), rs.getObject("result_id", UUID.class),
                 rs.getObject("candidate_id", UUID.class), (Integer) rs.getObject("attempt_number"), rs.getString("status"),
                 "GRADED".equals(rs.getString("status")) ? rs.getBigDecimal("total_score") : null,
-                rs.getBigDecimal("max_score"), instant(rs.getTimestamp("submitted_at")), instant(rs.getTimestamp("graded_at"))));
+                rs.getBigDecimal("max_score"), instant(rs.getTimestamp("submitted_at")), instant(rs.getTimestamp("graded_at")),
+                rs.getBoolean("invalidated")));
         return new PageResponse<>(rows, page, size, total, (int) ((total + size - 1) / size));
     }
 
