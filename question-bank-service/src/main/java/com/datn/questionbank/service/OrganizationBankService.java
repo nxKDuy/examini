@@ -37,7 +37,8 @@ public class OrganizationBankService {
   var frozen=read(versions.findByQuestionIdAndVersionNumber(questionId,q.getQuestionVersion()).orElseThrow().getSnapshot()).withContext(Question.QuestionStatus.ACTIVE,q.getUpdatedAt());
   var c=contributions.save(OrganizationContribution.builder().bankId(bank.getId()).sourceQuestionId(questionId).sourceQuestionVersion(q.getQuestionVersion())
    .sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy()).snapshot(write(frozen))
-   .status(OrganizationContribution.ContributionStatus.PENDING_REVIEW).submittedBy(actor.userId()).submittedAt(LocalDateTime.now()).build());
+   .submissionNote(trimToNull(request.submissionNote())).status(OrganizationContribution.ContributionStatus.PENDING_REVIEW)
+   .submittedBy(actor.userId()).submittedAt(LocalDateTime.now()).build());
   return response(c,false);
  }
  public OrganizationContributionResponse contribution(UUID id,boolean answers,QuestionActor actor) {
@@ -86,10 +87,11 @@ public class OrganizationBankService {
   return new BankQuestion(target,copied);
  }
  private OrganizationQuestion get(UUID id){return publications.findById(id).orElseThrow(()->error(HttpStatus.NOT_FOUND,"Không tìm thấy publication"));}
- private OrganizationContributionResponse response(OrganizationContribution c,boolean answers){var q=read(c.getSnapshot());return new OrganizationContributionResponse(c.getId(),c.getBankId(),c.getSourceQuestionId(),c.getSourceQuestionVersion(),c.getSourceOwnerUserId(),c.getStatus(),c.getReviewerId(),c.getReviewNote(),c.getSubmittedAt(),c.getReviewedAt(),answers?q:q.withoutAnswers());}
+ private OrganizationContributionResponse response(OrganizationContribution c,boolean answers){var q=read(c.getSnapshot());return new OrganizationContributionResponse(c.getId(),c.getBankId(),c.getSourceQuestionId(),c.getSourceQuestionVersion(),c.getSourceOwnerUserId(),c.getSubmissionNote(),c.getStatus(),c.getReviewerId(),c.getReviewNote(),c.getSubmittedAt(),c.getReviewedAt(),answers?q:q.withoutAnswers());}
  private OrganizationResponse response(OrganizationQuestion p){return new OrganizationResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceOwnerUserId(),"APPROVED",p.getApprovedBy(),p.getApprovedAt(),read(p.getSnapshot()).withoutAnswers());}
  private QuestionResponse read(String s){try{return json.readValue(s,QuestionResponse.class);}catch(Exception e){throw new IllegalStateException("Invalid frozen snapshot",e);}}
  private String write(QuestionResponse q){try{return json.writeValueAsString(q);}catch(Exception e){throw new IllegalStateException("Invalid frozen snapshot",e);}}
  private void bounds(Pageable p){if(p.getPageSize()>100)throw error(HttpStatus.BAD_REQUEST,"size tối đa 100");}
+ private String trimToNull(String value){return value==null||value.isBlank()?null:value.trim();}
  private ResponseStatusException error(HttpStatus status,String message){return new ResponseStatusException(status,message);}
 }

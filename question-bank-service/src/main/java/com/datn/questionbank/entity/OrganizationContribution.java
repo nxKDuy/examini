@@ -14,6 +14,7 @@ public class OrganizationContribution {
     @Column(name="source_owner_user_id",nullable=false,updatable=false) private UUID sourceOwnerUserId;
     @Column(name="submitted_by",nullable=false,updatable=false) private UUID submittedBy;
     @Column(name="submitted_at",nullable=false,updatable=false) private LocalDateTime submittedAt;
+    @Column(name="submission_note",length=5000,updatable=false) private String submissionNote;
     @Column(nullable=false,updatable=false,columnDefinition="TEXT") private String snapshot;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=30) private ContributionStatus status;
     @Column(name="reviewer_id") private UUID reviewerId;
