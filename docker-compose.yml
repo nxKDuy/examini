@@ -177,6 +177,10 @@ services:
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
       QB_INTERNAL_TOKEN: ${QB_INTERNAL_TOKEN}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      QUESTION_BANK_IDENTITY_TOKEN: ${QUESTION_BANK_IDENTITY_TOKEN:-}
+      ORGANIZATION_SERVICE_URL: http://organization-service:8088
+      ORG_AUTHZ_QB_TOKEN: ${ORG_AUTHZ_QB_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
