@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Validator;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,16 +35,19 @@ import static org.mockito.Mockito.*;
 @Transactional
 class MultiBankPersistenceTest {
     @Autowired MultiBankService banks;
+    @Autowired QuestionSetService sets;
     @Autowired OrganizationBankService organizations;
     @Autowired QuestionService questions;
     @Autowired ExamEligibilityService eligibility;
     @Autowired OrganizationQuestionRepository organizationRepo;
     @Autowired QuestionRepository questionRepo;
     @Autowired CategoryRepository categories;
+    @Autowired SubjectRepository subjectRepo;
     @Autowired QuestionBankRepository bankRepo;
     @Autowired ObjectMapper json;
     @Autowired Environment environment;
     @Autowired Validator validator;
+    @Autowired NamedParameterJdbcTemplate jdbc;
     @MockBean OrganizationAuthorizationClient organizationAuthorization;
     @MockBean AuthIdentityClient identities;
 
@@ -88,6 +92,89 @@ class MultiBankPersistenceTest {
         var lineage=banks.lineage(fork.id(),reviewer);assertEquals(publication.id(),lineage.sourcePublicQuestionId());assertEquals(1,lineage.sourceQuestionVersion());
         questions.update(fork.id(),edit("Fork changed",1),reviewer);
         assertEquals("Public frozen v1",banks.publicQuestion(publication.id(),reviewer).question().content());
+    }
+
+    @Test void personalSetVersionsPublishFrozenItemsAndForkSingleOrWholeSet() throws Exception {
+        var one=active("Set frozen one");var two=active("Set frozen two");
+        var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var created=sets.create(bank.getId(),new QuestionSetWrite("Algebra set","description",List.of(
+                new SetItemRequest(one.id(),1L),new SetItemRequest(two.id(),1L)),null),owner);
+        assertEquals(2,created.items().size());assertEquals(1,created.version());
+        var postV1=sets.publish(created.id(),new PublishSetRequest(1L),owner);
+        assertEquals(2,postV1.items().size());assertEquals(1,postV1.postVersion());
+        var edited=sets.update(created.id(),new QuestionSetWrite("Algebra set v2","updated",List.of(
+                new SetItemRequest(two.id(),1L)),1L),owner);
+        assertEquals(2,edited.version());assertEquals(1,edited.items().size());
+        assertEquals(2,sets.version(created.id(),1,owner).items().size());
+        var post=sets.publish(created.id(),new PublishSetRequest(2L),owner);
+        assertEquals(PublicQuestion.PostType.QUESTION_SET,post.postType());assertEquals(2,post.postVersion());assertEquals(1,post.itemCount());
+        assertNotEquals(postV1.id(),post.id());assertEquals(2,banks.publicQuestion(postV1.id(),owner).itemCount());
+        String safe=json.writeValueAsString(post);assertFalse(safe.contains("correct"));assertFalse(safe.contains("expectedAnswer"));assertFalse(safe.contains("@"));
+        var item=post.items().getFirst();var selected=eligibility.batch(List.of(item.id()),false,new QuestionActor(UUID.randomUUID(),"STUDENT",false)).getFirst();
+        assertTrue(selected.eligible());assertEquals(item.id(),selected.id());assertEquals("Set frozen two",selected.content());
+        var candidate=json.writeValueAsString(eligibility.batch(List.of(item.id()),false,new QuestionActor(UUID.randomUUID(),"STUDENT",false)));
+        assertFalse(candidate.contains("correct"));assertFalse(candidate.contains("expectedAnswer"));
+        var grading=json.writeValueAsString(eligibility.batch(List.of(item.id()),true,new QuestionActor(UUID.randomUUID(),"SERVICE",true)));
+        assertTrue(grading.contains("\"correct\":true"));
+        fails(403,()->sets.fork(post.id(),new QuestionSetForkRequest(null),new QuestionActor(UUID.randomUUID(),"STUDENT",false)));
+        var copied=sets.fork(post.id(),new QuestionSetForkRequest(null),reviewer);
+        assertEquals(1,copied.items().size());assertEquals("Set frozen two",copied.items().getFirst().question().content());
+        var itemCopy=banks.forkPublicItem(post.id(),item.id(),new ForkRequest(item.sourceQuestionVersion(),null),reviewer);
+        assertEquals("Set frozen two",itemCopy.question().content());
+        var itemLineage=banks.lineage(itemCopy.question().id(),reviewer);
+        assertEquals(two.id(),itemLineage.sourceQuestionId());assertEquals(1,itemLineage.sourceQuestionVersion());
+        questions.update(two.id(),edit("Source after publish",1),owner);
+        assertEquals("Set frozen two",banks.publicQuestion(post.id(),new QuestionActor(UUID.randomUUID(),"STUDENT",false)).items().getFirst().question().content());
+        assertNotEquals(itemCopy.question().id(),item.sourceQuestionId());
+        banks.archivePublic(post.id(),owner);
+        var mine=banks.publicQuestions(null,null,null,null,null,PublicQuestion.PublicationStatus.ARCHIVED,true,null,null,PublicQuestion.PostType.QUESTION_SET,"NEWEST",org.springframework.data.domain.PageRequest.of(0,20),owner);
+        assertEquals(post.id(),mine.getContent().stream().filter(p->p.id().equals(post.id())).findFirst().orElseThrow().id());
+        fails(404,()->banks.publicQuestion(post.id(),new QuestionActor(UUID.randomUUID(),"STUDENT",false)));
+        fails(409,()->eligibility.batch(List.of(item.id()),false,reviewer));
+    }
+
+    @Test void publicDiscoveryFiltersSetsAndCountsDistinctNonOwnerCopiesByRollingWindow() {
+        var q=active("Ranking content");var single=banks.publish(q.id(),new ContributionRequest(1),owner);
+        var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var set=sets.create(bank.getId(),new QuestionSetWrite("Ranking set",null,List.of(new SetItemRequest(q.id(),1L)),null),owner);
+        var post=sets.publish(set.id(),new PublishSetRequest(1L),owner);
+        var actorA=new QuestionActor(UUID.randomUUID(),"TEACHER",false);var actorB=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+        banks.forkPublic(single.id(),new ForkRequest(1,null),actorA);
+        banks.forkPublic(single.id(),new ForkRequest(1,null),actorA); // retries/duplicates do not inflate distinct actors
+        banks.forkPublic(single.id(),new ForkRequest(1,null),actorB);
+        jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,CURRENT_TIMESTAMP-INTERVAL '40 days')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",single.id()).addValue("actor",UUID.randomUUID()));
+        banks.forkPublic(single.id(),new ForkRequest(1,null),owner); // self-copy excluded
+        sets.fork(post.id(),new QuestionSetForkRequest(null),actorA);
+        var page=org.springframework.data.domain.PageRequest.of(0,20);
+        var top=banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"NEWEST",page,owner);
+        var counted=top.getContent().stream().filter(p->p.id().equals(single.id())).findFirst().orElseThrow();
+        assertEquals(2,counted.copies24h());assertEquals(2,counted.copies30d());assertEquals(3,counted.copies365d());
+        assertEquals(1,top.getContent().stream().filter(p->p.id().equals(post.id())).findFirst().orElseThrow().copies24h());
+        assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,null,null,PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
+        fails(409,()->banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"DAY",page,owner));
+        assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,null,category,PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
+        assertEquals(post.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getContent().getFirst().id());
+    }
+
+    @Test void setCanSpanSubjectsAndCategoriesAndDiscoveryFiltersAnyItemOnce() {
+        var first=active("Math topic");
+        var biology=subjectRepo.save(Subject.builder().name("Biology").description("Test taxonomy").build());
+        var biologyCategory=categories.save(Category.builder().subject(biology).name("Plants").build());
+        var second=questions.create(new CreateRequest(biologyCategory.getId(),"Plant topic",QuestionType.MULTIPLE_CHOICE,
+                DifficultyLevel.EASY,"Book",List.of(new OptionRequest("Yes",true,(short)0),new OptionRequest("No",false,(short)1)),
+                null,QuestionScope.PERSONAL,SourceType.NONE,null,null,null,null),owner);
+        questions.activate(second.id(),1,owner);
+        var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var set=sets.create(bank.getId(),new QuestionSetWrite("Cross subject set",null,
+                List.of(new SetItemRequest(first.id(),1L),new SetItemRequest(second.id(),1L)),null),owner);
+        var post=sets.publish(set.id(),new PublishSetRequest(1L),owner);
+        assertEquals(2,post.subjects().size());assertEquals(2,post.categories().size());
+        var page=org.springframework.data.domain.PageRequest.of(0,20);
+        assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,biology.getId(),null,
+                PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
+        assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,null,biologyCategory.getId(),
+                PublicQuestion.PostType.QUESTION_SET,"NEWEST",page,owner).getTotalElements());
     }
 
     @Test void systemBankRequiresSignedPrivilegeAndTeacherCannotMutate(){
@@ -350,6 +437,10 @@ class MultiBankPersistenceTest {
                 try(var rows=sql.executeQuery("SELECT status,source_owner_display_name,search_content,archived_at FROM public_questions")){
                     assertTrue(rows.next());assertEquals("PUBLISHED",rows.getString(1));assertEquals("Unknown user",rows.getString(2));
                     assertNotNull(rows.getString(3));assertNull(rows.getTimestamp(4));
+                }
+                try(var rows=sql.executeQuery("SELECT p.id,p.post_type,p.item_count,i.id,i.snapshot FROM public_questions p JOIN public_question_items i ON i.publication_id=p.id")){
+                    assertTrue(rows.next());assertEquals(rows.getObject(1),rows.getObject(4));assertEquals("SINGLE_QUESTION",rows.getString(2));
+                    assertEquals(1,rows.getInt(3));assertNotNull(rows.getString(5));
                 }
                 assertThrows(java.sql.SQLException.class,()->sql.executeUpdate("UPDATE public_questions SET status='ARCHIVED'"));
             }}

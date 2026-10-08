@@ -9,7 +9,7 @@ import java.util.UUID;
 public class PublicQuestion {
     @Id @GeneratedValue(strategy=GenerationType.UUID) private UUID id;
     @Column(name="bank_id",nullable=false,updatable=false) private UUID bankId;
-    @Column(name="contribution_id",nullable=false,updatable=false,unique=true) private UUID contributionId;
+    @Column(name="contribution_id",updatable=false,unique=true) private UUID contributionId;
     @Column(name="source_question_id",nullable=false,updatable=false) private UUID sourceQuestionId;
     @Column(name="source_question_version",nullable=false,updatable=false) private long sourceQuestionVersion;
     @Column(name="source_bank_id",nullable=false,updatable=false) private UUID sourceBankId;
@@ -24,5 +24,15 @@ public class PublicQuestion {
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) @Setter private PublicationStatus status;
     @Column(name="archived_by") @Setter private UUID archivedBy;
     @Column(name="archived_at") @Setter private LocalDateTime archivedAt;
+    @Enumerated(EnumType.STRING) @Column(name="post_type",nullable=false,updatable=false,length=30) @Builder.Default private PostType postType=PostType.SINGLE_QUESTION;
+    @Column(length=200) @Setter private String title;
+    @Column(length=2000) @Setter private String description;
+    @Column(name="post_version",nullable=false,updatable=false) @Builder.Default private long postVersion=1;
+    @Column(name="item_count",nullable=false,updatable=false) @Builder.Default private int itemCount=1;
+    @Column(name="question_set_id",updatable=false) private UUID questionSetId;
+    @Column(name="question_set_version",updatable=false) private Long questionSetVersion;
+    @Column(name="category_id",updatable=false) private UUID categoryId;
+    @Column(name="subject_id",updatable=false) private UUID subjectId;
     public enum PublicationStatus { PUBLISHED, ARCHIVED }
+    public enum PostType { SINGLE_QUESTION, QUESTION_SET }
 }

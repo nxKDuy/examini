@@ -12,6 +12,8 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import jakarta.persistence.EntityManager;
 import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
@@ -29,12 +31,17 @@ public class MultiBankService {
     private final QuestionLineageRepository lineage;
     private final PublicContributionRepository contributions;
     private final PublicQuestionRepository publications;
+    private final PublicQuestionItemRepository publicItems;
+    private final CategoryRepository categories;
+    private final SubjectRepository subjects;
     private final OrganizationQuestionRepository organizationQuestions;
     private final QuestionService core;
     private final QuestionPolicy policy;
     private final OrganizationAuthorizationClient organizationAuthorization;
     private final AuthIdentityClient identities;
     private final ObjectMapper json;
+    private final NamedParameterJdbcTemplate jdbc;
+    private final EntityManager entityManager;
 
     @Transactional
     public BankResponse createBank(CreateBank request,QuestionActor actor) {
@@ -118,9 +125,22 @@ public class MultiBankService {
     public BankQuestion forkPublic(UUID id,ForkRequest request,QuestionActor actor) {
         policy.requireAuthor(actor);
         var p=publication(id);
+        if(p.getPostType()!=PublicQuestion.PostType.SINGLE_QUESTION) throw conflict("Question Set dùng POST /public-questions/{id}/fork-set");
         if(p.getStatus()!=PublicQuestion.PublicationStatus.PUBLISHED) throw conflict("PublicQuestion đã archive");
         if(p.getSourceQuestionVersion()!=request.sourceQuestionVersion()) throw conflict("Public source version không khớp");
-        return copy(read(p.getSnapshot()),request.targetBankId(),p.getBankId(),BankType.PUBLIC,p.getId(),actor);
+        var result=copy(read(p.getSnapshot()),request.targetBankId(),p.getBankId(),BankType.PUBLIC,p.getId(),actor);recordCopy(p,actor);return result;
+    }
+    @Transactional public BankQuestion forkPublicItem(UUID postId,UUID itemId,ForkRequest request,QuestionActor actor) {
+        policy.requireAuthor(actor);var p=publication(postId);
+        if(p.getStatus()!=PublicQuestion.PublicationStatus.PUBLISHED)throw conflict("Public post đã archive");
+        var item=publicItems.findById(itemId).orElseThrow(()->missing("Không tìm thấy public item"));
+        if(!item.getPublicationId().equals(postId))throw missing("Không tìm thấy public item");
+        if(item.getSourceQuestionVersion()!=request.sourceQuestionVersion())throw conflict("Public source version không khớp");
+        var result=copy(read(item.getSnapshot()),request.targetBankId(),p.getBankId(),BankType.PUBLIC,postId,actor);recordCopy(p,actor);return result;
+    }
+    void recordCopy(PublicQuestion post,QuestionActor actor) {
+        if(!post.getSourceOwnerUserId().equals(actor.userId()))jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id) VALUES(:post,:actor)",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",post.getId()).addValue("actor",actor.userId()));
     }
     private BankQuestion copy(QuestionResponse snapshot,UUID target,UUID sourceBank,BankType type,UUID publicId,QuestionActor actor) {
         UUID targetBank=target==null?registry.defaultPersonal(actor.userId()):target;
@@ -162,7 +182,13 @@ public class MultiBankService {
                 .contributionId(c.getId()).sourceQuestionId(id).sourceQuestionVersion(q.getQuestionVersion())
                 .sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy()).sourceOwnerDisplayName(identities.displayName(q.getCreatedBy()))
                 .snapshot(c.getSnapshot()).searchContent(frozen.content()).status(PublicQuestion.PublicationStatus.PUBLISHED)
-                .questionType(frozen.questionType()).difficultyLevel(frozen.difficultyLevel()).verifiedBy(actor.userId()).verifiedAt(now).build());
+                .questionType(frozen.questionType()).difficultyLevel(frozen.difficultyLevel()).verifiedBy(actor.userId()).verifiedAt(now)
+                .title(frozen.content().substring(0,Math.min(200,frozen.content().length()))).categoryId(frozen.categoryId())
+                .subjectId(q.getCategory().getSubject().getId()).itemCount(1).postType(PublicQuestion.PostType.SINGLE_QUESTION).build());
+        publicItems.save(PublicQuestionItem.builder().id(p.getId()).publicationId(p.getId()).position(0).sourceQuestionId(q.getId())
+                .sourceQuestionVersion(q.getQuestionVersion()).sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy())
+                .snapshot(c.getSnapshot()).searchContent(frozen.content()).questionType(frozen.questionType()).difficultyLevel(frozen.difficultyLevel())
+                .categoryId(frozen.categoryId()).subjectId(q.getCategory().getSubject().getId()).build());
         return publicResponse(p);
     }
     public ContributionResponse contribute(UUID id,ContributionRequest request,QuestionActor actor) {
@@ -185,6 +211,11 @@ public class MultiBankService {
     }
     public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,
             PublicQuestion.PublicationStatus publicationStatus,boolean mine,Pageable page,QuestionActor actor) {
+        return publicQuestions(bankId,owner,type,difficulty,text,publicationStatus,mine,null,null,null,"NEWEST",page,actor);
+    }
+    public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,
+            PublicQuestion.PublicationStatus publicationStatus,boolean mine,UUID subjectId,UUID categoryId,PublicQuestion.PostType postType,
+            String ranking,Pageable page,QuestionActor actor) {
         bounds(page);
         UUID effectiveOwner=owner;
         if(mine) {
@@ -193,22 +224,28 @@ public class MultiBankService {
         }
         if(publicationStatus==PublicQuestion.PublicationStatus.ARCHIVED&&!mine)
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,"ARCHIVED chỉ owner truy vấn qua mine=true");
-        Specification<PublicQuestion> spec=(mine&&publicationStatus==null)
-                ?(r,q,b)->b.equal(r.get("sourceOwnerUserId"),actor.userId())
-                :(r,q,b)->b.equal(r.get("status"),publicationStatus==null?PublicQuestion.PublicationStatus.PUBLISHED:publicationStatus);
-        if(bankId!=null)spec=spec.and((r,q,b)->b.equal(r.get("bankId"),bankId));
-        if(effectiveOwner!=null) {
-            UUID ownerFilter=effectiveOwner;
-            spec=spec.and((r,q,b)->b.equal(r.get("sourceOwnerUserId"),ownerFilter));
-        }
-        if(type!=null)spec=spec.and((r,q,b)->b.equal(r.get("questionType"),type));
-        if(difficulty!=null)spec=spec.and((r,q,b)->b.equal(r.get("difficultyLevel"),difficulty));
+        if(ranking==null)ranking="NEWEST";
+        if(!"NEWEST".equals(ranking))throw conflict("Top ranking cần contract aggregation copy và evaluation; chỉ hỗ trợ NEWEST ở thời điểm này");
         if(text!=null&&!text.isBlank()) {
             if(text.length()>200) throw bad("Tìm kiếm tối đa 200 ký tự");
-            String term="%"+text.trim().toLowerCase(Locale.ROOT).replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%";
-            spec=spec.and((r,q,b)->b.like(b.lower(r.get("searchContent")),term,'\\'));
+            text="%"+text.trim().toLowerCase(Locale.ROOT).replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%";
         }
-        return publications.findAll(spec,page).map(this::publicResponse);
+        entityManager.flush();
+        String filter=" WHERE (CAST(:anyStatus AS boolean) OR p.status=CAST(:status AS varchar)) AND (CAST(:bank AS uuid) IS NULL OR p.bank_id=CAST(:bank AS uuid)) AND (CAST(:owner AS uuid) IS NULL OR p.source_owner_user_id=CAST(:owner AS uuid))"+
+                " AND (CAST(:postType AS varchar) IS NULL OR p.post_type=CAST(:postType AS varchar)) AND (CAST(:text AS varchar) IS NULL OR lower(p.search_content) LIKE CAST(:text AS varchar) ESCAPE E'\\\\')"+
+                " AND (CAST(:subject AS uuid) IS NULL OR EXISTS(SELECT 1 FROM public_question_items i WHERE i.publication_id=p.id AND i.subject_id=CAST(:subject AS uuid)))"+
+                " AND (CAST(:category AS uuid) IS NULL OR EXISTS(SELECT 1 FROM public_question_items i WHERE i.publication_id=p.id AND i.category_id=CAST(:category AS uuid)))"+
+                " AND (CAST(:type AS varchar) IS NULL OR EXISTS(SELECT 1 FROM public_question_items i WHERE i.publication_id=p.id AND i.question_type=CAST(:type AS varchar)))"+
+                " AND (CAST(:difficulty AS varchar) IS NULL OR EXISTS(SELECT 1 FROM public_question_items i WHERE i.publication_id=p.id AND i.difficulty_level=CAST(:difficulty AS varchar)))";
+        var args=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("anyStatus",mine&&publicationStatus==null)
+                .addValue("status",(publicationStatus==null?PublicQuestion.PublicationStatus.PUBLISHED:publicationStatus).name()).addValue("bank",bankId)
+                .addValue("owner",effectiveOwner).addValue("postType",postType==null?null:postType.name()).addValue("text",text)
+                .addValue("subject",subjectId).addValue("category",categoryId).addValue("type",type==null?null:type.name())
+                .addValue("difficulty",difficulty==null?null:difficulty.name()).addValue("limit",page.getPageSize()).addValue("offset",page.getOffset());
+        var ids=jdbc.query("SELECT p.id FROM public_questions p"+filter+" ORDER BY p.verified_at DESC,p.id ASC LIMIT :limit OFFSET :offset",args,(row,n)->row.getObject(1,UUID.class));
+        long total=jdbc.queryForObject("SELECT count(*) FROM public_questions p"+filter,args,Long.class);
+        var byId=new HashMap<UUID,PublicQuestion>();publications.findAllById(ids).forEach(p->byId.put(p.getId(),p));
+        return new PageImpl<>(ids.stream().map(byId::get).filter(Objects::nonNull).map(this::publicResponse).toList(),page,total);
     }
     public PublicResponse publicQuestion(UUID id,QuestionActor actor) {
         var p=publication(id);
@@ -232,7 +269,8 @@ public class MultiBankService {
                 String frozen;
                 if(l.getSourceBankType()==BankType.PUBLIC) {
                     var p=publications.findById(l.getSourcePublicQuestionId()).orElseThrow();
-                    frozen=p.getSnapshot();sourceBank=p.getSourceBankId();
+                    var item=publicItems.findFirstByPublicationIdAndSourceQuestionIdAndSourceQuestionVersion(p.getId(),l.getSourceQuestionId(),l.getSourceQuestionVersion()).orElseThrow();
+                    frozen=item.getSnapshot();sourceBank=item.getSourceBankId();
                 } else {
                     var p=organizationQuestions.findById(l.getSourceOrganizationQuestionId()).orElseThrow();
                     frozen=p.getSnapshot();sourceBank=p.getSourceBankId();
@@ -285,7 +323,22 @@ public class MultiBankService {
     private BankResponse bankResponse(QuestionBank b) {return new BankResponse(b.getId(),b.getType(),b.getOwnerUserId(),b.getOrganizationId(),b.getName(),b.getStatus(),b.isDefaultBank(),b.getCreatedAt());}
     private ContributionResponse contributionResponse(PublicContribution c) { return contributionResponse(c,false); }
     private ContributionResponse contributionResponse(PublicContribution c,boolean includeAnswers) {return new ContributionResponse(c.getId(),c.getSourceQuestionId(),c.getSourceQuestionVersion(),c.getSourceBankId(),c.getSourceOwnerUserId(),c.getSubmittedBy(),c.getSubmittedAt(),c.getStatus(),c.getReviewerId(),c.getReviewNote(),c.getReviewedAt(),includeAnswers?read(c.getSnapshot()):read(c.getSnapshot()).withoutAnswers());}
-    private PublicResponse publicResponse(PublicQuestion p) {return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),read(p.getSnapshot()).withoutAnswers());}
+    private PublicResponse publicResponse(PublicQuestion p) {
+        var itemEntities=publicItems.findByPublicationIdOrderByPosition(p.getId());
+        var itemResponses=itemEntities.stream().map(i->{
+            var q=read(i.getSnapshot());return new PublicPostItemResponse(i.getId(),i.getPosition(),i.getSourceQuestionId(),i.getSourceQuestionVersion(),q.withoutAnswers());}).toList();
+        var safeQuestion=itemResponses.isEmpty()?read(p.getSnapshot()).withoutAnswers():itemResponses.getFirst().question();
+        var categoryRows=categories.findAllById(itemEntities.stream().map(PublicQuestionItem::getCategoryId).filter(Objects::nonNull).distinct().toList());
+        var subjectRows=subjects.findAllById(itemEntities.stream().map(PublicQuestionItem::getSubjectId).filter(Objects::nonNull).distinct().toList());
+        var subjectNames=new HashMap<UUID,String>();subjectRows.forEach(s->subjectNames.put(s.getId(),s.getName()));
+        var publicSubjects=subjectRows.stream().map(s->new PublicSubject(s.getId(),s.getName())).toList();
+        var publicCategories=categoryRows.stream().map(c->new PublicCategory(c.getId(),c.getName(),c.getSubject().getId(),subjectNames.get(c.getSubject().getId()),c.getParent()==null?null:c.getParent().getId())).toList();
+        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copyCount(p.getId(),24),copyCount(p.getId(),30),copyCount(p.getId(),365));
+    }
+    private long copyCount(UUID publicationId,int days) {
+        return jdbc.queryForObject("SELECT count(DISTINCT actor_user_id) FROM public_question_copy_events WHERE publication_id=:id AND copied_at>=CURRENT_TIMESTAMP-(:days * INTERVAL '1 day')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",publicationId).addValue("days",days),Long.class);
+    }
     private void systemAuthority(QuestionActor actor) {if(!actor.systemAdmin())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Yêu cầu signed systemPrivilege=ADMIN");}
     private void bounds(Pageable p) {if(p.getPageSize()>100)throw bad("size tối đa 100");}
     private ResponseStatusException bad(String s){return new ResponseStatusException(HttpStatus.BAD_REQUEST,s);}
