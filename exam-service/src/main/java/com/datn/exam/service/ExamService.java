@@ -26,6 +26,7 @@ public class ExamService {
     private final ExamRepository repo;
     private final QuestionBankClient questionBankClient;
     private final ExamCore core;
+    private final ExamEventPublisher events;
     @org.springframework.beans.factory.annotation.Value("${question-bank.internal-token:}") private String questionToken="";
 
     public Page<ExamDto.Response> getExamsByCreator(UUID createdBy, Pageable pageable) {
@@ -64,6 +65,8 @@ public class ExamService {
                 .durationMinutes(req.durationMinutes())
                 .startTime(req.startTime())
                 .endTime(req.endTime())
+                .startAt(req.startTime()==null?null:req.startTime().toInstant(java.time.ZoneOffset.UTC))
+                .endAt(req.endTime()==null?null:req.endTime().toInstant(java.time.ZoneOffset.UTC))
                 .status(Exam.Status.DRAFT)
                 .type(examType)
                 .passingScore(req.passingScore())
@@ -76,12 +79,15 @@ public class ExamService {
                 .createdBy(createdBy)
                 .questionIds(new ArrayList<>(questionIds))
                 .build();
+        ScheduleRules.validate(e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDeadlineRule(),e.isAutoOpen(),e.isAutoClose(),e.getReminderOffsetsMinutes(),e.getDurationMinutes());
+        if(e.getStartAt()!=null || e.getEndAt()!=null)e.setScheduleRevision(1);
         for(var q:req.questions()) {
             if(q.weight()<=0 || !Double.isFinite(q.weight()) || e.getPoints().put(q.questionId(),java.math.BigDecimal.valueOf(q.weight()))!=null)
                 throw ExamCore.error(400,"Positive points and unique questions required");
         }
         repo.saveAndFlush(e);
         core.audit(e,createdBy,"EXAM_CREATED",null);
+        if(e.getScheduleRevision()>0)events.scheduleChanged(e,"SCHEDULED",createdBy);
         return ExamDto.Response.from(e);
     }
 
@@ -122,13 +128,18 @@ public class ExamService {
                 .durationMinutes(req.durationMinutes())
                 .startTime(req.startTime())
                 .endTime(req.endTime())
+                .startAt(req.startTime()==null?null:req.startTime().toInstant(java.time.ZoneOffset.UTC))
+                .endAt(req.endTime()==null?null:req.endTime().toInstant(java.time.ZoneOffset.UTC))
                 .status(Exam.Status.DRAFT)
                 .createdBy(createdBy)
                 .questionIds(questionIds)
                 .build();
+        ScheduleRules.validate(e.getStartAt(),e.getEndAt(),e.getTimezone(),e.getDeadlineRule(),e.isAutoOpen(),e.isAutoClose(),e.getReminderOffsetsMinutes(),e.getDurationMinutes());
+        if(e.getStartAt()!=null || e.getEndAt()!=null)e.setScheduleRevision(1);
         questionIds.forEach(q->e.getPoints().put(q,java.math.BigDecimal.ONE));
         repo.saveAndFlush(e);
         core.audit(e,createdBy,"EXAM_CREATED",null);
+        if(e.getScheduleRevision()>0)events.scheduleChanged(e,"SCHEDULED",createdBy);
         return ExamDto.Response.from(e);
     }
 

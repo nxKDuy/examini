@@ -1,0 +1,37 @@
+/* Manual grading: Student-first. Desktop 3 columns (queue / work / score), tablet 2, mobile list -> detail. */
+.grade-overview { display: grid; gap: 0; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid #000; background: #fff; }
+.grade-overview > div { padding: 10px 14px; border-right: 1px solid #000; min-width: 0; }
+.grade-overview > div:last-child { border-right: 0; }
+.grade-overview .n { font-size: 1.7rem; line-height: 1.1; font-variant-numeric: tabular-nums lining-nums; }
+.grade-overview .l { font-size: 0.85rem; color: var(--color-muted); }
+@media (max-width: 899px) { .grade-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); } .grade-overview > div { border-bottom: 1px solid #000; } .grade-overview .n { font-size: 1.3rem; } }
+
+.grade-layout { display: grid; gap: 16px; grid-template-columns: 300px minmax(0, 1fr) 340px; align-items: start; }
+.grade-layout > * { min-width: 0; }
+.grade-queue { overflow: hidden; }
+.grade-panel { position: sticky; top: 80px; max-height: calc(100dvh - 96px); overflow-y: auto; }
+@media (max-width: 1279px) {
+  .grade-layout { grid-template-columns: 280px minmax(0, 1fr); }
+  .grade-queue { grid-row: span 2; }
+  .grade-panel { position: static; max-height: none; grid-column: 2; }
+}
+@media (max-width: 899px) {
+  .grade-layout { grid-template-columns: minmax(0, 1fr); }
+  .grade-queue { grid-row: auto; }
+  .grade-panel { grid-column: 1; }
+}
+.grade-jump { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.grade-jump button { border: 1px solid #000; background: #fff; padding: 2px 10px; cursor: pointer; }
+.grade-jump button[data-open="true"] { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.grade-item { border: 1px solid #000; background: #fff; padding: 14px 16px; display: grid; gap: 10px; scroll-margin-top: 90px; }
+.grade-item[data-review="true"] { border-left: 6px solid var(--color-accent); }
+.grade-answer { background: var(--color-subtle); padding: 8px 10px; }
+.grade-score { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }
+@media (max-width: 599px) { .grade-score { grid-template-columns: minmax(0, 1fr); } }
+.grade-compare { display: grid; gap: 0; border: 1px solid #000; }
+.grade-compare > div { padding: 10px 12px; border-bottom: 1px solid #000; }
+.grade-compare > div:last-child { border-bottom: 0; }
+.grade-compare .big { font-size: 1.6rem; line-height: 1.1; font-variant-numeric: tabular-nums lining-nums; }
+.grade-actions { display: grid; gap: 8px; }
+@media (max-width: 899px) { .grade-actions { position: sticky; bottom: 0; background: #fff; padding: 10px 0; border-top: 1px solid #000; z-index: 5; } }
+.grade-id { font-family: var(--font-mono, monospace); }

@@ -14,6 +14,10 @@ public class SessionController {
     @GetMapping("/{id}/internal/answers") public SessionService.SessionDetailDto internal(@PathVariable UUID id){return service.getSessionDetails(id);}
     @GetMapping("/{id}/internal/owner") public UUID owner(@PathVariable UUID id){return service.owner(id);}
     @GetMapping("/exam/{id}/internal/eligibility") public Eligibility eligibility(@PathVariable UUID id,@RequestParam UUID user){return new Eligibility(service.attempts(id,user),service.resumable(id,user));}
+    @GetMapping("/exam/{id}/internal/started") public boolean started(@PathVariable UUID id){return service.hasStarted(id);}
+    @GetMapping("/exam/{id}/internal/availability") public SessionService.ScheduleAvailability availability(@PathVariable UUID id,@RequestParam UUID user){return service.availability(id,user);}
+    @GetMapping("/exam/{id}/internal/recipient-progress") public List<SessionService.RecipientProgress> recipientProgress(@PathVariable UUID id,@RequestParam List<UUID> userIds){return service.recipientProgress(id,userIds);}
+    @GetMapping("/exam/{examId}/internal/start-admissions/{admissionId}") public SessionService.AdmissionStatus admissionStatus(@PathVariable UUID examId,@PathVariable UUID admissionId){return service.admissionStatus(examId,admissionId);}
     public record Eligibility(long attempts,boolean resumable){}
     public record Answer(String content){}
 }

@@ -28,7 +28,9 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             "X-User-Email",
             "X-User-Role",
             "X-User-Persona",
-            "X-System-Privilege"
+            "X-System-Privilege",
+            "X-Service-Token",
+            "X-Question-Owner-Id"
     );
     private static final Set<String> PUBLIC_AUTH_PATHS = Set.of(
             "/auth/login", "/auth/register", "/auth/refresh",
@@ -48,6 +50,11 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
     @Override
     public GatewayFilter apply(Config config) {
         return (exchange, chain) -> {
+            // Internal APIs are reached on the service network, never through this public gateway.
+            if (isInternalOrAmbiguousPath(exchange)) {
+                exchange.getResponse().setStatusCode(HttpStatus.NOT_FOUND);
+                return exchange.getResponse().setComplete();
+            }
             ServerWebExchange sanitized = stripIdentityHeaders(exchange);
             if (isPublicAuthRequest(exchange)) {
                 return chain.filter(sanitized);
@@ -75,6 +82,16 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
                 return unauthorized(exchange);
             }
         };
+    }
+
+    private boolean isInternalOrAmbiguousPath(ServerWebExchange exchange) {
+        String path = exchange.getRequest().getURI().getPath();
+        // Reject another encoding layer; downstream decoding must not reveal a hidden internal route.
+        if (path.contains("%")) return true;
+        for (String segment : path.replace('\\', '/').split("/")) {
+            if ("internal".equalsIgnoreCase(segment.split(";", 2)[0])) return true;
+        }
+        return false;
     }
 
     private ServerWebExchange stripIdentityHeaders(ServerWebExchange exchange) {

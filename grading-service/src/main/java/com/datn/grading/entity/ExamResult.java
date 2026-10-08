@@ -5,9 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -40,9 +38,8 @@ public class ExamResult {
     @Column(nullable = false, length = 20)
     private Status status;
 
-    @CreationTimestamp
-    @Column(name = "graded_at", updatable = false)
-    private LocalDateTime gradedAt;
+    @Column(name = "graded_at")
+    private Instant gradedAt;
 
     @OneToMany(mappedBy = "examResult", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
@@ -51,9 +48,17 @@ public class ExamResult {
     private Float maxScore;
     private String examTitle;
     @Column(columnDefinition="TEXT") private String feedback;
-    private java.time.LocalDateTime submittedAt;
+    private Instant submittedAt;
     private Integer durationSeconds;
+    @Column(nullable=false) @Builder.Default private int attemptNumber=1;
+    @Column(nullable=false) @Builder.Default private int pendingManualItemCount=0;
     private UUID gradedBy;
+    @Column(nullable=false) @Builder.Default private long resultRevision=1;
+    private Long releasedRevision;
+    private Float releasedScore;
+    @Column(columnDefinition="TEXT") private String pendingPublicReason;
+    @Column(columnDefinition="TEXT") private String pendingPrivateAuditNote;
+    @Column(nullable=false,length=16) @Builder.Default private String gradingMode="AUTO";
     public enum Status {
         PENDING, NEEDS_REVIEW, GRADED
     }

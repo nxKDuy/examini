@@ -1,114 +1,158 @@
-import { useState, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiError, questionBankApi, type Filters, type Question, type ImportResult } from './questionApi'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BookOpenCheck, FileUp, Plus } from 'lucide-react'
+import { questionBankApi, type Filters, type ImportResult, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
-import QuestionModal from './QuestionModal'
+import { audienceOf } from '../../components/layout/navigation'
+import { QuestionStatusBadge } from '../../components/status'
+import { Dialog } from '../../components/Dialog'
+import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
+import { errorText } from '../../lib/errors'
+import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime, shortId } from '../../lib/format'
+import SubjectCategoryFields from './SubjectCategoryFields'
+import QuestionDetail from './QuestionDetail'
+import QuestionEditor from './QuestionEditor'
 
-const statuses = ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']
-const types = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY']
-const methods = ['MANUAL', 'IMPORT', 'AI_GENERATED', 'COPIED']
-const sources = ['NONE', 'USER_DOCUMENT', 'EXTERNAL_WEB', 'ORGANIZATION_BANK', 'PUBLIC_BANK', 'SYSTEM_BANK']
-const labels: Record<string, string> = { DRAFT: 'Bản nháp', PENDING_REVIEW: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối', ARCHIVED: 'Lưu trữ', MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó', MANUAL: 'Thủ công', IMPORT: 'Import CSV' }
-function Badge({ status }: { status: string }) { return <span className={`badge ${status === 'APPROVED' ? 'badge-green' : status === 'REJECTED' ? 'badge-yellow' : 'badge-gray'}`}>{labels[status] ?? status}</span> }
-function QuestionContent({ question }: { question: Question }) {
-  return <div>
-    <p style={{ whiteSpace: 'pre-wrap' }}>{question.content}</p>
-    <ol type="A">{question.options.map(o => <li key={o.id}>{o.content}{o.correct === true && <strong> ✓ Đúng</strong>}</li>)}</ol>
-    {question.expectedAnswer && <p style={{ whiteSpace: 'pre-wrap' }}><strong>Đáp án / hướng dẫn chấm:</strong> {question.expectedAnswer}</p>}
-    <p>Phương thức: {labels[question.creationMethod] ?? question.creationMethod} · Nguồn: {question.sourceType}</p>
-    {question.sourceLabel && <p>{question.sourceLabel}</p>}
-    {question.sourceRefId && <p>Tham chiếu: {question.sourceRefId}</p>}
-    {question.sourceUrl && <p>{/^https?:\/\//i.test(question.sourceUrl) ? <a href={question.sourceUrl} target="_blank" rel="noreferrer">{question.sourceUrl}</a> : question.sourceUrl}</p>}
-    {question.sourceExcerpt && <blockquote style={{ whiteSpace: 'pre-wrap' }}>{question.sourceExcerpt}</blockquote>}
-  </div>
-}
+const TABS: { value: string; label: string }[] = [
+  { value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'PENDING_REVIEW', label: 'Chờ duyệt' },
+  { value: 'APPROVED', label: 'Đã duyệt' }, { value: 'REJECTED', label: 'Bị từ chối' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' },
+]
+
 export default function QuestionListPage() {
-  const qc = useQueryClient(), user = useAuthStore(s => s.user)
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [subjectId, setSubjectId] = useState(''), [filters, setFilters] = useState<Filters>({ page: 0 })
-  const [selectedId, setSelectedId] = useState(''), [modal, setModal] = useState<'create' | 'edit' | null>(null)
-  const [reviewNote, setReviewNote] = useState(''), [message, setMessage] = useState('')
-  const [importCategory, setImportCategory] = useState(''), [importResult, setImportResult] = useState<ImportResult | null>(null)
-  const author = user?.role === 'ADMIN' || user?.role === 'TEACHER'
-  const subjects = useQuery({ queryKey: ['subjects'], queryFn: questionBankApi.getSubjects })
-  const categories = useQuery({ queryKey: ['categories', subjectId], queryFn: () => questionBankApi.getCategories(subjectId), enabled: !!subjectId })
-  const list = useQuery({ queryKey: ['questions', user?.id, filters], queryFn: () => questionBankApi.getQuestions(filters) })
-  const detail = useQuery({ queryKey: ['question', user?.id, author, selectedId], queryFn: () => questionBankApi.getQuestion(selectedId, author), enabled: !!selectedId })
-  const versions = useQuery({ queryKey: ['versions', user?.id, author, selectedId, detail.data?.questionVersion], queryFn: () => questionBankApi.getVersions(selectedId, author), enabled: !!detail.data })
-  const reviews = useQuery({ queryKey: ['reviews', user?.id, selectedId, detail.data?.status], queryFn: () => questionBankApi.getReviews(selectedId), enabled: !!detail.data })
-  const q = detail.data, owns = !!q && author && q.createdBy === user?.id
-  const action = useMutation({
-    mutationFn: async (kind: 'submit' | 'approve' | 'reject' | 'archive') => {
-      if (!q) return
-      if (kind === 'submit') return questionBankApi.submitReview(q)
-      if (kind === 'archive') { await questionBankApi.archive(q); return }
-      return questionBankApi.review(q, kind === 'approve' ? 'APPROVED' : 'REJECTED', reviewNote)
-    },
-    onSuccess: async () => { setMessage('Đã cập nhật trạng thái.'); setReviewNote(''); await qc.invalidateQueries({ queryKey: ['questions'] }); await qc.invalidateQueries({ queryKey: ['question'] }); await qc.invalidateQueries({ queryKey: ['reviews'] }) },
-    onError: e => setMessage(apiError(e)),
-  })
-  const importMut = useMutation({
-    mutationFn: (file: File) => questionBankApi.importCsv(file, importCategory),
-    onSuccess: async r => { setImportResult(r); setMessage('Import hoàn tất; các câu hỏi mới ở DRAFT.'); await qc.invalidateQueries({ queryKey: ['questions'] }) },
-    onError: e => setMessage(apiError(e)),
-  })
-  function filter(key: keyof Filters, value: string) { setFilters(f => ({ ...f, [key]: value || undefined, page: 0 })) }
-  return <div style={{ display: 'grid', gap: 20 }}>
-    <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-      <div><h1>Ngân hàng câu hỏi</h1><p>{list.data?.totalElements ?? 0} câu hỏi · Chỉ câu hỏi đã duyệt được dùng trong Exam.</p></div>
-      {author && <button className="btn-primary" onClick={() => setModal('create')}>Thêm câu hỏi</button>}
-    </header>
-    <section className="clean-card" aria-label="Bộ lọc" style={{ padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-      <label>Môn học<select className="input-field" value={subjectId} onChange={e => { setSubjectId(e.target.value); filter('categoryId', ''); setImportCategory('') }}><option value="">Chọn môn học</option>{subjects.data?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-      <label>Danh mục<select className="input-field" value={filters.categoryId ?? ''} disabled={!subjectId} onChange={e => filter('categoryId', e.target.value)}><option value="">Tất cả</option>{categories.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-      {([['difficulty', 'Độ khó', ['EASY','MEDIUM','HARD']], ['questionType', 'Loại câu hỏi', types], ['status', 'Trạng thái', statuses], ['creationMethod', 'Phương thức', methods], ['sourceType', 'Loại nguồn', sources]] as [keyof Filters, string, string[]][]).map(([key, label, values]) =>
-        <label key={key}>{label}<select className="input-field" value={String(filters[key] ?? '')} onChange={e => filter(key, e.target.value)}><option value="">Tất cả</option>{values.map(v => <option key={v} value={v}>{labels[v] ?? v}</option>)}</select></label>)}
-      <label>Tìm nội dung<input className="input-field" type="search" maxLength={200} value={filters.text ?? ''} onChange={e => filter('text', e.target.value)}/></label>
-    </section>
-    {author && <section className="clean-card" aria-label="Import CSV" style={{ padding: 16 }}>
-      <label>Danh mục import<select className="input-field" value={importCategory} onChange={e => setImportCategory(e.target.value)}><option value="">Chọn danh mục</option>{categories.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-      <input ref={fileRef} type="file" aria-label="CSV" accept=".csv" hidden onChange={e => { const file = e.target.files?.[0]; if (file) { setImportResult(null); importMut.mutate(file) } e.target.value = '' }}/>
-      <button className="btn-secondary" disabled={!importCategory || importMut.isPending} onClick={() => fileRef.current?.click()}>{importMut.isPending ? 'Đang import…' : 'Import CSV'}</button>
-      <p>Header: content,type,difficulty,source,option1,correct1,option2,correct2 (true/false). Trả lời ngắn/tự luận dùng expectedAnswer; có thể thêm sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt.</p>
-      {importResult && <div role="status"><p>{importResult.imported}/{importResult.totalRows} thành công · {importResult.failed} lỗi</p><ul>{importResult.errors.map((e, i) => <li key={i}>{e}</li>)}</ul></div>}
-    </section>}
-    {message && <p role="status">{message}</p>}
-    {(subjects.isError || categories.isError) && <p role="alert">Không tải được môn học/danh mục.</p>}
-    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      <section className="clean-card" aria-label="Danh sách câu hỏi" style={{ flex: '1 1 300px', padding: 16, display: 'grid', gap: 12 }}>
-        {list.isLoading && <p>Đang tải…</p>}{list.isError && <p role="alert">{apiError(list.error)}</p>}
-        {!list.isLoading && list.data?.content.length === 0 && <p>Không tìm thấy câu hỏi.</p>}
-        {list.data?.content.map(item => <button key={item.id} className="btn-secondary" aria-pressed={selectedId === item.id} style={{ display: 'block', textAlign: 'left', whiteSpace: 'normal', padding: 16 }} onClick={() => { setSelectedId(item.id); setReviewNote(''); setMessage('') }}>
-          <Badge status={item.status}/> <span>{labels[item.questionType]} · {labels[item.difficultyLevel]} · v{item.questionVersion}</span><p>{item.content}</p>
-        </button>)}
-        <nav aria-label="Phân trang" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button className="btn-secondary" disabled={(filters.page ?? 0) === 0} onClick={() => setFilters(f => ({ ...f, page: (f.page ?? 0) - 1 }))}>Trước</button>
-          <span>{(filters.page ?? 0) + 1} / {Math.max(1, list.data?.totalPages ?? 1)}</span>
-          <button className="btn-secondary" disabled={(filters.page ?? 0) + 1 >= (list.data?.totalPages ?? 0)} onClick={() => setFilters(f => ({ ...f, page: (f.page ?? 0) + 1 }))}>Sau</button>
-        </nav>
-      </section>
-      <section className="clean-card" aria-label="Chi tiết câu hỏi" style={{ flex: '2 1 420px', padding: 24, minWidth: 0 }}>
-        {detail.isLoading && <p>Đang tải chi tiết…</p>}{detail.isError && <p role="alert">{apiError(detail.error)}</p>}
-        {!selectedId && <p>Chọn một câu hỏi để xem chi tiết.</p>}
-        {q && <><h2>Chi tiết câu hỏi · v{q.questionVersion}</h2><Badge status={q.status}/><p>{q.categoryName} · PERSONAL · cập nhật {new Date(q.updatedAt).toLocaleString('vi-VN')}</p>
-          <QuestionContent question={q}/>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            {owns && ['DRAFT','REJECTED','APPROVED'].includes(q.status) && <button className="btn-secondary" disabled={action.isPending} onClick={() => setModal('edit')}>Sửa / tạo phiên bản mới</button>}
-            {owns && q.status === 'DRAFT' && <button className="btn-primary" disabled={action.isPending} onClick={() => action.mutate('submit')}>Gửi duyệt</button>}
-            {owns && q.status !== 'ARCHIVED' && <button className="btn-secondary" disabled={action.isPending} onClick={() => { if (confirm('Lưu trữ câu hỏi? Câu hỏi sẽ không còn đủ điều kiện cho Exam.')) action.mutate('archive') }}>Lưu trữ</button>}
+  const user = useAuthStore(s => s.user)
+  const admin = audienceOf(user) === 'ADMIN'
+  const [subjectId, setSubjectId] = useState('')
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<Filters>({ page: 0, status: admin ? 'PENDING_REVIEW' : undefined })
+  const [selectedId, setSelectedId] = useState('')
+  const [editing, setEditing] = useState<Question | null | 'new'>(null)
+  const [importing, setImporting] = useState(false)
+  const detailRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setFilters(f => (f.text ?? '') === search.trim() ? f : { ...f, text: search.trim() || undefined, page: 0 }), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const list = useQuery({ queryKey: ['questions', user?.id, filters], queryFn: () => questionBankApi.getQuestions(filters), placeholderData: prev => prev })
+  const set = (key: keyof Filters, value: string) => setFilters(f => ({ ...f, [key]: value || undefined, page: 0 }))
+
+  function select(id: string) {
+    setSelectedId(id)
+    setTimeout(() => { const top = detailRef.current?.getBoundingClientRect().top ?? 0; if (top < 64 || top > window.innerHeight - 120) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 50)
+  }
+
+  return (
+    <div className="stack">
+      <PageHeader
+        title={admin ? 'Duyệt câu hỏi' : 'Ngân hàng câu hỏi'}
+        description={admin
+          ? 'Phê duyệt hoặc từ chối câu hỏi giáo viên gửi duyệt. Chỉ câu hỏi Đã duyệt được dùng trong đề thi.'
+          : 'Câu hỏi cá nhân của bạn. Soạn ở Bản nháp, gửi duyệt; chỉ câu hỏi Đã duyệt được dùng trong đề thi.'}
+        actions={!admin && <>
+          <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> Nhập CSV</button>
+          <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> Tạo câu hỏi</button>
+        </>} />
+
+      <section className="card" aria-label="Bộ lọc câu hỏi">
+        <div className="tabs" role="tablist" aria-label="Trạng thái">
+          {TABS.map(t => (
+            <button key={t.value} type="button" role="tab" className="tab" aria-selected={(filters.status ?? '') === t.value} onClick={() => set('status', t.value)}>{t.label}</button>
+          ))}
+        </div>
+        <div className="card-body" style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', paddingTop: 16, paddingBottom: 16 }}>
+          <SubjectCategoryFields allowAll subjectId={subjectId} categoryId={filters.categoryId ?? ''} onSubject={setSubjectId} onCategory={v => set('categoryId', v)} />
+          <div className="field">
+            <label className="field-label" htmlFor="f-type">Loại</label>
+            <select id="f-type" className="input" value={filters.questionType ?? ''} onChange={e => set('questionType', e.target.value)}>
+              <option value="">Tất cả loại</option>
+              {Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
           </div>
-          {user?.role === 'ADMIN' && q.status === 'PENDING_REVIEW' && <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
-            <label>Ghi chú duyệt<textarea className="input-field" maxLength={5000} value={reviewNote} onChange={e => setReviewNote(e.target.value)}/></label>
-            <div style={{ display: 'flex', gap: 12 }}><button className="btn-primary" disabled={action.isPending} onClick={() => action.mutate('approve')}>Phê duyệt</button><button className="btn-secondary" disabled={action.isPending || !reviewNote.trim()} onClick={() => action.mutate('reject')}>Từ chối</button></div>
-          </div>}
-          <h3>Lịch sử duyệt</h3>{reviews.isError && <p role="alert">Không tải được lịch sử duyệt.</p>}
-          {reviews.data?.length === 0 && <p>Chưa có quyết định duyệt.</p>}
-          {reviews.data?.map(r => <p key={r.id}>v{r.questionVersion} · {labels[r.decision]} · {new Date(r.reviewedAt).toLocaleString('vi-VN')} · người duyệt {r.reviewerId}<br/>{r.reviewNote}</p>)}
-          <h3>Lịch sử phiên bản</h3>{versions.isError && <p role="alert">Không tải được lịch sử phiên bản.</p>}
-          {versions.data?.map(v => <details key={v.versionNumber}><summary>v{v.versionNumber} · {new Date(v.createdAt).toLocaleString('vi-VN')} · người sửa {v.changedBy}</summary><QuestionContent question={v.question}/></details>)}
-        </>}
+          <div className="field">
+            <label className="field-label" htmlFor="f-diff">Độ khó</label>
+            <select id="f-diff" className="input" value={filters.difficulty ?? ''} onChange={e => set('difficulty', e.target.value)}>
+              <option value="">Tất cả độ khó</option>
+              {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="f-text">Tìm trong nội dung</label>
+            <input id="f-text" type="search" className="input" maxLength={200} value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+        </div>
       </section>
+
+      <div className="split">
+        <section className="card" aria-label="Danh sách câu hỏi" style={{ overflow: 'hidden' }}>
+          <div className="card-header"><h2 className="small" style={{ fontSize: '0.9375rem' }}>{list.data ? `${list.data.totalElements} câu hỏi` : 'Câu hỏi'}</h2>
+            {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">Đang cập nhật…</span>}</div>
+          {list.isLoading ? <LoadingState rows={6} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+            : list.data!.content.length === 0
+              ? <EmptyState icon={<BookOpenCheck size={30} />} title={admin && filters.status === 'PENDING_REVIEW' ? 'Không có câu hỏi chờ duyệt' : 'Không có câu hỏi phù hợp'}
+                  description={admin ? 'Câu hỏi giáo viên gửi duyệt sẽ xuất hiện ở đây.' : 'Đổi bộ lọc hoặc tạo câu hỏi mới.'}
+                  action={!admin && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><Plus size={14} aria-hidden /> Tạo câu hỏi</button>} />
+              : <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {list.data!.content.map(item => (
+                    <li key={item.id}><button type="button" className="list-item" aria-current={selectedId === item.id} onClick={() => select(item.id)}>
+                      <div className="row" style={{ marginBottom: 6 }}>
+                        <QuestionStatusBadge status={item.status} />
+                        <span className="xsmall muted">{QUESTION_TYPE_LABEL[item.questionType]} · {DIFFICULTY_LABEL[item.difficultyLevel]} · v{item.questionVersion}</span>
+                      </div>
+                      <div className="truncate-2 small" style={{ color: 'var(--color-ink)' }}>{item.content}</div>
+                      <div className="xsmall muted" style={{ marginTop: 4 }}>
+                        {item.createdBy === user?.id ? 'Của bạn' : `Tác giả ${shortId(item.createdBy)}`} · {formatDateTime(item.updatedAt)}
+                      </div>
+                    </button></li>
+                  ))}
+                </ul>}
+          {list.data && <Pagination label="Phân trang câu hỏi" page={filters.page ?? 0} totalPages={list.data.totalPages} onChange={p => setFilters(f => ({ ...f, page: p }))} />}
+        </section>
+
+        <section ref={detailRef} className="card card-body sticky-pane" aria-label="Chi tiết câu hỏi" style={{ minHeight: 200 }}>
+          {selectedId ? <QuestionDetail key={selectedId} id={selectedId} onEdit={q => setEditing(q)} />
+            : <EmptyState title="Chọn một câu hỏi" description="Chi tiết, đáp án, lịch sử duyệt và lịch sử phiên bản sẽ hiển thị ở đây." />}
+        </section>
+      </div>
+
+      {editing && <QuestionEditor initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
+        onSaved={q => { setEditing(null); setSelectedId(q.id) }} />}
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
     </div>
-    {modal && <QuestionModal categories={categories.data ?? []} initialData={modal === 'edit' ? q : null} onClose={() => setModal(null)}/>}
-  </div>
+  )
+}
+
+function ImportDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const [subjectId, setSubjectId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [result, setResult] = useState<ImportResult | null>(null)
+  const run = useMutation({
+    mutationFn: () => questionBankApi.importCsv(file!, categoryId),
+    onSuccess: async r => { setResult(r); await qc.invalidateQueries({ queryKey: ['questions'] }) },
+  })
+  return (
+    <Dialog title="Nhập câu hỏi từ CSV" onClose={onClose} busy={run.isPending}
+      description="Câu hỏi nhập vào ở trạng thái Bản nháp. Tối đa 1000 dòng, 10MB."
+      footer={<>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={run.isPending}>{result ? 'Đóng' : 'Hủy'}</button>
+        <button type="button" className="btn btn-primary" disabled={!file || !categoryId || run.isPending} onClick={() => run.mutate()}>{run.isPending ? 'Đang nhập…' : 'Nhập'}</button>
+      </>}>
+      <div className="stack">
+        <div className="grid-2"><SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={setSubjectId} onCategory={setCategoryId} required /></div>
+        <div className="field">
+          <label className="field-label" htmlFor="csv-file">Tệp CSV</label>
+          <input id="csv-file" type="file" accept=".csv,text/csv" className="input" onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }} />
+          <span className="field-hint">Cột bắt buộc: content, type, difficulty. Lựa chọn: option1, correct1, option2, correct2… (true/false). Trả lời ngắn và tự luận dùng cột expectedAnswer.</span>
+        </div>
+        {run.isError && <Notice tone="danger" live>{errorText(run.error)}</Notice>}
+        {result && (
+          <Notice tone={result.failed ? 'warning' : 'success'} live title={`Đã nhập ${result.imported}/${result.totalRows} dòng${result.failed ? `, ${result.failed} dòng lỗi` : ''}`}>
+            {result.errors.length > 0 && <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{result.errors.slice(0, 20).map((e, i) => <li key={i}>{e}</li>)}</ul>}
+          </Notice>
+        )}
+      </div>
+    </Dialog>
+  )
 }

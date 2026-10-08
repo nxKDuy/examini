@@ -4,6 +4,8 @@ import { useAuthStore, validateAuthUser } from '../store/authStore'
 export const apiBaseURL = import.meta.env.VITE_API_BASE_URL || '/'
 const api = axios.create({ baseURL: apiBaseURL, headers: { 'Content-Type': 'application/json' } })
 const refreshClient = axios.create({ baseURL: apiBaseURL })
+export const revokePushSubscription = (token: string, id: string) =>
+  refreshClient.delete(`/notifications/push/subscriptions/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
 export const revokeSession = (token: string) => refreshClient.post('/auth/logout', null, { headers: { Authorization: `Bearer ${token}` } })
 let refreshFlight: { token: string; promise: Promise<string> } | null = null
 const isPublicAuth = (url = '') => /\/auth\/(login|register|refresh|logout)(?:\?|$)/.test(url)

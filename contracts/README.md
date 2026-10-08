@@ -6,9 +6,11 @@ the coordination baseline, not newly implemented endpoints.
 
 | Document | Purpose |
 | --- | --- |
+| [Lifecycle và eligibility mới](question-bank-lifecycle.md) | Quyết định bank-aware thay APPROVED-only toàn cục |
 | [Question Bank API](question-bank-api.md) | Actual provider routes/DTOs and required approved selection/version capabilities |
 | [Exam integration](exam-integration.md) | Consumers, lifecycle ownership, immutable publication and security boundaries |
 | [Events](events.md) | Current submission message and proposed reliability requirements |
+| [Notification](notification.md) | In-app notification API, proposed `examini.events` envelope and producer Contract Requests |
 | [Contract Request template](CONTRACT_REQUEST_TEMPLATE.md) | Foreign-domain capability and blocker requests |
 | [Integration acceptance](integration-checklist.md) | Expected MVP path and reproducibility/security checks |
 | [Notification / Reporting decisions](notification-reporting-decisions.md) | MAIN-approved event transport, permission scope and consumer review gates |

@@ -18,6 +18,11 @@ spring:
           predicates:
             - Path=/auth/**
 
+        - id: organization-service
+          uri: lb://organization-service
+          predicates:
+            - Path=/organizations/**
+
         - id: question-bank-service
           uri: lb://question-bank-service
           predicates:
@@ -42,6 +47,11 @@ spring:
           uri: lb://analytics-service
           predicates:
             - Path=/analytics/**
+
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/notifications/**
 
         - id: exam-session-ws
           uri: lb:ws://exam-session-service

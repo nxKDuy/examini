@@ -26,6 +26,7 @@ inferring them from these branch names. See `contracts/README.md`.
 | MAIN / SHARED | `contracts/**`, `WORKTREE_RULES.md`, `AGENTS.md`, repository integration/architecture documentation and protected configuration below | Cross-domain contracts, repository rules, architecture decisions, genuinely shared configuration, cross-domain conflict resolution. Do not implement Question Bank or Exam Taking feature logic here. |
 | Question Bank | `question-bank-service/**`; migrations under Question Bank | Question, QuestionType, Difficulty, QuestionStatus, QuestionSource, QuestionVersion, QuestionReview, approval workflow, source provenance, import and filtering; provider APIs for other domains. Do not edit Exam Taking internals. |
 | Exam Taking | `exam-service/**`, `exam-session-service/**`, `grading-service/**`; migrations under those services | Exam, ExamQuestion, ExamSession, Answer, Submission, GradingResult, timer, submit, auto/manual grading and results. Consume Question Bank public APIs; do not change its entities, persistence or lifecycle. |
+| Organization (`feature/organization-domain`) | `organization-service/**`; its own migrations | Organization lifecycle, membership, roles, invitations and Organization permission decisions. Reuse Auth user identity; no foreign database access. Question Bank owns contributions/publications; Organization exposes their authorization contract. |
 | Frontend App (`frontend/app`) | `frontend/**` | Phase 1 frontend product development, application UI, shared frontend runtime/configuration, API integration and UI validation. Backend implementation is read-only; request missing contracts from their provider and MAIN. |
 
 For ongoing Phase 1 UI work, Frontend App owns all frontend files, including
@@ -84,9 +85,14 @@ Question lifecycle is owned by Question Bank. Exam, Session and Grading each own
 their lifecycle. Do not introduce one global `Status` enum. See the current and
 required statuses in `contracts/exam-integration.md`.
 
-Official (`EXAM` in current backend) publication requires APPROVED questions
-only, and a published exam must remain immutable against later Question Bank
-edits. These are required invariants, not guarantees of the current code.
+Question lifecycle and bank publication/review lifecycle are separate. Personal
+questions use DRAFT/ACTIVE/ARCHIVED and require no review. Public publication is
+direct and does not require verification. Organization contributions require
+review; System management requires explicit system authority, never TEACHER
+persona alone. Exam eligibility is bank-aware: active accessible Personal/System,
+published accessible Public, or approved accessible Organization publication.
+The provider must verify access and eligibility; a published exam must remain
+immutable against later Question Bank edits. See contracts/question-bank-lifecycle.md.
 
 ## Communication and blockers
 

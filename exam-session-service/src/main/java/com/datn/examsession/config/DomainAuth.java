@@ -23,6 +23,11 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Duplicate authentication headers");
         // Authorize the mapped controller route, not the raw/percent-encoded URL.
         String mapped=String.valueOf(req.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE));
+        if(isScheduleInternal(mapped)) {
+            if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Internal service authentication required");
+            return true;
+        }
         boolean internal=mapped.matches("/exams/[^/]+/internal/(start|safe|grading|permission)|/sessions/[^/]+/internal/(answers|owner)|/sessions/exam/[^/]+/internal/eligibility");
         if(internal) {
             if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
@@ -37,5 +42,8 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             if(mapped.endsWith("/monitor") && "STUDENT".equals(role))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Teacher role required");
             req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}
+    }
+    private boolean isScheduleInternal(String path) {
+        return path.matches("/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+)");
     }
 }

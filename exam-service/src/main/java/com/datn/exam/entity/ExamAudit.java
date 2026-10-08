@@ -7,7 +7,7 @@ import java.util.UUID;
 public class ExamAudit {
     @Id private UUID id;
     @Column(nullable=false) private UUID examId;
-    @Column(nullable=false) private UUID actorUserId;
+    @Column private UUID actorUserId;
     @Column(nullable=false) private String action;
     @Column(nullable=false) private Instant timestamp;
     @Column(columnDefinition="TEXT") private String metadata;
