@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class InternalServiceAuthenticationTest {
 
     private MockHttpServletResponse call(String configured, String path, String supplied) throws Exception {
-        var filter = new InternalServiceAuthentication(configured, "", "", new ObjectMapper());
+        var filter = new InternalServiceAuthentication(configured, "", "", "", new ObjectMapper());
         var request = new MockHttpServletRequest("POST", path);
         request.setContent("{\"userIds\":[]}".getBytes());
         if (supplied != null) request.addHeader("X-Service-Token", supplied);
@@ -46,7 +46,11 @@ class InternalServiceAuthenticationTest {
     }
 
     private int resolve(String contact, String org, String exam, String supplied) throws Exception {
-        var filter = new InternalServiceAuthentication(contact, org, exam, new ObjectMapper());
+        return resolve(contact, org, exam, "", supplied);
+    }
+
+    private int resolve(String contact, String org, String exam, String qb, String supplied) throws Exception {
+        var filter = new InternalServiceAuthentication(contact, org, exam, qb, new ObjectMapper());
         var request = new MockHttpServletRequest("POST", "/auth/internal/identities/resolve");
         request.setContent("{}".getBytes());
         if (supplied != null) request.addHeader("X-Service-Token", supplied);
@@ -64,5 +68,19 @@ class InternalServiceAuthenticationTest {
         assertEquals(200, resolve("c", "", "e", "e"));       // một consumer cấu hình riêng vẫn dùng được
         assertEquals(200, resolve("c", "o", "e", "o"));
         assertEquals(401, resolve("c", "o", "e", "c"));
+    }
+
+    @Test
+    void questionBankTokenIsDedicatedAndFailsClosedOnSharing() throws Exception {
+        assertEquals(200, resolve("c", "o", "e", "q", "q"));
+        assertEquals(401, resolve("c", "o", "e", "q", "q2"));
+        assertEquals(401, resolve("c", "o", "e", "", ""));
+        assertEquals(401, resolve("c", "o", "e", "q", "c"));
+        assertEquals(401, resolve("c", "o", "q", "q", "q"));   // qb == exam
+        assertEquals(401, resolve("c", "q", "e", "q", "q"));   // qb == org
+        assertEquals(401, resolve("q", "o", "e", "q", "q"));   // qb == contact
+        assertEquals(200, resolve("c", "o", "q", "q2", "q"));
+        assertEquals(200, resolve("c", "o", "e", "q", "q"));
+        assertEquals(401, call("c", "/auth/internal/contacts", "q").getStatus());
     }
 }

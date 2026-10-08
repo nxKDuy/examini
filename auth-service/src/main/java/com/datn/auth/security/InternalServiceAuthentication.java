@@ -44,11 +44,12 @@ public class InternalServiceAuthentication extends OncePerRequestFilter {
     public InternalServiceAuthentication(@Value("${auth.internal.notification-contact-token:}") String contactToken,
                                          @Value("${auth.internal.organization-identity-token:}") String organizationToken,
                                          @Value("${auth.internal.exam-identity-token:}") String examToken,
+                                         @Value("${auth.internal.question-bank-identity-token:}") String questionBankToken,
                                          ObjectMapper json) {
         this.contactToken = contactToken.isBlank() ? null : contactToken.getBytes(StandardCharsets.UTF_8);
         // Credential trống hoặc dùng chung với credential khác (cấu hình nhầm) bị vô hiệu: fail closed.
-        List<String> candidates = List.of(contactToken, organizationToken, examToken);
-        this.identityTokens = List.of(organizationToken, examToken).stream()
+        List<String> candidates = List.of(contactToken, organizationToken, examToken, questionBankToken);
+        this.identityTokens = List.of(organizationToken, examToken, questionBankToken).stream()
                 .filter(t -> !t.isBlank() && Collections.frequency(candidates, t) == 1)
                 .map(t -> t.getBytes(StandardCharsets.UTF_8))
                 .toList();

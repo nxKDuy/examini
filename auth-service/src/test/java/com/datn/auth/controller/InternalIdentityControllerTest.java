@@ -27,11 +27,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(value = {InternalIdentityController.class, InternalContactController.class}, properties = {
         "auth.internal.notification-contact-token=test-only-contact-token",
         "auth.internal.organization-identity-token=test-only-org-identity-token",
-        "auth.internal.exam-identity-token=test-only-exam-identity-token"})
+        "auth.internal.exam-identity-token=test-only-exam-identity-token",
+        "auth.internal.question-bank-identity-token=test-only-qb-identity-token"})
 @Import({SecurityConfig.class, InternalServiceAuthentication.class})
 class InternalIdentityControllerTest {
     private static final String ORG = "test-only-org-identity-token";
     private static final String EXAM = "test-only-exam-identity-token";
+    private static final String QB = "test-only-qb-identity-token";
     private static final String CONTACT = "test-only-contact-token";
     private static final UUID USER = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
@@ -60,7 +62,7 @@ class InternalIdentityControllerTest {
     void bothConsumerCredentialsReturnOnlyIdentityFields() throws Exception {
         when(identities.resolve(any())).thenReturn(
                 List.of(new IdentityDto.Identity(USER, "Student One", "s@example.test", "STUDENT")));
-        for (String token : List.of(ORG, EXAM)) {
+        for (String token : List.of(ORG, EXAM, QB)) {
             mvc.perform(resolve(ids(USER)).header("X-Service-Token", token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$[0].length()").value(4))
@@ -92,7 +94,7 @@ class InternalIdentityControllerTest {
 
     @Test
     void identityCredentialsDoNotOpenContactsRoute() throws Exception {
-        for (String token : List.of(ORG, EXAM)) {
+        for (String token : List.of(ORG, EXAM, QB)) {
             mvc.perform(post("/auth/internal/contacts").contentType("application/json")
                     .content(ids(USER)).header("X-Service-Token", token)).andExpect(status().isUnauthorized());
         }

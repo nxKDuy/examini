@@ -48,6 +48,7 @@ auth:
     # Credential riêng cho POST /auth/internal/identities/resolve; trống/trùng credential khác = bị vô hiệu.
     organization-identity-token: ${ORGANIZATION_IDENTITY_TOKEN:}
     exam-identity-token: ${EXAM_IDENTITY_TOKEN:}
+    question-bank-identity-token: ${QUESTION_BANK_IDENTITY_TOKEN:}
 
 springdoc:
   api-docs:
