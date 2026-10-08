@@ -18,7 +18,8 @@ public class OrganizationBankController {
  public OrganizationContributionResponse submit(@PathVariable UUID id,@Valid @RequestBody OrganizationContributionRequest body,HttpServletRequest r){return service.submit(id,body,actor(r));}
  @GetMapping("/organization-contributions")
  public Page<OrganizationContributionResponse> contributions(@RequestParam UUID bankId,@RequestParam(required=false) OrganizationContribution.ContributionStatus status,
-  @PageableDefault(size=20,sort="submittedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){return service.contributions(bankId,status,p,actor(r));}
+  @RequestParam(defaultValue="false") boolean mine,
+  @PageableDefault(size=20,sort="submittedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){return service.contributions(bankId,status,mine,p,actor(r));}
  @GetMapping("/organization-contributions/{id}")
  public OrganizationContributionResponse contribution(@PathVariable UUID id,@RequestParam(defaultValue="false") boolean includeAnswers,HttpServletRequest r){return service.contribution(id,includeAnswers,actor(r));}
  @PostMapping("/organization-contributions/{id}/review")

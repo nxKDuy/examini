@@ -12,7 +12,9 @@ public class BankDto {
     public record PublicReview(@NotNull QuestionReview.Decision decision,@Size(max=5000) String reviewNote) {}
     public record LineageResponse(UUID questionId,UUID sourceQuestionId,long sourceQuestionVersion,UUID sourceBankId,QuestionBank.BankType sourceBankType,UUID sourcePublicQuestionId,UUID sourceOrganizationQuestionId,LocalDateTime copiedAt,UUID copiedBy) {}
     public record ContributionResponse(UUID id,UUID sourceQuestionId,long sourceQuestionVersion,UUID sourceBankId,UUID sourceOwnerUserId,UUID submittedBy,LocalDateTime submittedAt,PublicContribution.VerificationStatus status,UUID reviewerId,String reviewNote,LocalDateTime reviewedAt,QuestionDto.QuestionProjection question) {}
-    public record PublicResponse(UUID id,UUID bankId,UUID sourceQuestionId,long sourceQuestionVersion,UUID sourceBankId,UUID sourceOwnerUserId,String publicationStatus,UUID publishedBy,LocalDateTime publishedAt,QuestionDto.SafeQuestionResponse question) {}
+    public record PublicResponse(UUID id,UUID bankId,UUID sourceQuestionId,long sourceQuestionVersion,UUID sourceBankId,UUID sourceOwnerUserId,
+        String sourceOwnerDisplayName,PublicQuestion.PublicationStatus publicationStatus,UUID publishedBy,LocalDateTime publishedAt,
+        UUID archivedBy,LocalDateTime archivedAt,QuestionDto.SafeQuestionResponse question) {}
     public record OrganizationContributionRequest(@NotNull UUID bankId,@Positive long sourceQuestionVersion) {}
     public record OrganizationContributionResponse(UUID id,UUID bankId,UUID sourceQuestionId,long sourceQuestionVersion,
         UUID sourceOwnerUserId,OrganizationContribution.ContributionStatus status,UUID reviewerId,String reviewNote,

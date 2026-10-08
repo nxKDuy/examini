@@ -43,7 +43,8 @@ public class ExamEligibilityService {
     var v=snapshots.get(id);if(v==null||v.getVersionNumber()!=q.getQuestionVersion())throw error(HttpStatus.CONFLICT,"Thiếu current snapshot");
     frozen=read(v.getSnapshot()).withContext(q.getStatus(),q.getUpdatedAt()).forExam(id,q.getBankId(),QuestionBank.BankType.valueOf(q.getScope().name()),null);
    } else if(pub.containsKey(id)) {
-    var p=pub.get(id);banks.requireRead(banks.get(p.getBankId()),actor);publicationKey(answers,actor);
+    var p=pub.get(id);if(p.getStatus()!=PublicQuestion.PublicationStatus.PUBLISHED)throw error(HttpStatus.CONFLICT,"PublicQuestion đã archive");
+    banks.requireRead(banks.get(p.getBankId()),actor);publicationKey(answers,actor);
     frozen=read(p.getSnapshot()).forExam(id,p.getBankId(),QuestionBank.BankType.PUBLIC,"PUBLISHED");
    } else if(org.containsKey(id)) {
     var p=org.get(id);banks.requireUse(p.getBankId(),actor);publicationKey(answers,actor);
@@ -65,7 +66,7 @@ public class ExamEligibilityService {
       ((q.scope='PERSONAL' AND q.created_by=:owner) OR q.scope='SYSTEM')
     UNION ALL
     SELECT p.id,p.bank_id,p.question_type,p.difficulty_level,p.snapshot::jsonb->>'categoryId'
-     FROM public_questions p
+     FROM public_questions p WHERE p.status='PUBLISHED'
     UNION ALL
     SELECT p.id,p.bank_id,p.question_type,p.difficulty_level,p.snapshot::jsonb->>'categoryId'
      FROM organization_questions p WHERE p.bank_id=CAST(:bank AS uuid)
