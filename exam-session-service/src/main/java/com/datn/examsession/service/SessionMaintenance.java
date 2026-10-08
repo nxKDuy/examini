@@ -1,4 +1,5 @@
 package com.datn.examsession.service;
+import com.datn.examsession.entity.AttemptEvent;
 import com.datn.examsession.entity.ExamSession;
 import com.datn.examsession.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -35,9 +36,7 @@ public class SessionMaintenance {
                 e.markGradingDelivered();
             }catch(Exception failure){log.warn("Attempt event grading leg pending for {}",e.getEventId());}
             if(!e.isPublicDelivered())try{
-                var envelope=new java.util.LinkedHashMap<String,Object>();
-                envelope.put("eventId",e.getEventId());envelope.put("type",e.getEventType());envelope.put("version",1);
-                envelope.put("occurredAt",e.getOccurredAt().toString());envelope.put("payload",json.readTree(e.getPayload()));
+                var envelope=envelope(e,json);
                 var props=new org.springframework.amqp.core.MessageProperties();
                 props.setContentType(org.springframework.amqp.core.MessageProperties.CONTENT_TYPE_JSON);
                 props.setDeliveryMode(org.springframework.amqp.core.MessageDeliveryMode.PERSISTENT);props.setMessageId(e.getEventId().toString());
@@ -48,5 +47,12 @@ public class SessionMaintenance {
                 e.markPublicDelivered();
             }catch(Exception failure){log.warn("Attempt event public leg pending for {}",e.getEventId());}
         }
+    }
+    /** Shared examini.events envelope: {eventId,eventType,eventVersion,occurredAt,payload} (same as exam-service and grading). */
+    static java.util.Map<String,Object> envelope(AttemptEvent e,com.fasterxml.jackson.databind.ObjectMapper json)throws com.fasterxml.jackson.core.JsonProcessingException{
+        var envelope=new java.util.LinkedHashMap<String,Object>();
+        envelope.put("eventId",e.getEventId());envelope.put("eventType",e.getEventType());envelope.put("eventVersion",1);
+        envelope.put("occurredAt",e.getOccurredAt().toString());envelope.put("payload",json.readTree(e.getPayload()));
+        return envelope;
     }
 }
