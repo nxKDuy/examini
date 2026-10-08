@@ -1,8 +1,8 @@
 # Organization → Question Bank authorization contract
 
-APPROVED contract cho batch 2026-10-08. Provider implementation `e0063b8` đang
-MAIN review/fix; chưa merge và chưa có runtime acceptance. Internal DTO dưới đây
-đã được review để QB adapter có thể triển khai và chạy contract tests độc lập.
+CURRENT provider `471b290` đã MAIN review và merge tại `5443123`.
+15 targeted tests PASS trên PostgreSQL thật (Flyway V1), gồm ba review fixes.
+Runtime consumer QB/Auth/RabbitMQ chưa được consolidated E2E xác minh.
 Public routes/DTO cuối cùng phải được provider handoff và MAIN review trước Frontend.
 Business scope: [parallel-participants-organization-scope.md](parallel-participants-organization-scope.md).
 

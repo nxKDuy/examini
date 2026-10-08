@@ -21,3 +21,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE DATABASE grading_db;
 CREATE DATABASE analytics_db;
 CREATE DATABASE notification_db;
+
+-- Organization giữ schema/database độc lập với Auth và Question Bank.
+CREATE DATABASE organization_db;

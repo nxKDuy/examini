@@ -21,6 +21,7 @@
         <module>eureka-server</module>
         <module>api-gateway</module>
         <module>auth-service</module>
+        <module>organization-service</module>
         <module>question-bank-service</module>
         <module>exam-service</module>
         <module>exam-session-service</module>
