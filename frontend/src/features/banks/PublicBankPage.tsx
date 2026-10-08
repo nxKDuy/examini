@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpenCheck, Search, Layers3, FileQuestion } from 'lucide-react'
 import './banks.css'
 import { bankApi, type PublicQuestion } from './bankApi'
 import BankPanel, { QuestionView } from './BankPanel'
-import { MAX_SEARCH, authorName, canForkPublic, canUnpublish, excerpt, isStatus, publicParams, publicationBadge } from './bankModel'
+import { MAX_SEARCH, applyPublicViewStats, authorName, canForkPublic, canUnpublish, excerpt, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
 import { audienceOf } from '../../components/layout/navigation'
 import { useAuthStore, hasPersona } from '../../store/authStore'
 import { Dialog } from '../../components/Dialog'
@@ -31,7 +31,7 @@ export default function PublicBankPage() {
   const categories = useQuery({ queryKey: ['banks', 'public-taxonomy', 'CATEGORY', categoryText, subjectId], queryFn: () => bankApi.publicTaxonomy('CATEGORY', categoryText, subjectId || undefined) })
   const ranking = sort === 'NEWEST' ? 'NEWEST' : `${sort}_${period}`
   const params = publicParams({ text: applied, questionType: type, difficulty, author: author?.id ?? '', page, mine: mineOnly, publicationStatus: mineOnly ? publicationStatus || undefined : undefined, subjectId, categoryId, postType, ranking })
-  const list = useQuery({ queryKey: ['banks', 'public', params], queryFn: () => bankApi.publicList(params), placeholderData: prev => prev })
+  const list = useQuery({ queryKey: ['banks', 'public', user?.id ?? 'anonymous', params], queryFn: () => bankApi.publicList(params), placeholderData: prev => prev })
   const items = list.data?.content ?? []
   const reset = (fn: () => void) => { fn(); setPage(0); setSelectedId(null) }
   function submit(e: FormEvent) { e.preventDefault(); reset(() => setApplied(text.trim())) }
@@ -94,20 +94,32 @@ function PublicCard({ post, active, onOpen, onAuthor }: { post: PublicQuestion; 
 
 function PublicPanel({ id, teacher, userId, narrow, onClose }: { id: string; teacher: boolean; userId: string | undefined; narrow: boolean; onClose: () => void }) {
   const qc = useQueryClient()
-  const detail = useQuery({ queryKey: ['banks', 'public-detail', id], queryFn: () => bankApi.publicGet(id), staleTime: Infinity, refetchOnWindowFocus: false, retry: false })
+  const detailKey = useMemo(() => publicDetailQueryKey(id, userId), [id, userId])
+  const detail = useQuery({ queryKey: detailKey, queryFn: () => bankApi.publicGet(id), staleTime: Infinity, refetchOnWindowFocus: false, retry: false })
   const p = detail.data
-  const [flash, setFlash] = useState<{tone:'success'|'danger';text:string}|null>(null), [confirm, setConfirm] = useState(false), [rating, setRating] = useState('')
-  const forkSingle = useMutation({ mutationFn: ({itemId, version}: {itemId?:string;version:number}) => itemId ? bankApi.publicForkItem(id,itemId,version) : bankApi.publicFork(id,version), onSuccess: async () => { setFlash({tone:'success',text:'Đã tạo bản sao độc lập dạng bản nháp trong kho cá nhân.'}); await qc.invalidateQueries({queryKey:['banks','public']}) }, onError: async e => { setFlash({tone:'danger',text:isStatus(e,409)?'Snapshot đã được gỡ hoặc thay đổi; hãy tải lại trước khi thử lại.':errorText(e)}); await detail.refetch() } })
-  const forkSet = useMutation({ mutationFn: () => bankApi.publicForkSet(id), onSuccess: async () => { setFlash({tone:'success',text:'Đã sao chép bộ vào kho cá nhân. Các câu được sao chép ở trạng thái bản nháp; kích hoạt câu rồi cập nhật bộ trước khi xuất bản lại.'}); await qc.invalidateQueries({queryKey:['banks','public']}) }, onError: async e => { setFlash({tone:'danger',text:isStatus(e,409)?'Snapshot đã được gỡ hoặc thay đổi; hãy tải lại trước khi thử lại.':errorText(e)}); await detail.refetch() } })
+  const [flash, setFlash] = useState<{tone:'success'|'danger';text:string}|null>(null), [confirm, setConfirm] = useState(false), [rating, setRating] = useState(''), [viewError, setViewError] = useState(false)
+  const forkSingle = useMutation({ mutationFn: ({itemId, version}: {itemId?:string;version:number}) => itemId ? bankApi.publicForkItem(id,itemId,version) : bankApi.publicFork(id,version), onSuccess: async () => { setFlash({tone:'success',text:'Đã tạo bản sao độc lập dạng bản nháp trong kho cá nhân.'}); await Promise.all([detail.refetch(), ...personalForkQueryKeys(userId, false).map(queryKey => qc.invalidateQueries({queryKey})), qc.invalidateQueries({queryKey:['banks','public']})]) }, onError: async e => { setFlash({tone:'danger',text:isStatus(e,409)?'Snapshot đã được gỡ hoặc thay đổi; hãy tải lại trước khi thử lại.':errorText(e)}); await detail.refetch() } })
+  const forkSet = useMutation({ mutationFn: () => bankApi.publicForkSet(id), onSuccess: async () => { setFlash({tone:'success',text:'Đã sao chép bộ vào kho cá nhân. Các câu được sao chép ở trạng thái bản nháp; kích hoạt câu rồi cập nhật bộ trước khi xuất bản lại.'}); await Promise.all([detail.refetch(), ...personalForkQueryKeys(userId, true).map(queryKey => qc.invalidateQueries({queryKey})), qc.invalidateQueries({queryKey:['banks','public']})]) }, onError: async e => { setFlash({tone:'danger',text:isStatus(e,409)?'Snapshot đã được gỡ hoặc thay đổi; hãy tải lại trước khi thử lại.':errorText(e)}); await detail.refetch() } })
   const unpublish = useMutation({ mutationFn: () => bankApi.publicUnpublish(id), onSuccess: async () => { setConfirm(false); setFlash({tone:'success',text:'Đã gỡ công khai. Bài đăng ẩn khỏi tìm kiếm; bản sao và đề đã xuất bản giữ nguyên.'}); await qc.invalidateQueries({queryKey:['banks','public']}); await detail.refetch() }, onError: async e => { setConfirm(false); setFlash({tone:'danger',text:errorText(e)}); await detail.refetch() } })
   const rate = useMutation({ mutationFn: () => bankApi.publicRate(id, Number(rating)), onSuccess: async () => { setFlash({tone:'success',text:'Đã lưu đánh giá của bạn.'}); setRating(''); await detail.refetch(); await qc.invalidateQueries({queryKey:['banks','public']}) }, onError: e => setFlash({tone:'danger',text:errorText(e)}) })
-  useEffect(() => { void bankApi.publicView(id).then(() => qc.invalidateQueries({queryKey:['banks','public']})).catch(() => {}) }, [id, qc])
+  const recordView = useCallback(async () => {
+    setViewError(false)
+    try {
+      const view = await bankApi.publicView(id)
+      qc.setQueryData(detailKey, (old: PublicQuestion | undefined) => old ? applyPublicViewStats(old, view) : old)
+      await Promise.all([qc.invalidateQueries({queryKey:['banks','public']}), ...(qc.getQueryData(detailKey) ? [] : [qc.invalidateQueries({queryKey:detailKey})])])
+    } catch {
+      setViewError(true)
+    }
+  }, [id, userId, qc, detailKey])
+  useEffect(() => { void recordView() }, [recordView])
   const isOwner = !!userId && p?.sourceOwnerUserId === userId
   if (!p) return <BankPanel title="Bài đăng công khai" subtitle="Đang tải snapshot" narrow={narrow} onClose={onClose}>{detail.isLoading ? <LoadingState rows={4}/> : <ErrorState error={detail.error} onRetry={() => void detail.refetch()}/>}</BankPanel>
   const items = p.items?.length ? [...p.items].sort((a,b) => a.position-b.position) : [{id:p.id,position:1,sourceQuestionId:p.sourceQuestionId,sourceQuestionVersion:p.sourceQuestionVersion,question:p.question}]
   const badge = publicationBadge(p)
   return <BankPanel title={p.title || (p.postType === 'QUESTION_SET' ? 'Bộ câu hỏi' : 'Câu hỏi công khai')} subtitle={`${authorName(p)} · snapshot v${p.postVersion ?? p.sourceQuestionVersion}`} narrow={narrow} onClose={onClose}>
     {flash && <Notice tone={flash.tone} live action={flash.tone==='success' && <Link to="/questions" className="btn btn-secondary btn-sm">Mở kho cá nhân</Link>}>{flash.text}</Notice>}
+    {viewError && <Notice tone="warning" live action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void recordView()}>Thử ghi nhận lại</button>}>Chưa cập nhật được số lượt xem từ máy chủ.</Notice>}
     <div className="row"><Badge tone={badge.tone}>{badge.text}</Badge>{isOwner && <Badge tone="info">Của bạn</Badge>}<Badge tone="muted">{p.postType === 'QUESTION_SET' ? `Bộ · ${p.itemCount ?? items.length} câu` : 'Một câu'}</Badge></div>
     {p.description && <p>{p.description}</p>}
     <section className="public-detail-stats" aria-label="Số liệu thật"><span>{p.viewsTotal ?? '—'}<small>{p.viewsTotal == null ? 'chưa có số liệu xem' : 'lượt xem'}</small></span><span>{p.copiesTotal ?? '—'}<small>{p.copiesTotal == null ? 'chưa có số liệu sao chép' : 'lượt sao chép'}</small></span><span>{p.ratingCount == null ? '—' : p.ratingCount ? `${p.averageRating ?? '—'}/10` : 'Chưa có'}<small>{p.ratingCount == null ? 'chưa có số liệu đánh giá' : p.ratingCount ? `${p.ratingCount} đánh giá` : 'đánh giá'}</small></span></section>

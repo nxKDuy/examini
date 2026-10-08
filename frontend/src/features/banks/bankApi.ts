@@ -23,6 +23,7 @@ export interface PublicQuestion {
   views24h?: number; views30d?: number; views365d?: number; viewsTotal?: number
 }
 export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion }
+export interface PublicViewResponse { publicationId: string; views24h: number; views30d: number; views365d: number; viewsTotal: number }
 export interface QuestionSet { id: string; bankId: string; ownerUserId: string; title: string; description?: string; version: number; status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT'; updatedAt?: string; items: PublicPostItem[] }
 export interface Taxonomy { id: string; name: string; subjectId?: string; subjectName?: string; parentCategoryId?: string; path?: string[] }
 export interface OrgQuestion {
@@ -79,7 +80,7 @@ export const bankApi = {
   publicList: (f: PublicFilters) => api.get<Paged<PublicQuestion>>('/public-questions', { params: { size: 20, ...f } }).then(r => r.data),
   publicGet: (id: string) => api.get<PublicQuestion>(`/public-questions/${id}`).then(r => r.data),
   publicTaxonomy: (kind: 'SUBJECT' | 'CATEGORY', text = '', subjectId?: string) => api.get<Paged<Taxonomy>>('/public-questions/taxonomy', { params: { kind, ...(text ? { text } : {}), ...(subjectId ? { subjectId } : {}), size: 100 } }).then(r => r.data),
-  publicView: (id: string) => api.post(`/public-questions/${id}/view`).then(r => r.data),
+  publicView: (id: string) => api.post<PublicViewResponse>(`/public-questions/${id}/view`).then(r => r.data),
   publicRate: (id: string, rating: number) => api.put(`/public-questions/${id}/rating`, { rating }).then(r => r.data),
   publicUnpublish: (id: string) => api.delete<void>(`/public-questions/${id}`).then(() => undefined),
   publicFork: (id: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork`, { sourceQuestionVersion }).then(r => r.data),

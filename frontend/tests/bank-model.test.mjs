@@ -87,6 +87,26 @@ test('helpers: 503 on publish means the author lookup failed (nothing published)
   assert.equal(m.excerpt('  a   b \n c ', 50), 'a b c'); assert.equal(m.excerpt('x'.repeat(200), 20).length, 20)
 })
 
+test('Question Set confirmation dispatch uses the explicit action and preserves user titles such as archive:algebra', () => {
+  const set = { id: 'set-1', title: 'archive:algebra', version: 4, items: [] }
+  const calls = []
+  m.dispatchQuestionSetConfirmation({ action: 'publish', set }, { archive: value => calls.push(['archive', value]), publish: value => calls.push(['publish', value]) })
+  assert.deepEqual(calls, [['publish', set]])
+  assert.equal(set.title, 'archive:algebra')
+  m.dispatchQuestionSetConfirmation({ action: 'archive', set }, { archive: value => calls.push(['archive', value]), publish: value => calls.push(['publish', value]) })
+  assert.deepEqual(calls.map(([action]) => action), ['publish', 'archive'])
+})
+
+test('public detail is scoped by actor, view counts come from the response, and forks invalidate the matching personal caches', () => {
+  const post = { id: 'p1', viewsTotal: 10, views24h: 2, views30d: 8, views365d: 9, myRating: 8, publicationStatus: 'ARCHIVED' }
+  const refreshed = m.applyPublicViewStats(post, { publicationId: 'p1', viewsTotal: 14, views24h: 3, views30d: 11, views365d: 13 })
+  assert.deepEqual([refreshed.viewsTotal, refreshed.views24h, refreshed.views30d, refreshed.views365d], [14, 3, 11, 13])
+  assert.equal(refreshed.myRating, 8)
+  assert.notDeepEqual(m.publicDetailQueryKey('p1', 'owner'), m.publicDetailQueryKey('p1', 'student'))
+  assert.deepEqual(m.personalForkQueryKeys('teacher-1', false), [['questions', 'teacher-1'], ['banks', 'personal-set-questions']])
+  assert.deepEqual(m.personalForkQueryKeys('teacher-1', true), [['questions', 'teacher-1'], ['banks', 'personal-set-questions'], ['banks', 'question-sets']])
+})
+
 const storage = new Map()
 globalThis.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
 globalThis.window = { localStorage: globalThis.localStorage }
@@ -164,6 +184,14 @@ test('Question Set adapters preserve selected versions and explicit publish snap
   assert.deepEqual(JSON.parse(calls[0].data), { title: 'Bộ', items: [{ questionId: 'q1', questionVersion: 4 }] })
   assert.equal(JSON.parse(calls[1].data).expectedVersion, 2)
   assert.deepEqual(JSON.parse(calls[2].data), { version: 3 })
+})
+
+test('Public view adapter returns authoritative aggregate counts from the explicit detail-view endpoint', async () => {
+  let request
+  api.defaults.adapter = async config => { request = config; return { status: 200, statusText: 'OK', config, headers: {}, data: { publicationId: 'post-1', views24h: 2, views30d: 5, views365d: 8, viewsTotal: 9 } } }
+  const response = await bankApi.publicView('post-1')
+  assert.equal(request.url, '/public-questions/post-1/view')
+  assert.deepEqual(response, { publicationId: 'post-1', views24h: 2, views30d: 5, views365d: 8, viewsTotal: 9 })
 })
 
 test('Activate sends the displayed version, submit and publish preserve source version and independent workflow', async () => {
