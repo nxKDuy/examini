@@ -8,6 +8,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
+import java.util.List;
 
 /** Online, fail-closed adapter for the Organization-owned authorization contract. */
 @Component
@@ -36,7 +37,8 @@ public class OrganizationAuthorizationClient {
                     .retrieve().body(AuthorizationDecision.class);
             if (decision == null || !decision.allowed()
                     || !organizationId.equals(decision.organizationId())
-                    || !"ACTIVE".equals(decision.organizationStatus())
+                    || !("ACTIVE".equals(decision.organizationStatus())
+                        || capability == Capability.BANK_READ && "ARCHIVED".equals(decision.organizationStatus()))
                     || !"ACTIVE".equals(decision.membershipStatus())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Organization capability bị từ chối");
@@ -45,6 +47,30 @@ public class OrganizationAuthorizationClient {
             throw error;
         } catch (RuntimeException error) {
             denyUnavailable();
+        }
+    }
+
+    /** Discovery only narrows list results; every operation still calls {@link #require}. */
+    public List<Membership> memberships(UUID userId, Capability capability) {
+        if (userId == null || token.isBlank()) denyUnavailable();
+        try {
+            var result = client.post().uri("/organizations/internal/memberships")
+                    .header("X-Service-Token", token)
+                    .body(new MembershipRequest(userId, capability))
+                    .retrieve().body(MembershipResponse.class);
+            if (result == null || !userId.equals(result.userId()) || result.memberships() == null)
+                denyUnavailable();
+            return result.memberships().stream()
+                    .filter(m -> m.organizationId() != null
+                            && "ACTIVE".equals(m.membershipStatus())
+                            && ("ACTIVE".equals(m.organizationStatus()) || capability == Capability.BANK_READ)
+                            && m.capabilities() != null && m.capabilities().contains(capability))
+                    .toList();
+        } catch (ResponseStatusException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            denyUnavailable();
+            return List.of(); // unreachable
         }
     }
 
@@ -57,4 +83,10 @@ public class OrganizationAuthorizationClient {
     private record AuthorizationDecision(boolean allowed, UUID organizationId,
             String organizationStatus, UUID membershipId, String membershipStatus,
             String role, String decisionAt) {}
+    private record MembershipRequest(UUID userId, Capability capability) {}
+    private record MembershipResponse(UUID userId, List<Membership> memberships,
+            boolean truncated, String decisionAt) {}
+    public record Membership(UUID organizationId, String organizationName,
+            String organizationStatus, UUID membershipId, String membershipStatus,
+            String role, boolean canReview, List<Capability> capabilities) {}
 }

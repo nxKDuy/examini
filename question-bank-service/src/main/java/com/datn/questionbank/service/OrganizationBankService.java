@@ -42,14 +42,16 @@ public class OrganizationBankService {
  }
  public OrganizationContributionResponse contribution(UUID id,boolean answers,QuestionActor actor) {
   var c=contributions.findById(id).orElseThrow(()->error(HttpStatus.NOT_FOUND,"Không tìm thấy contribution"));
-  if(!c.getSubmittedBy().equals(actor.userId())) banks.requireReview(c.getBankId(),actor);
+  if(c.getSubmittedBy().equals(actor.userId())) banks.requireRead(bankRepo.findById(c.getBankId()).orElseThrow(),actor);
+  else banks.requireReview(c.getBankId(),actor);
   if(answers) banks.requireReview(c.getBankId(),actor);
   return response(c,answers);
  }
- public Page<OrganizationContributionResponse> contributions(UUID bankId,OrganizationContribution.ContributionStatus status,Pageable page,QuestionActor actor) {
+ public Page<OrganizationContributionResponse> contributions(UUID bankId,OrganizationContribution.ContributionStatus status,boolean mine,Pageable page,QuestionActor actor) {
   bounds(page);banks.requireRead(banks.get(bankId),actor);
   Specification<OrganizationContribution> spec=(r,q,b)->b.equal(r.get("bankId"),bankId);
-  banks.requireReview(bankId,actor);
+  if(mine) spec=spec.and((r,q,b)->b.equal(r.get("submittedBy"),actor.userId()));
+  else banks.requireReview(bankId,actor);
   if(status!=null) spec=spec.and((r,q,b)->b.equal(r.get("status"),status));
   return contributions.findAll(spec,page).map(c->response(c,false));
  }
@@ -67,13 +69,13 @@ public class OrganizationBankService {
   return response(c,false);
  }
  public Page<OrganizationResponse> publications(UUID bankId,Question.QuestionType type,Question.DifficultyLevel difficulty,Pageable page,QuestionActor actor) {
-  bounds(page);banks.requireUse(bankId,actor);
+  bounds(page);banks.requireRead(banks.get(bankId),actor);
   Specification<OrganizationQuestion> spec=(r,q,b)->b.equal(r.get("bankId"),bankId);
   if(type!=null)spec=spec.and((r,q,b)->b.equal(r.get("questionType"),type));
   if(difficulty!=null)spec=spec.and((r,q,b)->b.equal(r.get("difficultyLevel"),difficulty));
   return publications.findAll(spec,page).map(this::response);
  }
- public OrganizationResponse publication(UUID id,QuestionActor actor) {var p=get(id);banks.requireUse(p.getBankId(),actor);return response(p);}
+ public OrganizationResponse publication(UUID id,QuestionActor actor) {var p=get(id);banks.requireRead(banks.get(p.getBankId()),actor);return response(p);}
  @Transactional public BankQuestion fork(UUID id,ForkRequest request,QuestionActor actor) {
   policy.requireAuthor(actor);var p=get(id);banks.requireUse(p.getBankId(),actor);
   if(request.sourceQuestionVersion()!=p.getSourceQuestionVersion()) throw error(HttpStatus.CONFLICT,"Source version không khớp");
