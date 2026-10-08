@@ -32,7 +32,8 @@ Outcome assign: ASSIGNED, REINSTATED, ALREADY_PARTICIPANT, CAPACITY_FULL, NOT_FO
 Assign fail closed 503 khi identity provider lỗi/chưa cấu hình (`EXAM_IDENTITY_TOKEN`, `AUTH_SERVICE_URL`).
 Route `internal` mới (`attempt-limit`, `attempt-summary`, `attempts`) bị Gateway chặn.
 
-## Events (APPROVED v1, envelope chuẩn `examini.events`, routing key = eventType)
+## Events (APPROVED v1, exchange `examini.events`, routing key = eventType)
+Envelope bắt buộc: `{eventId,eventType,eventVersion:1,occurredAt,payload}` (như exam/grading; KHÔNG dùng `type`/`version`).
 1. `exam.participant.changed` — `{examId,examTitle,userId,cause,actorUserId,quantity?,publicReason?,recipientRevision,registeredCount,eligibleCount,revokedCount}`,
    cause ∈ ASSIGNED|REINSTATED|JOINED|REVOKED|ATTEMPT_GRANTED. Consumer dedup theo eventId;
    counts snapshot lấy theo `recipientRevision` lớn nhất (ATTEMPT_GRANTED không tăng revision).
