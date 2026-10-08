@@ -28,3 +28,10 @@ Worker chạy `mvn test` với JDK 21: 41 PASS, 1 persistence SKIP do chưa có
 `AUTH_TEST_DATABASE`. MAIN review diff và Surefire XML; runtime resolver trên
 PostgreSQL thật sẽ được xác minh trong consolidated E2E của batch.
 Emails được so khớp chính xác như lưu tại Auth, không lowercase selector tại consumer.
+
+## Consumer Question Bank (APPROVED 2026-10-08, chờ Auth provider)
+
+Contract Request của QB: credential riêng `QUESTION_BANK_IDENTITY_TOKEN`, cùng endpoint và
+shape. QB chỉ snapshot `displayName` tác giả cho Public publication, không lưu/log email;
+thiếu token hoặc Auth lỗi → fail closed (không publish với tên giả). Auth owner triển khai
+(task_54b7a4c7d795); MAIN wiring env khi merge.
