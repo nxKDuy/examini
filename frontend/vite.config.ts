@@ -15,7 +15,7 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      ...Object.fromEntries(['/auth', '/questions', '/subjects', '/categories', '/exams', '/sessions', '/grades', '/submissions', '/analytics', '/notifications'].map(path => [path, gatewayProxy])),
+      ...Object.fromEntries(['/organizations', '/question-banks', '/organization-contributions', '/organization-questions', '/public-questions', '/public-contributions', '/auth', '/questions', '/subjects', '/categories', '/exams', '/sessions', '/grades', '/submissions', '/analytics', '/notifications'].map(path => [path, gatewayProxy])),
       '/ws': { target: gatewayUrl, ws: true },
     },
   },

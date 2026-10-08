@@ -1,5 +1,6 @@
 // Local, in-memory API fixture for shared-shell browser checks; never an app backend.
 import { createServer } from 'node:http'
+import { bankFixture } from './bank-fixture.mjs'
 createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:3107')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -11,6 +12,8 @@ createServer(async (req, res) => {
   const body = raw ? JSON.parse(raw) : {}
   const url = new URL(req.url, 'http://localhost')
   const identity = body.email?.split('@')[0] || req.headers.authorization?.replace('Bearer fixture-', '') || 'student'
+  const bank = bankFixture(url, req.method, body, identity)
+  if (bank) { res.statusCode = bank[0]; res.end(bank[0] === 204 ? undefined : JSON.stringify(bank[1])); return }
   let data
   if (['/auth/login', '/auth/register'].includes(url.pathname)) {
     const persona = body.persona?.toLowerCase() || identity
@@ -25,7 +28,7 @@ createServer(async (req, res) => {
   // Organization fixtures (browser checks of the Organization UI only; the real contract is organization-api.md)
   else if (url.pathname.startsWith('/organizations')) {
     const teacher = identity !== 'student'
-    const me = teacher ? { membershipId: 'm-owner', role: 'OWNER', canReview: false } : { membershipId: 'm-me', role: 'MEMBER', canReview: false }
+    const me = teacher ? { membershipId: 'm-owner', role: 'OWNER', canReview: false, capabilities: ['BANK_READ', 'BANK_USE', 'BANK_SUBMIT', 'BANK_REVIEW'] } : { membershipId: 'm-me', role: 'MEMBER', canReview: false, capabilities: ['BANK_READ'] }
     const org = { id: 'o1', name: 'Khoa CNTT', description: 'Tổ chức thử', status: 'ACTIVE', revision: 4, me }
     const mem = (membershipId, role, name, extra = {}) => ({ membershipId, userId: `${membershipId}-0000-0000-0000-000000000000`, ...(name ? { displayName: name } : {}), role, status: 'ACTIVE', canReview: false, capabilities: ['BANK_READ', 'BANK_USE', 'BANK_SUBMIT'], joinedAt: '2026-10-01T00:00:00Z', revision: 2, ...extra })
     const page = items => ({ items, page: 0, size: 20, totalElements: items.length, totalPages: 1 })

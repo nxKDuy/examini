@@ -85,14 +85,13 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
 
   return (
     <Dialog size="lg" title={initial ? `Sửa câu hỏi (phiên bản ${initial.questionVersion})` : 'Tạo câu hỏi mới'} onClose={onClose} busy={save.isPending}
-      description="Câu hỏi được lưu ở trạng thái Bản nháp. Gửi duyệt khi đã hoàn chỉnh; chỉ câu hỏi Đã duyệt mới dùng được trong đề thi."
+      description="Câu hỏi được lưu ở trạng thái Bản nháp. Kích hoạt khi đã hoàn chỉnh để dùng; không cần gửi duyệt."
       footer={<>
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={save.isPending}>Hủy</button>
         <button type="submit" form="question-form" className="btn btn-primary" disabled={save.isPending}>{save.isPending ? 'Đang lưu…' : 'Lưu bản nháp'}</button>
       </>}>
       <form id="question-form" onSubmit={submit} className="stack-lg">
-        {initial?.status === 'APPROVED' && <Notice tone="warning">Câu hỏi đang ở trạng thái Đã duyệt. Lưu thay đổi sẽ tạo phiên bản mới ở trạng thái Bản nháp và cần duyệt lại. Đề thi đã xuất bản vẫn giữ phiên bản cũ.</Notice>}
-        {initial?.status === 'REJECTED' && <Notice tone="info">Sửa theo lý do từ chối, lưu, rồi gửi duyệt lại.</Notice>}
+        {initial?.status === 'ACTIVE' && <Notice tone="warning">Câu hỏi đang dùng. Lưu thay đổi tạo phiên bản mới ở trạng thái Bản nháp; cần kích hoạt lại. Đề thi đã xuất bản vẫn giữ phiên bản cũ.</Notice>}
         <div className="grid-2">
           <SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={setSubjectId} onCategory={setCategoryId} required />
         </div>

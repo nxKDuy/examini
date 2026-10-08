@@ -1,12 +1,13 @@
 import api from '../../lib/api'
 
 export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY'
-export type QuestionStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'ARCHIVED'
+export type QuestionStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type SourceType = 'NONE' | 'USER_DOCUMENT' | 'EXTERNAL_WEB' | 'ORGANIZATION_BANK' | 'PUBLIC_BANK' | 'SYSTEM_BANK'
 export interface Subject { id: string; name: string; description: string }
 export interface Category { id: string; subjectId: string; subjectName: string; name: string; parentCategoryId: string | null }
 export interface QuestionOption { id: string; content: string; correct?: boolean; displayOrder: number }
 export interface Question {
+  bankId?: string; bankType?: 'PERSONAL' | 'SYSTEM' | 'ORGANIZATION' | 'PUBLIC'; eligible?: boolean; publicationStatus?: string
   id: string; categoryId: string; categoryName: string; content: string
   questionType: QuestionType; difficultyLevel: 'EASY' | 'MEDIUM' | 'HARD'
   source: string | null; createdAt: string; updatedAt: string; createdBy: string; options: QuestionOption[]
@@ -40,9 +41,6 @@ export const questionBankApi = {
   getQuestion: (id: string, includeAnswers = false) => api.get<Question>(`/questions/${id}`, { params: { includeAnswers } }).then(r => r.data),
   createQuestion: (data: QuestionInput) => api.post<Question>('/questions', data).then(r => r.data),
   updateQuestion: (id: string, data: QuestionInput) => api.put<Question>(`/questions/${id}`, data).then(r => r.data),
-  submitReview: (q: Question) => api.post<Question>(`/questions/${q.id}/submit-review`, { questionVersion: q.questionVersion }).then(r => r.data),
-  review: (q: Question, decision: 'APPROVED' | 'REJECTED', reviewNote: string) =>
-    api.post<Question>(`/questions/${q.id}/review`, { decision, reviewNote, questionVersion: q.questionVersion }).then(r => r.data),
   archive: (q: Question) => api.delete(`/questions/${q.id}`, { params: { questionVersion: q.questionVersion } }),
   getVersions: (id: string, includeAnswers = false) => api.get<Version[]>(`/questions/${id}/versions`, { params: { includeAnswers } }).then(r => r.data),
   getReviews: (id: string) => api.get<Review[]>(`/questions/${id}/reviews`).then(r => r.data),

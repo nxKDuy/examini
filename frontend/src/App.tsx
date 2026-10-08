@@ -8,6 +8,7 @@ import { LoadingState } from './components/ui'
 import DashboardPage from './features/dashboard/DashboardPage'
 const CalendarPage = lazy(() => import('./features/calendar/CalendarPage'))
 const NotificationsPage = lazy(() => import('./features/notifications/NotificationsPage'))
+const PublicBankPage = lazy(() => import('./features/banks/PublicBankPage'))
 const QuestionListPage = lazy(() => import('./features/question-bank/QuestionListPage'))
 import ExamListPage from './features/exams/ExamListPage'
 const ExamEditorPage = lazy(() => import('./features/exams/ExamEditorPage'))
@@ -38,6 +39,7 @@ function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/public-bank" element={<PublicBankPage />} />
           <Route path="/organizations" element={<OrganizationsPage />} />
           <Route path="/organizations/invitations" element={<Navigate to="/organizations?tab=invitations" replace />} />
           <Route path="/organizations/:id" element={<OrganizationDetailPage />} />

@@ -3,12 +3,13 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import './organizations.css'
+import OrgBankTab from '../banks/OrgBankTab'
 import AuditTab from './AuditTab'
 import InvitationsTab from './InvitationsTab'
 import MembersTab from './MembersTab'
 import SettingsTab from './SettingsTab'
 import { orgApi } from './orgApi'
-import { ROLE_LABEL, TAB_LABEL, isArchived, isOwner, parseTab, tabsFor } from './orgModel'
+import { ROLE_LABEL, TAB_LABEL, isArchived, isOwner, parseTab, tabsForOrg } from './orgModel'
 import { ConfirmDialog } from '../../components/Dialog'
 import { Badge, ErrorState, LoadingState, Notice, PageHeader } from '../../components/ui'
 import { errorInfo, errorText } from '../../lib/errors'
@@ -42,7 +43,7 @@ export default function OrganizationDetailPage() {
   }
   const o = org.data
   const role = o.me?.role
-  const tabs = tabsFor(role)
+  const tabs = tabsForOrg(o)
   const tab = parseTab(params.get('tab'), tabs)
   const setTab = (t: string) => { const next = new URLSearchParams(params); if (t === 'members') next.delete('tab'); else next.set('tab', t); setParams(next, { replace: true }) }
 
@@ -60,6 +61,7 @@ export default function OrganizationDetailPage() {
         {tabs.map(t => <button key={t} type="button" role="tab" id={`org-tab-${t}`} aria-selected={tab === t} aria-controls="org-tabpanel" className="tab" onClick={() => setTab(t)}>{TAB_LABEL[t]}</button>)}
       </div>
       <div role="tabpanel" id="org-tabpanel" aria-labelledby={`org-tab-${tab}`}>
+        {tab === 'bank' && <OrgBankTab key={o.id} org={o} />}
         {tab === 'members' && <MembersTab org={o} />}
         {tab === 'invitations' && <InvitationsTab org={o} />}
         {tab === 'audit' && <AuditTab org={o} />}

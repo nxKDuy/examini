@@ -37,7 +37,7 @@ test('known backend business errors become actionable messages', () => {
   assert.match(errorInfo(problem(409, 'Exam is not OPEN')).message, /không mở/)
   const publish = errorInfo(problem(409, 'Question is missing, unapproved or unversioned: 0f2a6c1e-1111-4222-8333-944445555666'))
   assert.match(publish.message, /0f2a6c1e/)
-  assert.match(publish.message, /Đã duyệt/)
+  assert.match(publish.message, /điều kiện ngân hàng/)
   assert.match(errorInfo(problem(409, 'Kỳ thi hiện đã đạt giới hạn người đang làm bài. Vui lòng thử lại sau.')).message, /giới hạn người đang làm bài/)
   assert.match(errorInfo(problem(400, 'Invalid policy/capacity; platform limit 100')).message, /tối đa 100/)
   assert.match(errorInfo(problem(403, 'Required service rejected request or unavailable')).message, /không có quyền/)
