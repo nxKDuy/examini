@@ -12,6 +12,7 @@ import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime, shortId } from '
 import SubjectCategoryFields from './SubjectCategoryFields'
 import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
+import PersonalQuestionSets from '../banks/PersonalQuestionSets'
 
 const TABS = [{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }]
 
@@ -77,6 +78,8 @@ export default function QuestionListPage() {
           </div>
         </div>
       </section>
+
+      {!admin && <PersonalQuestionSets />}
 
       <div className="split">
         <section className="card" aria-label="Danh sách câu hỏi" style={{ overflow: 'hidden' }}>
