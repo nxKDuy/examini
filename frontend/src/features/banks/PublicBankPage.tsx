@@ -111,7 +111,7 @@ function PublicPanel({ id, teacher, userId, narrow, onClose }: { id: string; tea
     } catch {
       setViewError(true)
     }
-  }, [id, userId, qc, detailKey])
+  }, [id, qc, detailKey])
   useEffect(() => { void recordView() }, [recordView])
   const isOwner = !!userId && p?.sourceOwnerUserId === userId
   if (!p) return <BankPanel title="Bài đăng công khai" subtitle="Đang tải snapshot" narrow={narrow} onClose={onClose}>{detail.isLoading ? <LoadingState rows={4}/> : <ErrorState error={detail.error} onRetry={() => void detail.refetch()}/>}</BankPanel>
