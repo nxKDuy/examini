@@ -12,9 +12,9 @@ public class QuestionPolicy {
     }
     public boolean accessible(Question q, QuestionActor actor) {
         if (q.getScope() == Question.QuestionScope.SYSTEM)
-            return !actor.internal() && (actor.systemAdmin() || q.getStatus() == Question.QuestionStatus.APPROVED);
+            return actor.systemAdmin() || q.getStatus() == Question.QuestionStatus.ACTIVE;
         return q.getScope() == Question.QuestionScope.PERSONAL
-                && (actor.admin() || q.getCreatedBy().equals(actor.userId()));
+                && q.getCreatedBy().equals(actor.userId());
     }
     public void requireRead(Question q, QuestionActor actor) {
         if (!accessible(q, actor)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy câu hỏi");
@@ -29,7 +29,7 @@ public class QuestionPolicy {
         if (!actor.admin()) deny();
     }
     public boolean canReadAnswers(Question q, QuestionActor actor) {
-        if (q.getScope() == Question.QuestionScope.SYSTEM) return actor.systemAdmin();
+        if (q.getScope() == Question.QuestionScope.SYSTEM) return actor.systemAdmin() || actor.internal();
         return accessible(q, actor) && (actor.author() || actor.internal());
     }
     private void deny() { throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không có quyền truy cập câu hỏi"); }

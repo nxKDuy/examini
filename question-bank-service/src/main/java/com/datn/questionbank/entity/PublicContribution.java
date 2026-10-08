@@ -19,5 +19,5 @@ public class PublicContribution {
     @Column(name="review_note",length=5000) private String reviewNote;
     @Column(name="reviewed_at") private LocalDateTime reviewedAt;
     @Version @Column(name="lock_version",nullable=false) private long lockVersion;
-    public enum VerificationStatus { PUBLIC_PENDING, PUBLIC_VERIFIED, PUBLIC_REJECTED }
+    public enum VerificationStatus { PUBLIC_PENDING, PUBLIC_VERIFIED, PUBLIC_REJECTED, PUBLIC_PUBLISHED }
 }

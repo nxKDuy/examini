@@ -13,6 +13,7 @@ public class QuestionLineage {
     @Column(name="source_bank_id",nullable=false,updatable=false) private UUID sourceBankId;
     @Enumerated(EnumType.STRING) @Column(name="source_bank_type",nullable=false,updatable=false,length=30) private QuestionBank.BankType sourceBankType;
     @Column(name="source_public_question_id",updatable=false) private UUID sourcePublicQuestionId;
+    @Column(name="source_organization_question_id",updatable=false) private UUID sourceOrganizationQuestionId;
     @Column(name="copied_at",nullable=false,updatable=false) private LocalDateTime copiedAt;
     @Column(name="copied_by",nullable=false,updatable=false) private UUID copiedBy;
 }

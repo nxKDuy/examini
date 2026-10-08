@@ -46,6 +46,10 @@ public class QuestionController {
     public QuestionResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateRequest body, HttpServletRequest req) {
         return service.update(id, body, actor(req));
     }
+    @PostMapping("/{id}/activate")
+    public QuestionResponse activate(@PathVariable UUID id, @Valid @RequestBody RevisionRequest body, HttpServletRequest req) {
+        return service.activate(id, body.questionVersion(), actor(req));
+    }
     @PostMapping("/{id}/submit-review")
     public QuestionResponse submit(@PathVariable UUID id, @Valid @RequestBody RevisionRequest body, HttpServletRequest req) {
         return service.submit(id, body.questionVersion(), actor(req));
@@ -70,9 +74,9 @@ public class QuestionController {
     @GetMapping("/random")
     public List<UUID> random(@RequestParam UUID categoryId, @RequestParam DifficultyLevel difficulty,
             @RequestParam(defaultValue="10") int limit, @RequestParam(required=false) QuestionType questionType,
-            @RequestParam(defaultValue="APPROVED") QuestionStatus status, HttpServletRequest req) {
-        if (status != QuestionStatus.APPROVED) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ chọn APPROVED cho Exam");
-        return service.getRandomQuestionIds(categoryId, difficulty, limit, questionType, actor(req));
+            @RequestParam(required=false) QuestionStatus status, @RequestParam(required=false) UUID bankId, HttpServletRequest req) {
+        if (status != null && status != QuestionStatus.ACTIVE) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Exam selection dùng bank-aware eligibility; status chỉ hỗ trợ ACTIVE");
+        return service.getRandomQuestionIds(categoryId, difficulty, limit, questionType, bankId, actor(req));
     }
     @PostMapping("/batch")
     public List<QuestionProjection> batch(@RequestBody List<UUID> ids, @RequestParam(defaultValue="true") boolean eligible,

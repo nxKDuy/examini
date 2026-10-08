@@ -39,6 +39,8 @@ public class MultiBankController {
     @GetMapping("/questions/{id}/lineage") public LineageResponse lineage(@PathVariable UUID id,HttpServletRequest r){return service.lineage(id,actor(r));}
     @PostMapping("/questions/{id}/fork") @ResponseStatus(HttpStatus.CREATED)
     public BankQuestion fork(@PathVariable UUID id,@Valid @RequestBody ForkRequest b,HttpServletRequest r){return service.forkQuestion(id,b,actor(r));}
+    @PostMapping("/questions/{id}/publish-public") @ResponseStatus(HttpStatus.CREATED)
+    public PublicResponse publish(@PathVariable UUID id,@Valid @RequestBody ContributionRequest b,HttpServletRequest r){return service.publish(id,b,actor(r));}
     @PostMapping("/questions/{id}/contributions") @ResponseStatus(HttpStatus.CREATED)
     public ContributionResponse contribute(@PathVariable UUID id,@Valid @RequestBody ContributionRequest b,HttpServletRequest r){return service.contribute(id,b,actor(r));}
     @GetMapping("/public-contributions") public Page<ContributionResponse> contributions(@RequestParam(required=false) PublicContribution.VerificationStatus status,

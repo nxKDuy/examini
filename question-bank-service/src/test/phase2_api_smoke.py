@@ -61,17 +61,11 @@ request = {'categoryId': category, 'content': 'HTTP Phase 2 immutable source', '
                                                 {'content': 'No', 'correct': False, 'displayOrder': 1}]}
 q = api('POST', '/questions', teacher, request, 201)
 assert q['status'] == 'DRAFT' and q['questionVersion'] == 1
-api('POST', '/questions/' + q['id'] + '/contributions', teacher, {'sourceQuestionVersion': 1}, 409)
-api('POST', '/questions/' + q['id'] + '/submit-review', teacher, {'questionVersion': 1})
-api('POST', '/questions/' + q['id'] + '/review', admin, {'questionVersion': 1, 'decision': 'APPROVED', 'reviewNote': 'Source review'})
-contribution = api('POST', '/questions/' + q['id'] + '/contributions', teacher, {'sourceQuestionVersion': 1}, 201)
-assert contribution['status'] == 'PUBLIC_PENDING'
-safe(contribution)
-api('POST', '/public-contributions/' + contribution['id'] + '/review', teacher, {'decision': 'APPROVED'}, 403)
-api('GET', '/public-contributions/' + contribution['id'] + '?includeAnswers=true', teacher, status=403)
-keys = api('GET', '/public-contributions/' + contribution['id'] + '?includeAnswers=true', admin)
-assert keys['question']['options'][0]['correct'] is True
-api('POST', '/public-contributions/' + contribution['id'] + '/review', admin, {'decision': 'APPROVED', 'reviewNote': 'Independent public verification'})
+api('POST', '/questions/' + q['id'] + '/publish-public', teacher, {'sourceQuestionVersion': 1}, 409)
+api('POST', '/questions/' + q['id'] + '/activate', teacher, {'questionVersion': 1})
+p = api('POST', '/questions/' + q['id'] + '/publish-public', teacher, {'sourceQuestionVersion': 1}, 201)
+assert p['publicationStatus'] == 'PUBLISHED'
+safe(p)
 api('PUT', '/questions/' + q['id'], teacher, {'content': 'New private content', 'questionVersion': 1})
 api('DELETE', '/questions/' + q['id'] + '?questionVersion=2', teacher, status=204)
 p = api('GET', '/public-questions?sourceOwnerUserId=' + owner, student)['content'][0]
@@ -85,19 +79,14 @@ assert f['options'][0]['id'] != q['options'][0]['id']
 lineage = api('GET', '/questions/' + f['id'] + '/lineage', teacher)
 assert lineage['sourcePublicQuestionId'] == p['id'] and lineage['sourceQuestionId'] == q['id'] and lineage['sourceQuestionVersion'] == 1
 api('POST', '/questions/batch', teacher, [f['id']], 409)
-api('POST', '/questions/' + f['id'] + '/submit-review', teacher, {'questionVersion': 1})
-api('POST', '/questions/' + f['id'] + '/review', admin, {'questionVersion': 1, 'decision': 'APPROVED', 'reviewNote': 'Copied personal review'})
-assert api('GET', '/questions/random?categoryId=' + category + '&difficulty=EASY&limit=200', teacher) == [f['id']]
+api('POST', '/questions/' + f['id'] + '/activate', teacher, {'questionVersion': 1})
+assert f['id'] in api('GET', '/questions/random?categoryId=' + category + '&difficulty=EASY&limit=200', teacher)
 safe(api('POST', '/questions/batch', teacher, [f['id']]))
 api('POST', '/question-banks', teacher, {'type': 'SYSTEM', 'name': 'Spoof'}, 403, {'X-System-Privilege': 'ADMIN'})
 system = api('POST', '/question-banks', admin, {'type': 'SYSTEM', 'name': 'HTTP System'}, 201)
 sys_q = api('POST', '/question-banks/' + system['id'] + '/questions', admin, dict(request, scope='SYSTEM'), 201)['question']
 api('GET', '/questions/' + sys_q['id'], teacher, status=404)
-api('POST', '/questions/' + sys_q['id'] + '/submit-review', admin, {'questionVersion': 1})
-api('POST', '/questions/' + sys_q['id'] + '/review', admin, {'questionVersion': 1, 'decision': 'APPROVED'})
-api('POST', '/questions/batch', admin, [sys_q['id']], 409)
+api('POST', '/questions/' + sys_q['id'] + '/activate', admin, {'questionVersion': 1})
+safe(api('POST', '/questions/batch', admin, [sys_q['id']]))
 safe(api('GET', '/question-banks/' + system['id'] + '/questions', teacher))
-org = api('POST', '/question-banks', admin, {'type': 'ORGANIZATION', 'name': 'HTTP Organization reference', 'organizationId': str(uuid.uuid4())}, 201)
-assert org['status'] == 'PENDING_AUTHORIZATION'
-api('POST', '/question-banks/' + org['id'] + '/questions', admin, dict(request, scope='ORGANIZATION'), 503)
-print('PASS: actual HTTP personal/public verification/frozen snapshot/fork lineage/system privilege/organization fail-closed/Exam eligibility')
+print('PASS: actual HTTP Personal ACTIVE/Public direct publish/frozen snapshot/fork lineage/System privilege/Exam eligibility')

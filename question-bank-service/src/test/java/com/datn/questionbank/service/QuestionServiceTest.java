@@ -24,6 +24,7 @@ class QuestionServiceTest {
     QuestionReviewRepository reviews;
     CategoryService categories;
     QuestionService service;
+    ExamEligibilityService eligibility;
     ObjectMapper json;
     QuestionActor owner = new QuestionActor(UUID.randomUUID(), "TEACHER", false);
     QuestionActor admin = new QuestionActor(UUID.randomUUID(), "ADMIN", false);
@@ -38,7 +39,8 @@ class QuestionServiceTest {
         UUID bankId = UUID.randomUUID();
         when(banks.defaultPersonal(any())).thenReturn(bankId);
         when(banks.get(bankId)).thenReturn(QuestionBank.builder().id(bankId).type(QuestionBank.BankType.PERSONAL).ownerUserId(owner.userId()).build());
-        service = new QuestionService(repo, categories, versions, reviews, new QuestionPolicy(), json, banks);
+        eligibility = mock(ExamEligibilityService.class);
+        service = new QuestionService(repo, categories, versions, reviews, new QuestionPolicy(), json, banks, eligibility);
         when(categories.getOrThrow(category.getId())).thenReturn(category);
         when(repo.saveAndFlush(any())).thenAnswer(call -> {
             Question q = call.getArgument(0); if (q.getId() == null) q.setId(UUID.randomUUID());
@@ -81,23 +83,17 @@ class QuestionServiceTest {
         if (type == QuestionType.SHORT_ANSWER) assertThrows(ResponseStatusException.class, () -> service.create(createRequest(type, "", List.of()), owner));
         else assertDoesNotThrow(() -> service.create(createRequest(type, "", List.of()), owner));
     }
-    @Test void submitApproveAndRejectValidatedByBackend() {
-        assertEquals(QuestionStatus.PENDING_REVIEW, service.submit(question.getId(), 1, owner).status());
-        assertEquals(QuestionStatus.APPROVED, service.review(question.getId(), new ReviewRequest(QuestionReview.Decision.APPROVED, "OK", 1L), admin).status());
-        verify(reviews).save(argThat(r -> r.getReviewerId().equals(admin.userId()) && r.getQuestionVersion() == 1));
-        question.setStatus(QuestionStatus.PENDING_REVIEW);
-        assertEquals(QuestionStatus.REJECTED, service.review(question.getId(), new ReviewRequest(QuestionReview.Decision.REJECTED, "Fix it", 1L), admin).status());
+    @Test void ownerActivatesWithoutReviewAndLegacyReviewRoutesAreGone() {
+        assertEquals(QuestionStatus.ACTIVE, service.activate(question.getId(), 1, owner).status());
+        assertThrows(ResponseStatusException.class, () -> service.activate(question.getId(), 1, owner));
+        assertEquals(410, assertThrows(ResponseStatusException.class,
+                () -> service.submit(question.getId(), 1, owner)).getStatusCode().value());
+        assertEquals(410, assertThrows(ResponseStatusException.class,
+                () -> service.review(question.getId(), new ReviewRequest(QuestionReview.Decision.APPROVED, "", 1L), admin)).getStatusCode().value());
+        verify(reviews, never()).save(any());
     }
-    @ParameterizedTest @EnumSource(value=QuestionStatus.class, names={"PENDING_REVIEW","APPROVED","REJECTED","ARCHIVED"})
-    void invalidSubmitTransitionsRejected(QuestionStatus status) {
-        question.setStatus(status); assertThrows(ResponseStatusException.class, () -> service.submit(question.getId(), 1, owner));
-    }
-    @ParameterizedTest @EnumSource(value=QuestionStatus.class, names={"DRAFT","APPROVED","REJECTED","ARCHIVED"})
-    void invalidReviewTransitionsRejected(QuestionStatus status) {
-        question.setStatus(status); assertThrows(ResponseStatusException.class, () -> service.review(question.getId(), new ReviewRequest(QuestionReview.Decision.APPROVED, "", 1L), admin));
-    }
-    @Test void approvedEditCreatesDraftRevisionWithoutChangingPreviousSnapshot() throws Exception {
-        question.setStatus(QuestionStatus.APPROVED);
+    @Test void activeEditCreatesDraftRevisionWithoutChangingPreviousSnapshot() throws Exception {
+        question.setStatus(QuestionStatus.ACTIVE);
         String previous = json.writeValueAsString(QuestionResponse.builder().id(question.getId()).content("2+2?").options(List.of()).build());
         var result = service.update(question.getId(), updateRequest("2+3?", 1), owner);
         assertEquals(2, result.questionVersion()); assertEquals(QuestionStatus.DRAFT, result.status());
@@ -105,39 +101,37 @@ class QuestionServiceTest {
         assertTrue(previous.contains("2+2?")); verify(versions, never()).delete(any());
         assertThrows(ResponseStatusException.class, () -> service.update(question.getId(), updateRequest("stale", 1), owner));
     }
-    @Test void rejectedEditCanBeResubmittedAndPendingEditIsBlocked() {
-        question.setStatus(QuestionStatus.REJECTED);
-        assertEquals(QuestionStatus.DRAFT, service.update(question.getId(), updateRequest("Fixed", 1), owner).status());
-        service.submit(question.getId(), 2, owner);
-        assertThrows(ResponseStatusException.class, () -> service.update(question.getId(), updateRequest("Too late", 2), owner));
+    @Test void activeEditCreatesNewDraftRevisionRequiringOwnerActivation() {
+        question.setStatus(QuestionStatus.ACTIVE);
+        var edited=service.update(question.getId(), updateRequest("Fixed", 1), owner);
+        assertEquals(QuestionStatus.DRAFT,edited.status());
+        assertEquals(QuestionStatus.ACTIVE,service.activate(question.getId(),2,owner).status());
     }
     @Test void unauthorizedMutationsAndReviewRejected() {
         var other = new QuestionActor(UUID.randomUUID(), "TEACHER", false);
         assertThrows(ResponseStatusException.class, () -> service.update(question.getId(), updateRequest("Hijack", 1), other));
         assertThrows(ResponseStatusException.class, () -> service.archive(question.getId(), 1, other));
-        assertThrows(ResponseStatusException.class, () -> service.review(question.getId(), new ReviewRequest(QuestionReview.Decision.APPROVED, "", 1L), owner));
-        assertThrows(ResponseStatusException.class, () -> service.submit(question.getId(), 1, new QuestionActor(owner.userId(), "SERVICE", true)));
+        assertThrows(ResponseStatusException.class, () -> service.activate(question.getId(), 1, other));
     }
-    @ParameterizedTest @EnumSource(value=QuestionStatus.class, names={"DRAFT","PENDING_REVIEW","REJECTED","ARCHIVED"})
-    void batchRejectsEveryNonApprovedStatus(QuestionStatus status) {
-        question.setStatus(status);
-        assertThrows(ResponseStatusException.class, () -> service.getByIds(List.of(question.getId()), true, true, owner));
+    @Test void eligibleBatchDelegatesToSingleBankAwarePolicy() {
+        when(eligibility.batch(anyList(),eq(false),eq(owner))).thenReturn(List.of());
+        assertTrue(service.getByIds(List.of(question.getId()),true,false,owner).isEmpty());
+        verify(eligibility).batch(List.of(question.getId()),false,owner);
     }
     @Test void approvedBatchAndSafeDtoNeverLeakAnswerKey() throws Exception {
-        question.setStatus(QuestionStatus.APPROVED); question.setExpectedAnswer("secret"); question.setSourceExcerpt("hidden source");
+        question.setStatus(QuestionStatus.ACTIVE); question.setExpectedAnswer("secret"); question.setSourceExcerpt("hidden source");
+        var safeProjection=service.findById(question.getId(),false,owner);
+        when(eligibility.batch(anyList(),eq(false),eq(owner))).thenReturn(List.of(safeProjection));
         var safe = service.getByIds(List.of(question.getId()), true, false, owner).getFirst();
         String wire = json.writeValueAsString(safe);
         assertFalse(wire.contains("correct")); assertFalse(wire.contains("expectedAnswer")); assertFalse(wire.contains("hidden source"));
+        var answerProjection=service.findById(question.getId(),true,owner);
+        when(eligibility.batch(anyList(),eq(true),eq(owner))).thenReturn(List.of(answerProjection));
         assertTrue(((QuestionResponse)service.getByIds(List.of(question.getId()), true, true, owner).getFirst()).options().getFirst().correct());
         var student = new QuestionActor(owner.userId(), "STUDENT", false);
+        when(eligibility.batch(anyList(),eq(true),eq(student))).thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
         assertThrows(ResponseStatusException.class, () -> service.getByIds(List.of(question.getId()), true, true, student));
         assertFalse(json.writeValueAsString(service.findById(question.getId(), false, student)).contains("correct"));
-    }
-    @Test void batchMissingDuplicateAndInaccessibleIdsFailClosed() {
-        question.setStatus(QuestionStatus.APPROVED);
-        assertThrows(ResponseStatusException.class, () -> service.getByIds(List.of(question.getId(), UUID.randomUUID()), true, false, owner));
-        assertEquals(1, service.getByIds(List.of(question.getId(), question.getId()), true, false, owner).size());
-        assertThrows(ResponseStatusException.class, () -> service.getByIds(List.of(question.getId()), true, false, new QuestionActor(UUID.randomUUID(), "TEACHER", false)));
     }
     @Test void csvImportDraftMetadataAndUsefulErrors() {
         String csv = "content,type,difficulty,source,option1,correct1,option2,correct2\nGood,MULTIPLE_CHOICE,EASY,Book,Yes,true,No,false\nBad,MULTIPLE_CHOICE,EASY,,Yes,maybe,No,false\nWrong,BOGUS,EASY,,Yes,true,No,false\n";
@@ -154,16 +148,14 @@ class QuestionServiceTest {
         verify(repo, never()).saveAndFlush(any());
     }
     @Test void archiveExcludesEligibilityWithoutDeletingHistory() {
-        question.setStatus(QuestionStatus.APPROVED); service.archive(question.getId(), 1, owner);
+        question.setStatus(QuestionStatus.ACTIVE); service.archive(question.getId(), 1, owner);
         assertEquals(QuestionStatus.ARCHIVED, question.getStatus()); verify(repo, never()).deleteById(any());
-        assertThrows(ResponseStatusException.class, () -> service.getByIds(List.of(question.getId()), true, false, owner));
+        verify(eligibility,never()).batch(anyList(),anyBoolean(),any());
     }
     @Test void randomValidatesCountAndPassesCriteriaAndOwner() {
-        when(repo.findEligibleRandom(any(), anyString(), any(), any(), anyBoolean(), any())).thenReturn(List.of(question));
+        when(eligibility.random(any(),any(),anyInt(),any(),isNull(),eq(owner))).thenReturn(List.of(question.getId()));
         assertEquals(List.of(question.getId()), service.getRandomQuestionIds(category.getId(), DifficultyLevel.EASY, 10, QuestionType.TRUE_FALSE, owner));
-        verify(repo).findEligibleRandom(eq(category.getId()), eq("EASY"), eq("TRUE_FALSE"), eq(owner.userId()), eq(false), any());
-        assertThrows(ResponseStatusException.class, () -> service.getRandomQuestionIds(category.getId(), DifficultyLevel.EASY, 0, null, owner));
-        assertThrows(ResponseStatusException.class, () -> service.getRandomQuestionIds(category.getId(), DifficultyLevel.EASY, 201, null, owner));
+        verify(eligibility).random(category.getId(),DifficultyLevel.EASY,10,QuestionType.TRUE_FALSE,null,owner);
     }
     @Test void existingCsvTemplateRemainsCompatibleWithoutAutoApproval() throws Exception {
         try (var input = getClass().getResourceAsStream("/csv-template/questions-import-template.csv")) {

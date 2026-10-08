@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.data.domain.PageRequest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import static com.datn.questionbank.entity.Question.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "question-bank.internal-token=isolated-test-service-token"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named="QB_TEST_DATABASE", matches="true")
+@Transactional
 class QuestionPersistenceTest {
     @Autowired QuestionService service;
     @Autowired MockMvc http;
@@ -56,28 +58,27 @@ class QuestionPersistenceTest {
         for (var q : legacy) {
             assertEquals(QuestionStatus.DRAFT, q.getStatus());
             assertTrue(versions.findByQuestionIdAndVersionNumber(q.getId(), 1).isPresent());
-            assertFalse(((QuestionResponse)service.version(q.getId(), 1, true, admin).question()).options().isEmpty());
+            var legacyOwner=new QuestionActor(q.getCreatedBy(),"TEACHER",false);
+            assertFalse(((QuestionResponse)service.version(q.getId(), 1, true, legacyOwner).question()).options().isEmpty());
         }
     }
-    @Test void actualQueryExcludesAllNonApprovedAndOtherOwnersAndCombinesCriteria() {
-        var approved = create("Approved question", DifficultyLevel.EASY);
-        service.submit(approved.id(), 1, owner); service.review(approved.id(), new ReviewRequest(QuestionReview.Decision.APPROVED, "OK", 1L), admin);
+    @Test void actualQuerySelectsOnlyActivePersonalQuestionsForOwner() {
+        var approved = create("Active question", DifficultyLevel.EASY);
+        service.activate(approved.id(), 1, owner);
         var draft = create("Draft question", DifficultyLevel.EASY);
-        var pending = create("Pending question", DifficultyLevel.EASY); service.submit(pending.id(), 1, owner);
-        var rejected = create("Rejected question", DifficultyLevel.EASY); service.submit(rejected.id(), 1, owner);
-        service.review(rejected.id(), new ReviewRequest(QuestionReview.Decision.REJECTED, "Fix", 1L), admin);
         var archived = create("Archived question", DifficultyLevel.EASY); service.archive(archived.id(), 1, owner);
         create("Hard question", DifficultyLevel.HARD);
+        questions.flush();
         assertEquals(List.of(approved.id()), service.getRandomQuestionIds(category, DifficultyLevel.EASY, 10, null, owner));
         assertTrue(service.getRandomQuestionIds(category, DifficultyLevel.EASY, 10, null, new QuestionActor(UUID.randomUUID(), "TEACHER", false)).isEmpty());
-        assertEquals(1, service.findAll(category, DifficultyLevel.EASY, QuestionType.MULTIPLE_CHOICE, QuestionStatus.APPROVED,
-                CreationMethod.MANUAL, SourceType.USER_DOCUMENT, "Approved", PageRequest.of(0,20), owner).getTotalElements());
-        for (UUID id : List.of(draft.id(), pending.id(), rejected.id(), archived.id()))
+        assertEquals(1, service.findAll(category, DifficultyLevel.EASY, QuestionType.MULTIPLE_CHOICE, QuestionStatus.ACTIVE,
+                CreationMethod.MANUAL, SourceType.USER_DOCUMENT, "Active", PageRequest.of(0,20), owner).getTotalElements());
+        for (UUID id : List.of(draft.id(), archived.id()))
             assertThrows(ResponseStatusException.class, () -> service.getByIds(List.of(approved.id(), id), true, true, owner));
     }
     @Test void fullSnapshotsAndReviewRemainStableAfterApprovedEditAndArchive() {
         var q = create("Original text", DifficultyLevel.EASY);
-        service.submit(q.id(), 1, owner); service.review(q.id(), new ReviewRequest(QuestionReview.Decision.APPROVED, "Verified", 1L), admin);
+        service.activate(q.id(), 1, owner);
         var original = ((QuestionResponse)service.version(q.id(), 1, true, owner).question());
         var next = service.update(q.id(), new UpdateRequest(null,"New text",null,null,null,
                 List.of(new OptionRequest("New yes",false,(short)0),new OptionRequest("New no",true,(short)1)),
@@ -85,8 +86,7 @@ class QuestionPersistenceTest {
         assertEquals(QuestionStatus.DRAFT, next.status()); assertEquals(2, next.questionVersion());
         assertEquals(original, ((QuestionResponse)service.version(q.id(), 1, true, owner).question()));
         assertNotEquals(original.options().getFirst().id(), next.options().getFirst().id());
-        assertEquals(1, service.reviewHistory(q.id(), owner).getFirst().questionVersion());
-        assertEquals("Verified", service.reviewHistory(q.id(), owner).getFirst().reviewNote());
+        assertTrue(service.reviewHistory(q.id(), owner).isEmpty());
         service.archive(q.id(), 2, owner); assertEquals(2, service.history(q.id(), true, owner).size());
     }
     @Test void csvPersistsCreationAndSourceAndInitialHistory() {
@@ -99,7 +99,7 @@ class QuestionPersistenceTest {
     }
     @Test void batchReturnsRequestedOrderAndStableVersions() {
         var a=create("First",DifficultyLevel.EASY); var b=create("Second",DifficultyLevel.EASY);
-        for(var q:List.of(a,b)){service.submit(q.id(),1,owner);service.review(q.id(),new ReviewRequest(QuestionReview.Decision.APPROVED,"",1L),admin);}
+        for(var q:List.of(a,b)) service.activate(q.id(),1,owner);
         var result=service.getByIds(List.of(b.id(),a.id()),true,false,owner);
         assertEquals(List.of(b.id(),a.id()),result.stream().map(QuestionProjection::id).toList());
         assertTrue(result.stream().allMatch(q->q.questionVersion()==1&&q instanceof SafeQuestionResponse));
@@ -116,13 +116,12 @@ class QuestionPersistenceTest {
         http.perform(put("/questions/"+id).header("Authorization",jwt(owner)).contentType("application/json")
                 .content(json.writeValueAsString(new UpdateRequest(null,"Edited HTTP question",null,null,null,null,null,null,null,null,null,null,1L))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.questionVersion").value(2));
+        http.perform(post("/questions/"+id+"/activate").header("Authorization",jwt(owner)).contentType("application/json")
+                .content("{\"questionVersion\":2}")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"));
         http.perform(post("/questions/"+id+"/submit-review").header("Authorization",jwt(owner)).contentType("application/json")
-                .content("{\"questionVersion\":2}")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
-        http.perform(post("/questions/"+id+"/review").header("Authorization",jwt(owner)).contentType("application/json")
-                .content("{\"questionVersion\":2,\"decision\":\"APPROVED\"}")).andExpect(status().isForbidden());
+                .content("{\"questionVersion\":2}")).andExpect(status().isGone());
         http.perform(post("/questions/"+id+"/review").header("Authorization",jwt(admin)).contentType("application/json")
-                .content("{\"questionVersion\":2,\"decision\":\"APPROVED\",\"reviewNote\":\"OK\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("APPROVED"));
+                .content("{\"questionVersion\":2,\"decision\":\"APPROVED\"}")).andExpect(status().isGone());
         var student=new QuestionActor(owner.userId(),"STUDENT",false);
         for(String path:List.of("/questions/"+id,"/questions/"+id+"/versions","/questions/"+id+"/versions/1","/questions")) {
             String safe=http.perform(get(path).header("Authorization",jwt(student))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
@@ -136,8 +135,7 @@ class QuestionPersistenceTest {
                 .andExpect(status().isUnauthorized());
     }
     @Test void internalHttpSelectionAndBatchFailClosedAndFreezeVersion() throws Exception {
-        var q=create("Internal eligible",DifficultyLevel.EASY);service.submit(q.id(),1,owner);
-        service.review(q.id(),new ReviewRequest(QuestionReview.Decision.APPROVED,"",1L),admin);
+        var q=create("Internal eligible",DifficultyLevel.EASY);service.activate(q.id(),1,owner);
         String ids=json.writeValueAsString(List.of(q.id(),q.id()));
         var safe=http.perform(post("/questions/batch").header("X-Service-Token","isolated-test-service-token")
                 .header("X-Question-Owner-Id",owner.userId()).contentType("application/json").content(ids))
@@ -166,7 +164,8 @@ class QuestionPersistenceTest {
                 .header("X-Question-Owner-Id",owner.userId()).contentType("application/json").content(ids)).andExpect(status().isConflict());
         assertEquals("Internal eligible",service.version(q.id(),1,true,owner).question().content());
     }
-    @Test void concurrentEditsDoNotOverwriteReviewedRevision() throws Exception {
+    @Test @Transactional(propagation=org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void concurrentEditsDoNotOverwriteReviewedRevision() throws Exception {
         var q=create("Concurrent",DifficultyLevel.EASY);
         var gate=new java.util.concurrent.CountDownLatch(1);
         try(var pool=java.util.concurrent.Executors.newFixedThreadPool(2)) {

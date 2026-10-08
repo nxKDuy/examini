@@ -2,6 +2,7 @@ package com.datn.questionbank.dto;
 
 import com.datn.questionbank.entity.Question;
 import com.datn.questionbank.entity.QuestionReview;
+import com.datn.questionbank.entity.QuestionBank;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -56,6 +57,10 @@ public class QuestionDto {
         Question.CreationMethod creationMethod();
         Question.SourceType sourceType();
         String sourceRefId();
+        UUID bankId();
+        QuestionBank.BankType bankType();
+        String publicationStatus();
+        boolean eligible();
     }
     public record SafeOptionResponse(UUID id, String content, short displayOrder) {}
     public record SafeQuestionResponse(
@@ -65,7 +70,8 @@ public class QuestionDto {
             long questionVersion, Question.QuestionStatus status, Question.QuestionScope scope,
             UUID createdBy, LocalDateTime updatedAt,
             Question.CreationMethod creationMethod, Question.SourceType sourceType,
-            String sourceRefId, String sourceLabel, String sourceUrl
+            String sourceRefId, String sourceLabel, String sourceUrl, UUID bankId, QuestionBank.BankType bankType,
+            String publicationStatus, boolean eligible
     ) implements QuestionProjection {}
 
     @Builder
@@ -77,18 +83,24 @@ public class QuestionDto {
             UUID createdBy, LocalDateTime updatedAt,
             Question.CreationMethod creationMethod, Question.SourceType sourceType,
             String sourceRefId, String sourceLabel, String sourceUrl, String sourceExcerpt,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String expectedAnswer
+            @JsonInclude(JsonInclude.Include.NON_NULL) String expectedAnswer, UUID bankId, QuestionBank.BankType bankType, String publicationStatus, boolean eligible
     ) implements QuestionProjection {
         public QuestionResponse withContext(Question.QuestionStatus currentStatus, LocalDateTime currentUpdatedAt) {
             return new QuestionResponse(id, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options, questionVersion, currentStatus, scope, createdBy, currentUpdatedAt,
-                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer);
+                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, bankId, bankType, publicationStatus, eligible);
+        }
+        public QuestionResponse forExam(UUID resourceId, UUID resourceBank, QuestionBank.BankType type, String publication) {
+            return new QuestionResponse(resourceId, categoryId, categoryName, content, questionType, difficultyLevel,
+                    source, createdAt, options, questionVersion, Question.QuestionStatus.ACTIVE, scope, createdBy, updatedAt,
+                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer,
+                    resourceBank, type, publication, true);
         }
         public SafeQuestionResponse withoutAnswers() {
             return new SafeQuestionResponse(id, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options.stream().map(o -> new SafeOptionResponse(o.id(), o.content(), o.displayOrder())).toList(),
                     questionVersion, status, scope, createdBy, updatedAt, creationMethod, sourceType,
-                    sourceRefId, sourceLabel, sourceUrl);
+                    sourceRefId, sourceLabel, sourceUrl, bankId, bankType, publicationStatus, eligible);
         }
     }
 

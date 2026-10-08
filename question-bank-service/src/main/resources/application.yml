@@ -3,6 +3,10 @@ jwt:
   secret: ${JWT_SECRET:}
 question-bank:
   internal-token: ${QB_INTERNAL_TOKEN:}
+organization:
+  authorization:
+    url: ${ORGANIZATION_SERVICE_URL:http://localhost:8088}
+    token: ${ORG_AUTHZ_QB_TOKEN:}
 
 server:
   port: 8082

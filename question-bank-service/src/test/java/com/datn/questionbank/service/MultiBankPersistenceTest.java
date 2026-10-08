@@ -6,227 +6,158 @@ import com.datn.questionbank.entity.*;
 import com.datn.questionbank.repository.*;
 import com.datn.questionbank.security.QuestionActor;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.core.env.Environment;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import java.nio.charset.StandardCharsets;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.sql.DriverManager;
 import java.util.*;
-import java.util.concurrent.*;
+
 import static com.datn.questionbank.entity.Question.*;
 import static com.datn.questionbank.entity.QuestionBank.BankType;
-import static com.datn.questionbank.entity.PublicContribution.VerificationStatus;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest(properties={"eureka.client.enabled=false","spring.cloud.discovery.enabled=false",
-        "jwt.secret=test-only-jwt-key-32-bytes-or-longer-never-production","question-bank.internal-token=isolated-test-service-token"})
-@AutoConfigureMockMvc
+        "jwt.secret=test-only-jwt-key-32-bytes-or-longer-never-production",
+        "question-bank.internal-token=isolated-test-service-token"})
 @EnabledIfEnvironmentVariable(named="QB_TEST_DATABASE",matches="true")
+@Transactional
 class MultiBankPersistenceTest {
-    @Autowired MultiBankService bankService;
-    @Autowired QuestionService core;
-    @Autowired QuestionRepository questions;
+    @Autowired MultiBankService banks;
+    @Autowired OrganizationBankService organizations;
+    @Autowired QuestionService questions;
+    @Autowired ExamEligibilityService eligibility;
+    @Autowired OrganizationQuestionRepository organizationRepo;
+    @Autowired QuestionRepository questionRepo;
     @Autowired CategoryRepository categories;
-    @Autowired PublicQuestionRepository publicQuestions;
-    @Autowired QuestionBankRepository banks;
-    @Autowired QuestionVersionRepository versions;
-    @Autowired MockMvc http;
     @Autowired ObjectMapper json;
-    @Autowired Environment env;
-    QuestionActor owner=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
-    QuestionActor other=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
-    QuestionActor admin=new QuestionActor(UUID.randomUUID(),"ADMIN",false,"ADMIN");
-    QuestionActor legacyAdmin=new QuestionActor(UUID.randomUUID(),"ADMIN",false);
-    QuestionActor student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
-    UUID category;
-    @BeforeEach void setup(){category=categories.findAll().getFirst().getId();}
-    CreateRequest input(String content,QuestionScope scope){return new CreateRequest(category,content,QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,"Book",
-            List.of(new OptionRequest("Yes",true,(short)0),new OptionRequest("No",false,(short)1)),null,scope,SourceType.USER_DOCUMENT,"doc:1","Book",null,"Private excerpt");}
-    QuestionResponse approved(String title){var q=core.create(input(title,QuestionScope.PERSONAL),owner);core.submit(q.id(),1,owner);return core.review(q.id(),new ReviewRequest(QuestionReview.Decision.APPROVED,"OK",1L),admin);}
-    UpdateRequest edit(String content,long version){return new UpdateRequest(null,content,null,null,null,null,null,null,null,null,null,null,version);}
-    UUID bankOf(UUID q){return questions.findById(q).orElseThrow().getBankId();}
-    String jwt(QuestionActor actor){return "Bearer "+Jwts.builder().subject(actor.userId().toString()).claim("type","access").claim("role",actor.role())
-            .claim("systemPrivilege",actor.systemPrivilege()).expiration(new Date(System.currentTimeMillis()+60000))
-            .signWith(Keys.hmacShaKeyFor("test-only-jwt-key-32-bytes-or-longer-never-production".getBytes(StandardCharsets.UTF_8))).compact();}
-    void failure(int status,org.junit.jupiter.api.function.Executable action){assertEquals(status,assertThrows(ResponseStatusException.class,action).getStatusCode().value());}
+    @Autowired Environment environment;
+    @MockBean OrganizationAuthorizationClient organizationAuthorization;
 
-    @Test void personalBackwardCompatibilityAndNamedBankFilters(){
-        var q=approved("Personal legacy route");UUID defaultBank=bankOf(q.id());
-        var b=bankService.bank(defaultBank,owner);assertTrue(b.defaultBank());assertEquals(owner.userId(),b.ownerUserId());
-        var named=bankService.createBank(new CreateBank(BankType.PERSONAL,"Named",null),owner);
-        var inNamed=bankService.createQuestion(named.id(),input("Named question",QuestionScope.PERSONAL),owner);
-        assertNotEquals(defaultBank,bankOf(inNamed.question().id()));
-        var listing=bankService.listBanks(BankType.PERSONAL,owner.userId(),null,PageRequest.of(0,1),owner);
-        assertEquals(2,listing.getTotalElements());assertEquals(1,listing.getContent().size());
-        assertEquals(0,bankService.listBanks(BankType.PERSONAL,owner.userId(),null,PageRequest.of(0,20),other).getTotalElements());
-        assertEquals(1,bankService.listQuestions(named.id(),QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,QuestionStatus.DRAFT,PageRequest.of(0,20),owner).getTotalElements());
-        assertEquals(0,bankService.listQuestions(named.id(),null,DifficultyLevel.HARD,null,PageRequest.of(0,20),owner).getTotalElements());
-        failure(403,()->bankService.createQuestion(named.id(),input("Foreign",QuestionScope.PERSONAL),other));
-        failure(400,()->bankService.listBanks(null,null,null,PageRequest.of(0,101),owner));
-        assertEquals(List.of(q.id()),core.getRandomQuestionIds(category,DifficultyLevel.EASY,200,null,owner));
+    QuestionActor owner=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+    QuestionActor reviewer=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+    QuestionActor systemAdmin=new QuestionActor(UUID.randomUUID(),"ADMIN",false,"ADMIN");
+    UUID category;
+
+    @BeforeEach void setup(){category=categories.findAll().getFirst().getId();}
+    CreateRequest input(String content,QuestionScope scope){return new CreateRequest(category,content,QuestionType.MULTIPLE_CHOICE,
+            DifficultyLevel.EASY,"Book",List.of(new OptionRequest("Yes",true,(short)0),new OptionRequest("No",false,(short)1)),
+            null,scope,SourceType.USER_DOCUMENT,"doc:1","Book",null,"Private excerpt");}
+    QuestionResponse active(String content){var q=questions.create(input(content,QuestionScope.PERSONAL),owner);return questions.activate(q.id(),1,owner);}
+    UpdateRequest edit(String content,long version){return new UpdateRequest(null,content,null,null,null,null,null,null,null,null,null,null,version);}
+    void fails(int status,Executable call){assertEquals(status,assertThrows(ResponseStatusException.class,call::run).getStatusCode().value());}
+    interface Executable {void run();}
+
+    @Test void personalOwnerActivatesUsesAndVersionsWithoutReview(){
+        var q=active("Personal active");
+        questionRepo.flush();
+        assertEquals(List.of(q.id()),eligibility.random(category,DifficultyLevel.EASY,10,null,null,owner));
+        var candidate=eligibility.batch(List.of(q.id()),false,owner).getFirst();
+        assertTrue(candidate.eligible());assertEquals(BankType.PERSONAL,candidate.bankType());
+        var edited=questions.update(q.id(),edit("Independent v2",1),owner);
+        assertEquals(QuestionStatus.DRAFT,edited.status());assertEquals(2,edited.questionVersion());
+        fails(409,()->eligibility.batch(List.of(q.id()),false,owner));
+        assertEquals("Personal active",questions.version(q.id(),1,true,owner).question().content());
     }
-    @Test void organizationReferenceNeverCreatesMembershipAuthority(){
-        UUID organization=UUID.randomUUID();failure(403,()->bankService.createBank(new CreateBank(BankType.ORGANIZATION,"Org",organization),owner));
-        var b=bankService.createBank(new CreateBank(BankType.ORGANIZATION,"Org reference",organization),admin);
-        assertEquals(organization,b.organizationId());assertNull(b.ownerUserId());assertEquals(QuestionBank.BankStatus.PENDING_AUTHORIZATION,b.status());
-        assertEquals(1,bankService.listBanks(BankType.ORGANIZATION,null,organization,PageRequest.of(0,20),admin).getTotalElements());
-        failure(404,()->bankService.bank(b.id(),owner));
-        failure(503,()->bankService.createQuestion(b.id(),input("Org question",QuestionScope.ORGANIZATION),admin));
-        failure(503,()->bankService.listQuestions(b.id(),null,null,null,PageRequest.of(0,20),admin));
-        failure(400,()->bankService.createBank(new CreateBank(BankType.ORGANIZATION,"Missing reference",null),admin));
+
+    @Test void publicPublishIsImmediateFrozenCandidateSafeAndForkIndependent() throws Exception {
+        var q=active("Public frozen v1");
+        var publication=banks.publish(q.id(),new ContributionRequest(1),owner);
+        assertEquals("PUBLISHED",publication.publicationStatus());assertNotEquals(q.id(),publication.id());
+        String safe=json.writeValueAsString(publication);assertFalse(safe.contains("correct"));assertFalse(safe.contains("expectedAnswer"));
+        questions.update(q.id(),edit("Private v2",1),owner);
+        assertEquals("Public frozen v1",banks.publicQuestion(publication.id()).question().content());
+        var candidate=eligibility.batch(List.of(publication.id()),false,owner).getFirst();
+        assertTrue(candidate.eligible());assertEquals(BankType.PUBLIC,candidate.bankType());assertEquals("PUBLISHED",candidate.publicationStatus());
+        var fork=banks.forkPublic(publication.id(),new ForkRequest(1,null),reviewer).question();
+        assertEquals(QuestionStatus.DRAFT,fork.status());assertEquals("Public frozen v1",fork.content());
+        var lineage=banks.lineage(fork.id(),reviewer);assertEquals(publication.id(),lineage.sourcePublicQuestionId());assertEquals(1,lineage.sourceQuestionVersion());
+        questions.update(fork.id(),edit("Fork changed",1),reviewer);
+        assertEquals("Public frozen v1",banks.publicQuestion(publication.id()).question().content());
     }
-    @Test void systemBankRequiresExplicitPrivilegeAndForkIsIndependent(){
-        failure(403,()->bankService.createBank(new CreateBank(BankType.SYSTEM,"System",null),owner));
-        failure(403,()->bankService.createBank(new CreateBank(BankType.SYSTEM,"Legacy admin",null),legacyAdmin));
-        var b=bankService.createBank(new CreateBank(BankType.SYSTEM,"System",null),admin);
-        var q=bankService.createQuestion(b.id(),input("System original",QuestionScope.SYSTEM),admin).question();
-        failure(404,()->core.findById(q.id(),false,owner));
-        failure(403,()->core.update(q.id(),edit("Hijack",1),owner));
-        core.submit(q.id(),1,admin);
-        failure(403,()->core.review(q.id(),new ReviewRequest(QuestionReview.Decision.APPROVED,"No",1L),legacyAdmin));
-        core.review(q.id(),new ReviewRequest(QuestionReview.Decision.APPROVED,"OK",1L),admin);
-        assertEquals(1,bankService.listQuestions(b.id(),null,null,QuestionStatus.APPROVED,PageRequest.of(0,20),owner).getTotalElements());
-        assertFalse(json.valueToTree(core.findById(q.id(),false,student)).toString().contains("correct"));
-        failure(403,()->core.findById(q.id(),true,owner));
-        failure(409,()->core.getByIds(List.of(q.id()),true,false,admin));
-        assertFalse(core.getRandomQuestionIds(category,DifficultyLevel.EASY,200,null,admin).contains(q.id()));
-        var fork=bankService.forkQuestion(q.id(),new ForkRequest(1,null),owner).question();
-        assertEquals(QuestionStatus.DRAFT,fork.status());assertEquals(CreationMethod.COPIED,fork.creationMethod());assertEquals(1,fork.questionVersion());
-        assertEquals(BankType.SYSTEM,bankService.lineage(fork.id(),owner).sourceBankType());
-        var original=(QuestionResponse)core.findById(q.id(),true,admin);var copied=(QuestionResponse)fork;
-        assertNotEquals(original.options().getFirst().id(),copied.options().getFirst().id());
-        core.update(q.id(),edit("Changed system",1),admin);
-        assertEquals("System original",core.findById(fork.id(),false,owner).content());
-        failure(404,()->bankService.forkQuestion(q.id(),new ForkRequest(1,null),owner));
+
+    @Test void systemBankRequiresSignedPrivilegeAndTeacherCannotMutate(){
+        fails(403,()->banks.createBank(new CreateBank(BankType.SYSTEM,"System",null),owner));
+        var bank=banks.createBank(new CreateBank(BankType.SYSTEM,"System",null),systemAdmin);
+        var q=banks.createQuestion(bank.id(),input("System",QuestionScope.SYSTEM),systemAdmin).question();
+        fails(403,()->questions.activate(q.id(),1,owner));
+        questions.activate(q.id(),1,systemAdmin);
+        assertTrue(eligibility.batch(List.of(q.id()),false,owner).getFirst().eligible());
+        fails(403,()->eligibility.batch(List.of(q.id()),true,owner));
     }
-    @Test void approvedPersonalIsNotPublicVerifiedAndRejectionIsTerminal(){
-        var draft=core.create(input("Draft contribution",QuestionScope.PERSONAL),owner);
-        failure(409,()->bankService.contribute(draft.id(),new ContributionRequest(1),owner));
-        var q=approved("Rejected publication");var c=bankService.contribute(q.id(),new ContributionRequest(1),owner);
-        assertEquals(VerificationStatus.PUBLIC_PENDING,c.status());
-        failure(404,()->core.getByIds(List.of(c.id()),true,false,owner));
-        assertEquals(0,bankService.publicQuestions(null,owner.userId(),null,null,PageRequest.of(0,20)).getTotalElements());
-        failure(403,()->bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.APPROVED,"Teacher"),owner));
-        failure(403,()->bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.APPROVED,"Legacy"),legacyAdmin));
-        failure(400,()->bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.REJECTED," "),admin));
-        var rejected=bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.REJECTED,"Needs independent public verification"),admin);
-        assertEquals(VerificationStatus.PUBLIC_REJECTED,rejected.status());assertEquals(admin.userId(),rejected.reviewerId());assertNotNull(rejected.reviewedAt());
-        failure(409,()->bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.APPROVED,"Again"),admin));
-        failure(409,()->bankService.contribute(q.id(),new ContributionRequest(1),owner));
-        assertEquals(0,bankService.publicQuestions(null,owner.userId(),null,null,PageRequest.of(0,20)).getTotalElements());
+
+    @Test void organizationContributionHasIndependentReviewAndFrozenPublication(){
+        UUID organizationId=UUID.randomUUID();
+        var bank=banks.createBank(new CreateBank(BankType.ORGANIZATION,"Org",organizationId),owner);
+        var source=active("Org source v1");
+        var pending=organizations.submit(source.id(),new OrganizationContributionRequest(bank.id(),1),owner);
+        assertEquals(OrganizationContribution.ContributionStatus.PENDING_REVIEW,pending.status());
+        fails(403,()->organizations.review(pending.id(),new PublicReview(QuestionReview.Decision.APPROVED,"self"),owner));
+        var approved=organizations.review(pending.id(),new PublicReview(QuestionReview.Decision.APPROVED,"OK"),reviewer);
+        assertEquals(OrganizationContribution.ContributionStatus.APPROVED,approved.status());
+        assertEquals(QuestionStatus.ACTIVE,questions.findById(source.id(),false,owner).status());
+        var publication=organizationRepo.findAll().stream().filter(p->p.getContributionId().equals(pending.id())).findFirst().orElseThrow();
+        questions.update(source.id(),edit("Source v2",1),owner);
+        assertEquals("Org source v1",organizations.publication(publication.getId(),reviewer).question().content());
+        var eligible=eligibility.batch(List.of(publication.getId()),false,reviewer).getFirst();
+        assertTrue(eligible.eligible());assertEquals("APPROVED",eligible.publicationStatus());
     }
-    @Test void publicSnapshotAndForkSurviveSourceEditArchiveAndKeepLineage(){
-        var q=approved("Frozen public v1");var c=bankService.contribute(q.id(),new ContributionRequest(1),owner);
-        core.update(q.id(),edit("New private v2",1),owner);core.archive(q.id(),2,owner);
-        bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.APPROVED,"Verified captured v1"),admin);
-        var p=bankService.publicQuestions(null,owner.userId(),QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,PageRequest.of(0,20)).getContent().getFirst();
-        assertEquals("Frozen public v1",p.question().content());assertEquals(1,p.sourceQuestionVersion());assertEquals(q.id(),p.sourceQuestionId());
-        assertNotEquals(q.id(),p.id());assertEquals(QuestionScope.PERSONAL,questions.findById(q.id()).orElseThrow().getScope());
-        assertEquals(owner.userId(),questions.findById(q.id()).orElseThrow().getCreatedBy());
-        String safe=json.valueToTree(p).toString();assertFalse(safe.contains("correct"));assertFalse(safe.contains("expectedAnswer"));assertFalse(safe.contains("sourceExcerpt"));
-        var fork=bankService.forkPublic(p.id(),new ForkRequest(1,null),other).question();
-        assertEquals(other.userId(),((QuestionResponse)fork).createdBy());assertEquals(QuestionStatus.DRAFT,fork.status());
-        var l=bankService.lineage(fork.id(),other);assertEquals(p.id(),l.sourcePublicQuestionId());assertEquals(q.id(),l.sourceQuestionId());assertEquals(1,l.sourceQuestionVersion());assertEquals(BankType.PUBLIC,l.sourceBankType());
-        core.update(fork.id(),edit("Independent fork",1),other);
-        assertEquals("Frozen public v1",bankService.publicQuestion(p.id()).question().content());
-        assertEquals("New private v2",core.findById(q.id(),false,owner).content());
-        failure(404,()->bankService.lineage(fork.id(),owner));
-        failure(403,()->bankService.forkPublic(p.id(),new ForkRequest(1,null),student));
-        failure(409,()->bankService.forkPublic(p.id(),new ForkRequest(2,null),other));
-        failure(409,()->core.getByIds(List.of(fork.id()),true,false,other));
-        failure(404,()->core.getByIds(List.of(p.id()),true,false,other));
+
+    @Test void organizationRejectionLeavesSourceUsableAndProviderDenialFailsClosed(){
+        UUID organizationId=UUID.randomUUID();
+        var bank=banks.createBank(new CreateBank(BankType.ORGANIZATION,"Org reject",organizationId),owner);
+        var source=active("Rejected source");
+        var pending=organizations.submit(source.id(),new OrganizationContributionRequest(bank.id(),1),owner);
+        var rejected=organizations.review(pending.id(),new PublicReview(QuestionReview.Decision.REJECTED,"Needs work"),reviewer);
+        assertEquals(OrganizationContribution.ContributionStatus.REJECTED,rejected.status());
+        assertEquals(QuestionStatus.ACTIVE,questions.findById(source.id(),false,owner).status());
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN)).when(organizationAuthorization)
+                .require(eq(organizationId),eq(owner.userId()),any());
+        fails(403,()->organizations.submit(source.id(),new OrganizationContributionRequest(bank.id(),1),owner));
     }
-    @Test void personalHistoricalCopyKeepsVersionAndRejectsForeignTarget(){
-        var q=approved("Historical v1");core.update(q.id(),edit("Current v2",1),owner);
-        var copy=bankService.forkQuestion(q.id(),new ForkRequest(1,null),owner).question();
-        assertEquals("Historical v1",copy.content());assertEquals(1,bankService.lineage(copy.id(),owner).sourceQuestionVersion());
-        assertEquals(SourceType.USER_DOCUMENT,copy.sourceType());assertEquals("doc:1",copy.sourceRefId());
-        failure(404,()->bankService.forkQuestion(q.id(),new ForkRequest(1,null),other));
-        var target=bankService.createBank(new CreateBank(BankType.PERSONAL,"Other bank",null),other);
-        failure(403,()->bankService.forkQuestion(q.id(),new ForkRequest(1,target.id()),owner));
-        failure(404,()->bankService.forkQuestion(q.id(),new ForkRequest(100,null),owner));
+
+    @Test void publicationAnswerKeyOnlyUsesServerCredentialLane() throws Exception {
+        var q=active("Public key");var publication=banks.publish(q.id(),new ContributionRequest(1),owner);
+        fails(403,()->eligibility.batch(List.of(publication.id()),true,owner));
+        var internal=new QuestionActor(owner.userId(),"SERVICE",true);
+        String full=json.writeValueAsString(eligibility.batch(List.of(publication.id()),true,internal));
+        assertTrue(full.contains("\"correct\":true"));
+        String candidate=json.writeValueAsString(eligibility.batch(List.of(publication.id()),false,internal));
+        assertFalse(candidate.contains("correct"));assertFalse(candidate.contains("expectedAnswer"));
     }
-    @Test void publicPaginationFiltersAndContributionVisibility(){
-        for(int i=0;i<2;i++){var q=approved("Public listing "+i);var c=bankService.contribute(q.id(),new ContributionRequest(1),owner);bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.APPROVED,"Verified"),admin);}
-        var pending=bankService.contribute(approved("Pending listing").id(),new ContributionRequest(1),owner);
-        var page=bankService.publicQuestions(null,owner.userId(),QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,PageRequest.of(0,1));
-        assertEquals(2,page.getTotalElements());assertEquals(1,page.getContent().size());
-        assertEquals(0,bankService.publicQuestions(null,owner.userId(),null,DifficultyLevel.HARD,PageRequest.of(0,20)).getTotalElements());
-        assertEquals(1,bankService.listContributions(VerificationStatus.PUBLIC_PENDING,PageRequest.of(0,20),owner).getTotalElements());
-        assertEquals(0,bankService.listContributions(null,PageRequest.of(0,20),other).getTotalElements());
-        failure(404,()->bankService.contribution(pending.id(),other));
-    }
-    @Test void newHttpRoutesRespectSignedPrivilegeSafePayloadAndInternalBoundary() throws Exception {
-        http.perform(post("/question-banks").header("Authorization",jwt(owner)).header("X-System-Privilege","ADMIN")
-                .contentType("application/json").content("{\"type\":\"SYSTEM\",\"name\":\"Spoof\"}")).andExpect(status().isForbidden());
-        var result=http.perform(post("/question-banks").header("Authorization",jwt(admin)).contentType("application/json")
-                .content("{\"type\":\"SYSTEM\",\"name\":\"Signed admin bank\"}")).andExpect(status().isCreated()).andReturn();
-        UUID bank=UUID.fromString(json.readTree(result.getResponse().getContentAsString()).get("id").asText());
-        http.perform(post("/question-banks/"+bank+"/questions").header("Authorization",jwt(admin)).contentType("application/json")
-                .content(json.writeValueAsString(input("HTTP system draft",QuestionScope.SYSTEM)))).andExpect(status().isCreated());
-        http.perform(get("/question-banks/"+bank+"/questions").header("Authorization",jwt(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
-        for(String path:List.of("/question-banks","/public-questions","/public-contributions")) {
-            http.perform(get(path).header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId())).andExpect(status().isForbidden());
-            http.perform(get(path).header("X-User-Id",owner.userId())).andExpect(status().isUnauthorized());
-        }
-        var q=approved("HTTP verified");var c=bankService.contribute(q.id(),new ContributionRequest(1),owner);
-        http.perform(get("/public-contributions/"+c.id()).param("includeAnswers","true").header("Authorization",jwt(owner))).andExpect(status().isForbidden());
-        http.perform(get("/public-contributions/"+c.id()).param("includeAnswers","true").header("Authorization",jwt(admin))).andExpect(status().isOk()).andExpect(jsonPath("$.question.options[0].correct").value(true));
-        http.perform(post("/public-contributions/"+c.id()+"/review").header("Authorization",jwt(admin)).contentType("application/json")
-                .content("{\"decision\":\"APPROVED\",\"reviewNote\":\"Verified\"}")).andExpect(status().isOk());
-        String payload=http.perform(get("/public-questions").param("sourceOwnerUserId",owner.userId().toString()).header("Authorization",jwt(student)))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        assertFalse(payload.contains("correct"));assertFalse(payload.contains("expectedAnswer"));assertFalse(payload.contains("sourceExcerpt"));
-        http.perform(post("/questions/"+q.id()+"/fork").header("Authorization",jwt(owner)).contentType("application/json").content("{\"sourceQuestionVersion\":0}"))
-                .andExpect(status().isBadRequest());
-    }
-    @Test void concurrentContributionAndReviewHaveSingleTerminalPublication() throws Exception {
-        var q=approved("Concurrent contribution");
-        int count=race(()->{bankService.contribute(q.id(),new ContributionRequest(1),owner);return true;});assertEquals(1,count);
-        var c=bankService.listContributions(null,PageRequest.of(0,20),owner).getContent().getFirst();
-        assertEquals(1,race(()->{bankService.reviewContribution(c.id(),new PublicReview(QuestionReview.Decision.APPROVED,"Concurrent"),admin);return true;}));
-        assertEquals(1,bankService.publicQuestions(null,owner.userId(),null,null,PageRequest.of(0,20)).getTotalElements());
-    }
-    int race(Callable<Boolean> work) throws Exception {
-        var gate=new CountDownLatch(1);try(var pool=Executors.newFixedThreadPool(2)) {
-            var tasks=new ArrayList<Future<Boolean>>();for(int i=0;i<2;i++)tasks.add(pool.submit(()->{gate.await();try{return work.call();}catch(ResponseStatusException e){assertEquals(409,e.getStatusCode().value());return false;}}));
-            gate.countDown();int success=0;for(var task:tasks)if(task.get(15,TimeUnit.SECONDS))success++;return success;
-        }
-    }
-    @Test void upgradeFromPhase1PreservesOwnerOptionsVersionsReviewAndForeignKeys() throws Exception {
-        String schema="qb2_upgrade_"+UUID.randomUUID().toString().replace("-","");
-        String url=env.getRequiredProperty("spring.datasource.url"),user=env.getRequiredProperty("spring.datasource.username"),password=env.getRequiredProperty("spring.datasource.password");
+
+    @Test void upgradeMapsLegacyCurrentStatusWithoutChangingSnapshots() throws Exception {
+        String schema="qb_lifecycle_"+UUID.randomUUID().toString().replace("-","");
+        String url=environment.getRequiredProperty("spring.datasource.url");
+        String user=environment.getRequiredProperty("spring.datasource.username");
+        String password=environment.getRequiredProperty("spring.datasource.password");
         try {
-            Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).target("2").load().migrate();
-            try(var conn=DriverManager.getConnection(url,user,password)){conn.setSchema(schema);try(var sql=conn.createStatement()) {
-                String snapshot;UUID id;UUID ownerId;UUID option;
-                try(var rows=sql.executeQuery("SELECT v.snapshot,q.id,q.created_by,o.id FROM questions q JOIN question_versions v ON v.question_id=q.id JOIN question_options o ON o.question_id=q.id LIMIT 1")) {
-                    assertTrue(rows.next());snapshot=rows.getString(1);id=(UUID)rows.getObject(2);ownerId=(UUID)rows.getObject(3);option=(UUID)rows.getObject(4);
+            Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).target("3").load().migrate();
+            try(var connection=DriverManager.getConnection(url,user,password)){connection.setSchema(schema);try(var sql=connection.createStatement()){
+                var ids=new ArrayList<UUID>();var snapshots=new HashMap<UUID,String>();
+                try(var rows=sql.executeQuery("SELECT q.id,v.snapshot FROM questions q JOIN question_versions v ON v.question_id=q.id ORDER BY q.id")){
+                    while(rows.next()){var id=(UUID)rows.getObject(1);ids.add(id);snapshots.put(id,rows.getString(2));}
                 }
-                sql.executeUpdate("INSERT INTO question_versions(id,question_id,version_number,snapshot,created_at,changed_by) SELECT gen_random_uuid(),question_id,2,jsonb_set(snapshot::jsonb,'{questionVersion}','2')::text,CURRENT_TIMESTAMP,changed_by FROM question_versions WHERE question_id='"+id+"' AND version_number=1");
-                sql.executeUpdate("UPDATE questions SET status='APPROVED',question_version=2 WHERE id='"+id+"'");
-                sql.executeUpdate("INSERT INTO question_reviews(id,question_id,question_version,reviewer_id,decision,review_note,reviewed_at) VALUES(gen_random_uuid(),'"+id+"',2,'"+admin.userId()+"','APPROVED','Before upgrade',CURRENT_TIMESTAMP)");
+                sql.executeUpdate("UPDATE questions SET status='APPROVED' WHERE id='"+ids.get(0)+"'");
+                sql.executeUpdate("UPDATE questions SET status='REJECTED' WHERE id='"+ids.get(1)+"'");
                 Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).load().migrate();
-                try(var rows=sql.executeQuery("SELECT q.created_by,b.owner_user_id,b.type,v.snapshot,q.status,q.question_version FROM questions q JOIN question_banks b ON b.id=q.bank_id JOIN question_versions v ON v.question_id=q.id WHERE q.id='"+id+"' AND v.version_number=1")) {
-                    assertTrue(rows.next());assertEquals(ownerId,rows.getObject(1));assertEquals(ownerId,rows.getObject(2));assertEquals("PERSONAL",rows.getString(3));assertEquals(snapshot,rows.getString(4));assertEquals("APPROVED",rows.getString(5));
-                    assertEquals(2,rows.getLong(6));
+                try(var rows=sql.executeQuery("SELECT q.id,q.status,m.previous_status,v.snapshot FROM questions q JOIN question_lifecycle_migrations m ON m.question_id=q.id JOIN question_versions v ON v.question_id=q.id")){
+                    while(rows.next()){
+                        UUID id=(UUID)rows.getObject(1);String before=rows.getString(3);
+                        String expected=switch(before){case "APPROVED"->"ACTIVE";case "PENDING_REVIEW","REJECTED"->"DRAFT";default->before;};
+                        assertEquals(expected,rows.getString(2));assertEquals(snapshots.get(id),rows.getString(4));
+                    }
                 }
-                try(var rows=sql.executeQuery("SELECT count(*) FROM question_versions WHERE question_id='"+id+"'")){rows.next();assertEquals(2,rows.getInt(1));}
-                try(var rows=sql.executeQuery("SELECT count(*) FROM question_options WHERE id='"+option+"'")){rows.next();assertEquals(1,rows.getInt(1));}
-                try(var rows=sql.executeQuery("SELECT count(*) FROM question_reviews WHERE question_id='"+id+"'")){rows.next();assertEquals(1,rows.getInt(1));}
-                assertThrows(java.sql.SQLException.class,()->sql.executeUpdate("UPDATE questions SET bank_id=gen_random_uuid() WHERE id='"+id+"'"));
             }}
-        } finally {try(var conn=DriverManager.getConnection(url,user,password);var sql=conn.createStatement()){sql.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}}
+        } finally {try(var connection=DriverManager.getConnection(url,user,password);var sql=connection.createStatement()){sql.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}}
     }
 }

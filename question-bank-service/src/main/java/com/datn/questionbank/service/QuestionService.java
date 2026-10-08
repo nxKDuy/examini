@@ -35,6 +35,7 @@ public class QuestionService {
     private final QuestionPolicy policy;
     private final ObjectMapper json;
     private final BankRegistry banks;
+    private final ExamEligibilityService eligibility;
 
     public Page<QuestionProjection> findAll(UUID categoryId, DifficultyLevel difficulty, QuestionType type,
             QuestionStatus status, CreationMethod method, SourceType sourceType, String text,
@@ -91,7 +92,7 @@ public class QuestionService {
         Question q = lock(id);
         policy.requireOwner(q, actor);
         matchVersion(q, req.questionVersion());
-        if (q.getStatus() == QuestionStatus.PENDING_REVIEW || q.getStatus() == QuestionStatus.ARCHIVED)
+        if (q.getStatus() == QuestionStatus.ARCHIVED)
             throw conflict("Không thể sửa câu hỏi đang chờ duyệt hoặc đã lưu trữ");
         if (req.categoryId() != null) q.setCategory(categoryService.getOrThrow(req.categoryId()));
         if (req.content() != null) q.setContent(req.content());
@@ -114,36 +115,17 @@ public class QuestionService {
     }
 
     @Transactional
-    public QuestionResponse submit(UUID id, long version, QuestionActor actor) {
-        Question q = lock(id);
-        policy.requireOwner(q, actor);
-        matchVersion(q, version);
-        if (q.getStatus() != QuestionStatus.DRAFT) throw conflict("Chỉ DRAFT được gửi duyệt; REJECTED cần sửa trước");
-        validate(q);
-        q.setStatus(QuestionStatus.PENDING_REVIEW);
-        q.setUpdatedAt(LocalDateTime.now());
+    public QuestionResponse activate(UUID id, long version, QuestionActor actor) {
+        Question q = lock(id); policy.requireOwner(q, actor); matchVersion(q, version);
+        if (q.getStatus() != QuestionStatus.DRAFT) throw conflict("Chỉ DRAFT được activate");
+        validate(q); q.setStatus(QuestionStatus.ACTIVE); q.setUpdatedAt(LocalDateTime.now());
         return fullResponse(q);
     }
-
-    @Transactional
+    public QuestionResponse submit(UUID id, long version, QuestionActor actor) {
+        throw new ResponseStatusException(HttpStatus.GONE, "Review Question đã bỏ; dùng /activate hoặc Organization contribution");
+    }
     public QuestionResponse review(UUID id, ReviewRequest req, QuestionActor actor) {
-        policy.requireReviewer(actor);
-        Question q = lock(id);
-        if (q.getScope() == QuestionScope.SYSTEM && !actor.systemAdmin())
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "System review yêu cầu explicit authority");
-        policy.requireRead(q, actor);
-        matchVersion(q, req.questionVersion());
-        if (q.getStatus() != QuestionStatus.PENDING_REVIEW) throw conflict("Chỉ PENDING_REVIEW được quyết định duyệt");
-        if (req.decision() == null) throw bad("Thiếu quyết định duyệt");
-        if (req.decision() == QuestionReview.Decision.REJECTED && (req.reviewNote() == null || req.reviewNote().isBlank()))
-            throw bad("Từ chối cần ghi rõ lý do");
-        validate(q);
-        q.setStatus(req.decision() == QuestionReview.Decision.APPROVED ? QuestionStatus.APPROVED : QuestionStatus.REJECTED);
-        q.setUpdatedAt(LocalDateTime.now());
-        reviews.save(QuestionReview.builder().questionId(id).questionVersion(q.getQuestionVersion())
-                .reviewerId(actor.userId()).decision(req.decision()).reviewNote(req.reviewNote())
-                .reviewedAt(q.getUpdatedAt()).build());
-        return fullResponse(q);
+        throw new ResponseStatusException(HttpStatus.GONE, "Review Question đã bỏ; review Organization contribution tại bank");
     }
 
     @Transactional
@@ -178,36 +160,16 @@ public class QuestionService {
 
     public List<UUID> getRandomQuestionIds(UUID category, DifficultyLevel difficulty, int limit,
             QuestionType type, QuestionActor actor) {
-        if (limit < 1 || limit > 200) throw bad("limit phải từ 1 đến 200");
-        // Database LIMIT plus random ordering avoids loading an entire bank to shuffle it.
-        return repo.findEligibleRandom(category, difficulty.name(), type == null ? null : type.name(), actor.userId(),
-                actor.admin(), Pageable.ofSize(limit)).stream().map(Question::getId).toList();
+        return eligibility.random(category, difficulty, limit, type, null, actor);
     }
-
+    public List<UUID> getRandomQuestionIds(UUID category, DifficultyLevel difficulty, int limit,
+            QuestionType type, UUID bankId, QuestionActor actor) {
+        return eligibility.random(category, difficulty, limit, type, bankId, actor);
+    }
     public List<QuestionProjection> getByIds(List<UUID> ids, boolean eligible, boolean includeAnswers, QuestionActor actor) {
-        if (ids == null || ids.isEmpty() || ids.size() > 1000 || ids.stream().anyMatch(Objects::isNull))
-            throw bad("Cần batch ID hợp lệ (tối đa 1000 phần tử thô)");
-        ids = new ArrayList<>(new LinkedHashSet<>(ids));
-        if (ids.size() > 200) throw bad("Tối đa 200 ID riêng biệt");
-        if (actor.internal() && !eligible) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Service chỉ được đọc batch đủ điều kiện");
-        Map<UUID, Question> found = new HashMap<>();
-        repo.findAllById(ids).forEach(q -> found.put(q.getId(), q));
-        Map<UUID, QuestionVersion> snapshots = new HashMap<>();
-        versions.findCurrentSnapshots(ids).forEach(v -> snapshots.put(v.getQuestionId(), v));
-        List<QuestionProjection> result = new ArrayList<>();
-        for (UUID id : ids) {
-            Question q = found.get(id);
-            if (q == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy câu hỏi");
-            policy.requireRead(q, actor);
-            if (eligible && (q.getScope() != QuestionScope.PERSONAL || q.getStatus() != QuestionStatus.APPROVED))
-                throw conflict("Batch chứa câu hỏi không đủ điều kiện PERSONAL APPROVED");
-            requireAnswers(q, includeAnswers, actor);
-            QuestionVersion v = snapshots.get(id);
-            if (v == null || v.getVersionNumber() != q.getQuestionVersion()) throw conflict("Thiếu snapshot phiên bản câu hỏi");
-            QuestionResponse frozen = readSnapshot(v).withContext(q.getStatus(), q.getUpdatedAt());
-            result.add(includeAnswers ? frozen : frozen.withoutAnswers());
-        }
-        return result;
+        if (eligible) return eligibility.batch(ids, includeAnswers, actor);
+        if (actor.internal()) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Service chỉ được đọc eligible batch");
+        return ExamEligibilityService.ids(ids).stream().map(id -> findById(id, includeAnswers, actor)).toList();
     }
 
     @Transactional
@@ -282,8 +244,7 @@ public class QuestionService {
         catch (IllegalArgumentException e) { throw new IllegalArgumentException(label + " không hợp lệ"); }
     }
     private Specification<Question> accessible(QuestionActor actor) {
-        return (r,q,b) -> actor.admin() ? b.equal(r.get("scope"), QuestionScope.PERSONAL)
-                : b.and(b.equal(r.get("scope"), QuestionScope.PERSONAL), b.equal(r.get("createdBy"), actor.userId()));
+        return (r,q,b) -> b.and(b.equal(r.get("scope"), QuestionScope.PERSONAL), b.equal(r.get("createdBy"), actor.userId()));
     }
     private void replaceOptions(Question q, List<OptionRequest> options) {
         q.getOptions().clear();
@@ -335,6 +296,7 @@ public class QuestionService {
                 .content(q.getContent()).questionType(q.getQuestionType()).difficultyLevel(q.getDifficultyLevel())
                 .source(q.getSource()).createdAt(q.getCreatedAt()).updatedAt(q.getUpdatedAt()).createdBy(q.getCreatedBy())
                 .questionVersion(q.getQuestionVersion()).status(q.getStatus()).scope(q.getScope())
+                .bankId(q.getBankId()).bankType(QuestionBank.BankType.valueOf(q.getScope().name()))
                 .creationMethod(q.getCreationMethod()).sourceType(q.getSourceType()).sourceRefId(q.getSourceRefId())
                 .sourceLabel(q.getSourceLabel()).sourceUrl(q.getSourceUrl()).sourceExcerpt(q.getSourceExcerpt()).expectedAnswer(q.getExpectedAnswer())
                 .options(q.getOptions().stream().sorted(Comparator.comparingInt(QuestionOption::getDisplayOrder))

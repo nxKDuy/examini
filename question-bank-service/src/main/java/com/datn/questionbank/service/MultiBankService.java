@@ -38,6 +38,9 @@ public class MultiBankService {
         if(request.type()==BankType.PERSONAL) {
             policy.requireAuthor(actor);
             if(request.organizationId()!=null) throw bad("PERSONAL không dùng organizationId");
+        } else if (request.type()==BankType.ORGANIZATION) {
+            if(request.organizationId()==null) throw bad("ORGANIZATION yêu cầu organizationId");
+            registry.requireOrganizationManage(request.organizationId(), actor);
         } else {
             systemAuthority(actor);
             if(request.type()==BankType.PUBLIC) throw bad("Public Bank mặc định được provision bởi migration");
@@ -45,13 +48,13 @@ public class MultiBankService {
         }
         var bank=QuestionBank.builder().type(request.type()).name(request.name().trim())
                 .ownerUserId(request.type()==BankType.PERSONAL?actor.userId():null).organizationId(request.organizationId())
-                .status(request.type()==BankType.ORGANIZATION?QuestionBank.BankStatus.PENDING_AUTHORIZATION:QuestionBank.BankStatus.ACTIVE)
+                .status(QuestionBank.BankStatus.ACTIVE)
                 .createdAt(LocalDateTime.now()).build();
         return bankResponse(banks.save(bank));
     }
     public Page<BankResponse> listBanks(BankType type,UUID owner,UUID organization,Pageable page,QuestionActor actor) {
         bounds(page);
-        Specification<QuestionBank> spec=(r,q,b)->actor.systemAdmin()?b.conjunction():b.or(
+        Specification<QuestionBank> spec=(r,q,b)->b.or(
                 b.and(b.equal(r.get("type"),BankType.PERSONAL),b.equal(r.get("ownerUserId"),actor.userId())),
                 r.get("type").in(BankType.SYSTEM,BankType.PUBLIC));
         if(type!=null) spec=spec.and((r,q,b)->b.equal(r.get("type"),type));
@@ -63,10 +66,10 @@ public class MultiBankService {
     public Page<BankQuestion> listQuestions(UUID bankId,Question.QuestionType type,Question.DifficultyLevel difficulty,
             Question.QuestionStatus status,Pageable page,QuestionActor actor) {
         bounds(page);var bank=registry.get(bankId);registry.requireRead(bank,actor);
-        if(bank.getType()==BankType.ORGANIZATION) throw unavailable();
+        if(bank.getType()==BankType.ORGANIZATION) throw bad("Organization Bank dùng GET /organization-questions?bankId=...");
         if(bank.getType()==BankType.PUBLIC) throw bad("Public Bank dùng GET /public-questions");
         Specification<Question> spec=(r,q,b)->b.equal(r.get("bankId"),bankId);
-        if(bank.getType()==BankType.SYSTEM&&!actor.systemAdmin()) spec=spec.and((r,q,b)->b.equal(r.get("status"),Question.QuestionStatus.APPROVED));
+        if(bank.getType()==BankType.SYSTEM&&!actor.systemAdmin()) spec=spec.and((r,q,b)->b.equal(r.get("status"),Question.QuestionStatus.ACTIVE));
         if(type!=null)spec=spec.and((r,q,b)->b.equal(r.get("questionType"),type));
         if(difficulty!=null)spec=spec.and((r,q,b)->b.equal(r.get("difficultyLevel"),difficulty));
         if(status!=null)spec=spec.and((r,q,b)->b.equal(r.get("status"),status));
@@ -79,16 +82,17 @@ public class MultiBankService {
     public LineageResponse lineage(UUID id,QuestionActor actor) {
         core.findById(id,false,actor);
         var l=lineage.findById(id).orElseThrow(()->missing("Không có lineage cho câu hỏi gốc"));
-        return new LineageResponse(l.getQuestionId(),l.getSourceQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),l.getSourceBankType(),l.getSourcePublicQuestionId(),l.getCopiedAt(),l.getCopiedBy());
+        return new LineageResponse(l.getQuestionId(),l.getSourceQuestionId(),l.getSourceQuestionVersion(),l.getSourceBankId(),l.getSourceBankType(),l.getSourcePublicQuestionId(),l.getSourceOrganizationQuestionId(),l.getCopiedAt(),l.getCopiedBy());
     }
     @Transactional
     public BankQuestion forkQuestion(UUID id,ForkRequest request,QuestionActor actor) {
         policy.requireAuthor(actor);
         var source=questions.findForUpdate(id).orElseThrow(()->missing("Không tìm thấy câu hỏi"));
         policy.requireRead(source,actor);
-        if(source.getScope()==Question.QuestionScope.ORGANIZATION) throw unavailable();
-        if(source.getScope()==Question.QuestionScope.SYSTEM&&(source.getStatus()!=Question.QuestionStatus.APPROVED||source.getQuestionVersion()!=request.sourceQuestionVersion()))
-            throw conflict("System fork chỉ từ current APPROVED version");
+        if(source.getScope()==Question.QuestionScope.ORGANIZATION)
+            throw bad("Organization fork dùng immutable organization publication");
+        if(source.getScope()==Question.QuestionScope.SYSTEM&&(source.getStatus()!=Question.QuestionStatus.ACTIVE||source.getQuestionVersion()!=request.sourceQuestionVersion()))
+            throw conflict("System fork chỉ từ current ACTIVE version");
         var bank=registry.get(source.getBankId());
         return copy(snapshot(id,request.sourceQuestionVersion()),request.targetBankId(),bank.getId(),bank.getType(),null,actor);
     }
@@ -113,18 +117,32 @@ public class MultiBankService {
         return new BankQuestion(targetBank,copy);
     }
     @Transactional
-    public ContributionResponse contribute(UUID id,ContributionRequest request,QuestionActor actor) {
+    public PublicResponse publish(UUID id,ContributionRequest request,QuestionActor actor) {
         var q=questions.findForUpdate(id).orElseThrow(()->missing("Không tìm thấy câu hỏi"));
         policy.requireOwner(q,actor);
-        if(q.getScope()!=Question.QuestionScope.PERSONAL) throw bad("Phase 2 contribution chỉ từ PERSONAL; Organization chờ contract");
-        if(q.getStatus()!=Question.QuestionStatus.APPROVED||q.getQuestionVersion()!=request.sourceQuestionVersion())
-            throw conflict("Contribution yêu cầu current APPROVED source version");
-        if(contributions.existsBySourceQuestionIdAndSourceQuestionVersion(id,request.sourceQuestionVersion())) throw conflict("Version đã được đóng góp; chỉnh sửa source để gửi version mới");
-        var frozen=snapshot(id,request.sourceQuestionVersion()).withContext(Question.QuestionStatus.APPROVED,q.getUpdatedAt());
-        var c=PublicContribution.builder().sourceQuestionId(id).sourceQuestionVersion(request.sourceQuestionVersion())
-                .sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy()).submittedBy(actor.userId()).submittedAt(LocalDateTime.now())
-                .snapshot(write(frozen)).status(VerificationStatus.PUBLIC_PENDING).build();
-        return contributionResponse(contributions.save(c));
+        if(q.getScope()!=Question.QuestionScope.PERSONAL) throw bad("Publish source phải là PERSONAL");
+        if(q.getStatus()!=Question.QuestionStatus.ACTIVE||q.getQuestionVersion()!=request.sourceQuestionVersion())
+            throw conflict("Publish yêu cầu current ACTIVE source version");
+        var existing=contributions.findBySourceQuestionIdAndSourceQuestionVersion(id,request.sourceQuestionVersion());
+        if(existing.isPresent()) {
+            var previous=publications.findByContributionId(existing.get().getId());
+            if(previous.isPresent()) return publicResponse(previous.get());
+            throw conflict("Legacy contribution cần version mới để publish; lịch sử vẫn được giữ");
+        }
+        var now=LocalDateTime.now();
+        var frozen=snapshot(id,request.sourceQuestionVersion()).withContext(Question.QuestionStatus.ACTIVE,q.getUpdatedAt());
+        // Existing audit rows/FKs are retained; this is direct publication, without a review decision.
+        var c=contributions.save(PublicContribution.builder().sourceQuestionId(id).sourceQuestionVersion(request.sourceQuestionVersion())
+                .sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy()).submittedBy(actor.userId()).submittedAt(now)
+                .snapshot(write(frozen)).status(VerificationStatus.PUBLIC_PUBLISHED).build());
+        var p=publications.save(PublicQuestion.builder().bankId(banks.findByTypeAndDefaultBankTrue(BankType.PUBLIC).orElseThrow().getId())
+                .contributionId(c.getId()).sourceQuestionId(id).sourceQuestionVersion(q.getQuestionVersion())
+                .sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy()).snapshot(c.getSnapshot())
+                .questionType(frozen.questionType()).difficultyLevel(frozen.difficultyLevel()).verifiedBy(actor.userId()).verifiedAt(now).build());
+        return publicResponse(p);
+    }
+    public ContributionResponse contribute(UUID id,ContributionRequest request,QuestionActor actor) {
+        throw new ResponseStatusException(HttpStatus.GONE,"Public review đã bỏ; dùng POST /questions/{id}/publish-public");
     }
     public Page<ContributionResponse> listContributions(VerificationStatus status,Pageable page,QuestionActor actor) {
         bounds(page);Specification<PublicContribution> spec=(r,q,b)->actor.systemAdmin()?b.conjunction():b.equal(r.get("submittedBy"),actor.userId());
@@ -138,22 +156,8 @@ public class MultiBankService {
         if(includeAnswers) systemAuthority(actor);
         return contributionResponse(c,includeAnswers);
     }
-    @Transactional
     public ContributionResponse reviewContribution(UUID id,PublicReview request,QuestionActor actor) {
-        systemAuthority(actor);
-        var c=contributions.findForUpdate(id).orElseThrow(()->missing("Không tìm thấy contribution"));
-        if(c.getStatus()!=VerificationStatus.PUBLIC_PENDING)throw conflict("Contribution đã quyết định; không được ghi đè");
-        if(request.decision()==QuestionReview.Decision.REJECTED&&(request.reviewNote()==null||request.reviewNote().isBlank())) throw bad("Từ chối cần ghi chú");
-        c.setStatus(request.decision()==QuestionReview.Decision.APPROVED?VerificationStatus.PUBLIC_VERIFIED:VerificationStatus.PUBLIC_REJECTED);
-        c.setReviewerId(actor.userId());c.setReviewNote(request.reviewNote());c.setReviewedAt(LocalDateTime.now());
-        if(c.getStatus()==VerificationStatus.PUBLIC_VERIFIED) {
-            var frozen=read(c.getSnapshot());
-            publications.save(PublicQuestion.builder().bankId(banks.findByTypeAndDefaultBankTrue(BankType.PUBLIC).orElseThrow().getId())
-                .contributionId(c.getId()).sourceQuestionId(c.getSourceQuestionId()).sourceQuestionVersion(c.getSourceQuestionVersion())
-                .sourceBankId(c.getSourceBankId()).sourceOwnerUserId(c.getSourceOwnerUserId()).snapshot(c.getSnapshot())
-                .questionType(frozen.questionType()).difficultyLevel(frozen.difficultyLevel()).verifiedBy(actor.userId()).verifiedAt(c.getReviewedAt()).build());
-        }
-        return contributionResponse(c);
+        throw new ResponseStatusException(HttpStatus.GONE,"Public không còn verification gate; legacy review chỉ đọc");
     }
     public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,Pageable page) {
         bounds(page);Specification<PublicQuestion> spec=(r,q,b)->b.conjunction();
@@ -171,11 +175,10 @@ public class MultiBankService {
     private BankResponse bankResponse(QuestionBank b) {return new BankResponse(b.getId(),b.getType(),b.getOwnerUserId(),b.getOrganizationId(),b.getName(),b.getStatus(),b.isDefaultBank(),b.getCreatedAt());}
     private ContributionResponse contributionResponse(PublicContribution c) { return contributionResponse(c,false); }
     private ContributionResponse contributionResponse(PublicContribution c,boolean includeAnswers) {return new ContributionResponse(c.getId(),c.getSourceQuestionId(),c.getSourceQuestionVersion(),c.getSourceBankId(),c.getSourceOwnerUserId(),c.getSubmittedBy(),c.getSubmittedAt(),c.getStatus(),c.getReviewerId(),c.getReviewNote(),c.getReviewedAt(),includeAnswers?read(c.getSnapshot()):read(c.getSnapshot()).withoutAnswers());}
-    private PublicResponse publicResponse(PublicQuestion p) {return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),VerificationStatus.PUBLIC_VERIFIED,p.getVerifiedBy(),p.getVerifiedAt(),read(p.getSnapshot()).withoutAnswers());}
+    private PublicResponse publicResponse(PublicQuestion p) {return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),"PUBLISHED",p.getVerifiedBy(),p.getVerifiedAt(),read(p.getSnapshot()).withoutAnswers());}
     private void systemAuthority(QuestionActor actor) {if(!actor.systemAdmin())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Yêu cầu signed systemPrivilege=ADMIN");}
     private void bounds(Pageable p) {if(p.getPageSize()>100)throw bad("size tối đa 100");}
     private ResponseStatusException bad(String s){return new ResponseStatusException(HttpStatus.BAD_REQUEST,s);}
     private ResponseStatusException conflict(String s){return new ResponseStatusException(HttpStatus.CONFLICT,s);}
     private ResponseStatusException missing(String s){return new ResponseStatusException(HttpStatus.NOT_FOUND,s);}
-    private ResponseStatusException unavailable(){return new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Organization authorization contract chưa sẵn sàng");}
 }
