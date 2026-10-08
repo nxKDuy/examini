@@ -29,7 +29,7 @@ Worker chạy `mvn test` với JDK 21: 41 PASS, 1 persistence SKIP do chưa có
 PostgreSQL thật sẽ được xác minh trong consolidated E2E của batch.
 Emails được so khớp chính xác như lưu tại Auth, không lowercase selector tại consumer.
 
-## Consumer Question Bank (APPROVED 2026-10-08, chờ Auth provider)
+## Consumer Question Bank (APPROVED 2026-10-08; provider merged `ef1a62b`)
 
 Contract Request của QB: credential riêng `QUESTION_BANK_IDENTITY_TOKEN`, cùng endpoint và
 shape. QB chỉ snapshot `displayName` tác giả cho Public publication, không lưu/log email;
