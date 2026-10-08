@@ -239,7 +239,7 @@ public class MultiBankService {
                 }
                 var q=read(frozen);
                 return Optional.of(new LineageNode(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),sourceBank,
-                        BankType.PERSONAL,q.status()==null?null:q.status().name(),bankName(sourceBank),true,true));
+                        BankType.PERSONAL,q.status()==null?null:q.status().name(),readableBankName(sourceBank,actor),true,true));
             } catch(RuntimeException ignored) { return Optional.of(unavailable(LineageRelation.SOURCE,l.getSourceQuestionId(),l.getSourceQuestionVersion(),null,BankType.PERSONAL,true)); }
         }
         try {
@@ -269,6 +269,14 @@ public class MultiBankService {
     }
     private LineageNode unavailable(LineageRelation relation,UUID id,long version,UUID bankId,BankType type,boolean frozen) {
         return new LineageNode(relation,id,version,bankId,type,null,null,false,frozen);
+    }
+    private String readableBankName(UUID bankId,QuestionActor actor) {
+        try {
+            var bank=banks.findById(bankId).orElse(null);
+            if(bank==null) return null;
+            registry.requireRead(bank,actor);
+            return bank.getName();
+        } catch(RuntimeException denied) { return null; }
     }
     private String bankName(UUID bankId) {return banks.findById(bankId).map(QuestionBank::getName).orElse(null);}
     private QuestionResponse snapshot(UUID id,long version) {return read(versions.findByQuestionIdAndVersionNumber(id,version).orElseThrow(()->missing("Không tìm thấy version")).getSnapshot());}

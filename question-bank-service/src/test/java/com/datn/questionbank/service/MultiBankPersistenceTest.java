@@ -40,6 +40,7 @@ class MultiBankPersistenceTest {
     @Autowired OrganizationQuestionRepository organizationRepo;
     @Autowired QuestionRepository questionRepo;
     @Autowired CategoryRepository categories;
+    @Autowired QuestionBankRepository bankRepo;
     @Autowired ObjectMapper json;
     @Autowired Environment environment;
     @Autowired Validator validator;
@@ -232,6 +233,34 @@ class MultiBankPersistenceTest {
         assertFalse(hidden.nodes().get(0).available());assertNull(hidden.nodes().get(0).status());assertNull(hidden.nodes().get(0).name());
         assertFalse(hidden.nodes().get(1).available());assertNull(hidden.nodes().get(1).status());assertNull(hidden.nodes().get(1).name());
         assertTrue(hidden.nodes().get(2).available());
+    }
+
+    @Test void lineageNeverLeaksPrivatePersonalBankNameAcrossPublicOrOrganizationForks(){
+        var source=active("Private source name");
+        var personal=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        personal.setName("PRIVATE OWNER BANK NAME");bankRepo.saveAndFlush(personal);
+        var publicPublication=banks.publish(source.id(),new ContributionRequest(1),owner);
+        var publicFork=banks.forkPublic(publicPublication.id(),new ForkRequest(1,null),reviewer).question();
+        var publicLineage=banks.lineage(publicFork.id(),reviewer);
+        assertEquals("PRIVATE OWNER BANK NAME",banks.lineage(
+                banks.forkPublic(publicPublication.id(),new ForkRequest(1,null),owner).question().id(),owner)
+                .nodes().get(0).name());
+        assertNull(publicLineage.nodes().get(0).name());
+        assertEquals(QuestionStatus.ACTIVE,QuestionStatus.valueOf(publicLineage.nodes().get(0).status()));
+        assertTrue(publicLineage.nodes().get(0).frozen());
+
+        UUID organizationId=UUID.randomUUID();
+        var organization=banks.createBank(new CreateBank(BankType.ORGANIZATION,"Org bank",organizationId),owner);
+        var pending=organizations.submit(source.id(),new OrganizationContributionRequest(organization.id(),1,null),owner);
+        organizations.review(pending.id(),new PublicReview(QuestionReview.Decision.APPROVED,"OK"),reviewer);
+        var publication=organizationRepo.findAll().stream().filter(p->p.getContributionId().equals(pending.id())).findFirst().orElseThrow();
+        var orgFork=organizations.fork(publication.getId(),new ForkRequest(1,null),reviewer).question();
+        var orgLineage=banks.lineage(orgFork.id(),reviewer);
+        assertNull(orgLineage.nodes().get(0).name());
+        assertEquals("APPROVED",orgLineage.nodes().get(1).status());
+        assertEquals("PRIVATE OWNER BANK NAME",banks.lineage(
+                organizations.fork(publication.getId(),new ForkRequest(1,null),owner).question().id(),owner)
+                .nodes().get(0).name());
     }
 
     @Test void organizationLineageHidesPublicationAfterMembershipRevocation(){
