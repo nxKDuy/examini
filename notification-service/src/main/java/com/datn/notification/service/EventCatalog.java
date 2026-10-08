@@ -19,7 +19,10 @@ public final class EventCatalog {
     public static final String EXAM_SCHEDULE_CHANGED="exam.schedule.changed",EXAM_LIFECYCLE_CHANGED="exam.lifecycle.changed",EXAM_RECIPIENTS_CHANGED="exam.recipients.changed";
     public static final List<String> SCHEDULING_TYPES=List.of(EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED);
     public static final List<String> EVENT_TYPES=List.of(QUESTION_REVIEWED,EXAM_MEMBER_INVITED,EXAM_PARTICIPANT_ASSIGNED,SESSION_SUBMITTED,GRADING_RESULT_RELEASED,
-        EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED,GRADING_REVIEW_REQUIRED,GRADING_RESULT_REGRADED);
+        EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED,GRADING_REVIEW_REQUIRED,GRADING_RESULT_REGRADED,
+        // Organization events (contracts/organization-events.md), single-recipient inbox notices.
+        OrganizationEvents.INVITATION_CREATED,OrganizationEvents.INVITATION_ACCEPTED,OrganizationEvents.INVITATION_DECLINED,OrganizationEvents.INVITATION_REVOKED,
+        OrganizationEvents.INVITATION_EXPIRED,OrganizationEvents.MEMBERSHIP_REVOKED,OrganizationEvents.ROLE_CHANGED,OrganizationEvents.OWNERSHIP_TRANSFERRED);
     private static final int TITLE_LIMIT=150;
     private EventCatalog(){}
 
@@ -70,7 +73,10 @@ public final class EventCatalog {
                     (kind.equals("AUTO_SUBMITTED")?"Hết giờ, bài làm kỳ thi \""+title+"\" đã được tự động nộp.":"Bài làm kỳ thi \""+title+"\" đã được nộp thành công."),
                     "EXAM_SESSION",uuid(p,"sessionId"),Map.of("examId",uuid(p,"examId").toString(),"examTitle",title,"submissionType",kind));
             }
-            default -> throw new IllegalArgumentException("Unsupported event type");
+            default -> {
+                if(OrganizationEvents.handles(type))yield OrganizationEvents.draft(type,p);
+                throw new IllegalArgumentException("Unsupported event type");
+            }
         };
     }
     static UUID uuid(JsonNode p,String field){
