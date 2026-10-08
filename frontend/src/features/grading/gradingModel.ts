@@ -96,9 +96,11 @@ export function publicationOf(s: Pick<Submission, 'publishedRevision' | 'resultR
   if (s.publishedRevision === null || s.publishedRevision === undefined) return 'NONE'
   return s.publishedRevision === s.resultRevision ? 'CURRENT' : 'OUTDATED'
 }
-export const canEdit = (s: Pick<Submission, 'status'>) => s.status !== 'GRADED'
-export const canRelease = (s: Pick<Submission, 'status' | 'publishedRevision' | 'resultRevision'>) => s.status === 'GRADED' && publicationOf(s) !== 'CURRENT'
-export const canRegrade = (s: Pick<Submission, 'status'>) => s.status === 'GRADED'
+/** An invalidated attempt keeps its result and audit, but nothing about it may be graded, released or regraded (the server answers 409 RESULT_INVALIDATED). */
+export const isInvalidated = (s: { invalidated?: boolean }) => s.invalidated === true
+export const canEdit = (s: Pick<Submission, 'status' | 'invalidated'>) => s.status !== 'GRADED' && !isInvalidated(s)
+export const canRelease = (s: Pick<Submission, 'status' | 'publishedRevision' | 'resultRevision' | 'invalidated'>) => s.status === 'GRADED' && publicationOf(s) !== 'CURRENT' && !isInvalidated(s)
+export const canRegrade = (s: Pick<Submission, 'status' | 'invalidated'>) => s.status === 'GRADED' && !isInvalidated(s)
 
 export function scoreDelta(draft: number | null, published: number | null): number | null {
   if (draft === null || published === null) return null

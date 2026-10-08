@@ -198,6 +198,7 @@ const STATES: Record<string, StateInfo> = {
   INSUFFICIENT_TIME: { label: 'Không đủ thời gian', tone: 'warning', icon: 'alert' },
   CAPACITY_FULL: { label: 'Đã đủ chỗ', tone: 'warning', icon: 'alert' },
   SNAPSHOT_UNAVAILABLE: { label: 'Tạm thời không khả dụng', tone: 'danger', icon: 'alert' },
+  PARTICIPATION_REVOKED: { label: 'Đã bị gỡ', tone: 'muted', icon: 'ban' },
 }
 export const stateInfo = (state: string | null | undefined): StateInfo =>
   STATES[state ?? ''] ?? { label: state ?? 'Không rõ', tone: 'neutral', icon: 'clock' }
@@ -213,6 +214,7 @@ export const REASON_TEXT: Record<string, string> = {
   INSUFFICIENT_TIME: 'Thời gian còn lại không đủ cho một lượt làm bài đầy đủ theo quy định của kỳ thi này.',
   CAPACITY_FULL: 'Kỳ thi đã đủ số người làm bài cùng lúc. Hãy thử lại sau ít phút.',
   SNAPSHOT_UNAVAILABLE: 'Nội dung đề tạm thời không khả dụng. Hãy thử lại sau.',
+  PARTICIPATION_REVOKED: 'Bạn không còn trong danh sách của kỳ thi này nên không thể tham gia hoặc bắt đầu lượt mới.',
 }
 export const reasonText = (code: string | null | undefined) => (code ? REASON_TEXT[code] ?? `Chưa thể bắt đầu (${code}).` : null)
 
@@ -225,7 +227,7 @@ export const RULE_HELP: Record<DeadlineRule, string> = {
 export const ruleLabel = (rule: string) => RULE_LABEL[rule as DeadlineRule] ?? rule
 
 export const RELATION_LABEL: Record<string, string> = {
-  OWNER: 'Chủ sở hữu', MANAGER: 'Quản lý', PROCTOR: 'Giám thị', ASSIGNED: 'Được giao', JOINED: 'Đã tham gia', FOLLOWER: 'Đang theo dõi',
+  OWNER: 'Chủ sở hữu', MANAGER: 'Quản lý', PROCTOR: 'Giám thị', ASSIGNED: 'Được giao', JOINED: 'Đã tham gia', FOLLOWER: 'Đang theo dõi', REVOKED: 'Đã bị gỡ',
 }
 export const relationLabel = (r: string) => RELATION_LABEL[r] ?? r
 

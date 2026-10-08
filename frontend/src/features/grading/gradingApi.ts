@@ -9,6 +9,7 @@ export interface Submission {
   status: GradingStatus; score: number | null; totalScore: number | null; publishedScore: number | null
   pendingManualItemCount: number; submittedAt: string | null; gradedAt: string | null; durationSeconds: number | null
   feedback: string | null; resultRevision: number; publishedRevision: number | null
+  invalidated?: boolean; invalidatedAt?: string | null; invalidationReason?: string | null
 }
 export interface GradeItem {
   questionId: string; questionVersion: number; position: number; questionContent: string; questionType: QuestionType
@@ -17,7 +18,7 @@ export interface GradeItem {
   feedback: string | null; manualGradedBy: string | null; manualGradedAt: string | null
 }
 export interface SubmissionDetail extends Submission { items: GradeItem[] }
-export interface Overview { totalSubmissions: number; needsReview: number; pending: number; graded: number; released: number; pendingManualItems: number }
+export interface Overview { totalSubmissions: number; needsReview: number; pending: number; graded: number; released: number; pendingManualItems: number; invalidated?: number }
 export interface Page<T> { content: T[]; totalElements: number; totalPages: number; number: number; size?: number }
 
 export interface ResultPolicy {

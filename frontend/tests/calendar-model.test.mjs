@@ -242,3 +242,8 @@ test('block label: each end carries its offset across a DST change, concise othe
   assert.equal(m.blockRangeLabel({ startAt: null, endAt: '2030-11-03T19:00:00Z', timezone: LA }), 'đóng 11:00 GMT-8')
   assert.equal(m.blockRangeLabel({ startAt: null, endAt: null, timezone: LA }), '')
 })
+
+test('revoked participation (new backend values) has its own wording, never the generic fallback', () => {
+  assert.equal(m.stateInfo('PARTICIPATION_REVOKED').label, 'Đã bị gỡ'); assert.match(m.reasonText('PARTICIPATION_REVOKED'), /không còn trong danh sách/)
+  assert.equal(m.relationLabel('REVOKED'), 'Đã bị gỡ')
+})

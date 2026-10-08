@@ -93,7 +93,7 @@ export default function GradingPage() {
                 {([['Tổng bài nộp', o?.totalSubmissions], ['Cần chấm tay', o?.needsReview], ['Chờ hoàn tất', o?.pending], ['Đã chấm', o?.graded], ['Đã công bố', o?.released], ['Câu chờ chấm tay', o?.pendingManualItems]] as const)
                   .map(([label, n]) => <div key={label}><div className="n">{n ?? '-'}</div><div className="l">{label}</div></div>)}
               </div>
-              <p className="xsmall muted" style={{ marginTop: 6 }}>Số liệu của toàn kỳ thi, không chỉ trang đang xem. "Đã công bố" đếm bản công bố nên có thể trùng các nhóm khác (ví dụ bài đang chấm lại), đừng cộng các ô để suy ra tổng.</p>
+              <p className="xsmall muted" style={{ marginTop: 6 }}>Số liệu của toàn kỳ thi, không chỉ trang đang xem. "Đã công bố" đếm bản công bố nên có thể trùng các nhóm khác (ví dụ bài đang chấm lại), đừng cộng các ô để suy ra tổng.{(o?.invalidated ?? 0) > 0 && <> Có {o!.invalidated} bài đã bị vô hiệu hóa (loại khỏi kết quả hợp lệ, không chấm được).</>}</p>
             </div>
           )}
           {showQueue && (

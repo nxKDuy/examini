@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, PenLine } from 'lucide-react'
 import { gradingApi, type GradeItem, type ResultPolicy, type SubmissionDetail } from './gradingApi'
 import {
-  canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, shortStudent,
+  canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isInvalidated, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, shortStudent,
   toDraftRequest, unresolvedItems, type GradeForm,
 } from './gradingModel'
 import { finalizeWithDraft, type DraftSavedError } from './gradingFlow'
 import { PublicationBadge } from './SubmissionQueue'
+import { isInvalidatedConflict } from '../participants/participantModel'
 import { ResultStatusBadge } from '../../components/status'
 import { ConfirmDialog, Dialog } from '../../components/Dialog'
 import { Badge, ErrorState, Field, LoadingState, Notice } from '../../components/ui'
@@ -64,7 +65,8 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
   }, [id, put, qc, detail])
   const fail = (e: unknown, prefix = '') => {
     setConfirm(null)
-    if (isStaleRevision(e)) { setStale(true); setFlash(prefix ? { tone: 'danger', text: `${prefix}Bài đã thay đổi ở nơi khác, hãy tải lại bản mới.` } : null) }
+    if (isInvalidatedConflict(e)) { setFlash({ tone: 'danger', text: prefix + errorText(e) }); void detail.refetch() }
+    else if (isStaleRevision(e)) { setStale(true); setFlash(prefix ? { tone: 'danger', text: `${prefix}Bài đã thay đổi ở nơi khác, hãy tải lại bản mới.` } : null) }
     else setFlash({ tone: 'danger', text: prefix + errorText(e) })
   }
 
@@ -97,6 +99,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
   if (detail.isError || !d || !loaded) return <div className="card" style={{ gridColumn: 'span 2' }}><ErrorState error={detail.error} onRetry={() => void detail.refetch()} /></div>
 
   const { form } = loaded
+  const attemptInvalid = isInvalidated(d)
   const editable = canEdit(d)
   const pub = publicationOf(d)
   const total = previewTotal(d, form)
@@ -136,7 +139,8 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
             Thay đổi của bạn chưa được gửi và chưa bị mất. Tải lại sẽ thay bằng bản mới nhất; hãy sao chép phần bạn cần giữ trước.
           </Notice>
         )}
-        {!editable && <Notice tone="info">Bài đã hoàn tất chấm nên chỉ xem. Muốn sửa điểm, dùng Chấm lại ở khung bên cạnh (bắt buộc có lý do).</Notice>}
+        {attemptInvalid && <Notice tone="danger" title="Lượt làm bài này đã bị vô hiệu hóa">Lý do công khai: {d.invalidationReason?.trim() || 'không ghi'}. Kết quả và nhật ký được giữ lại nhưng không thể chấm, công bố hay chấm lại, và bài bị loại khỏi kết quả hợp lệ. Muốn cho thi lại, hãy cấp thêm lượt ở tab Tham gia của kỳ thi.</Notice>}
+        {!editable && !attemptInvalid && <Notice tone="info">Bài đã hoàn tất chấm nên chỉ xem. Muốn sửa điểm, dùng Chấm lại ở khung bên cạnh (bắt buộc có lý do).</Notice>}
         <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {d.items.map(i => (
             <ItemCard key={i.questionId} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}

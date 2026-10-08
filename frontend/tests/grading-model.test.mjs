@@ -129,3 +129,12 @@ test('after an objective/short-answer override was saved, later saves (other ite
   const same = structuredClone(init); same.items.q2.score = '0'
   assert.equal(m.toDraftRequest(d, same, init).items[1].score, null)
 })
+
+test('an invalidated attempt can never be edited, finalized, released or regraded, whatever its grading state', () => {
+  for (const status of ['NEEDS_REVIEW', 'PENDING', 'GRADED']) {
+    const s = { status, invalidated: true, publishedRevision: null, resultRevision: 3 }
+    assert.equal(m.canEdit(s), false, status); assert.equal(m.canRelease(s), false, status); assert.equal(m.canRegrade(s), false, status)
+  }
+  assert.equal(m.isInvalidated({ invalidated: true }), true); assert.equal(m.isInvalidated({}), false)
+  assert.equal(m.canEdit({ status: 'PENDING', invalidated: false }), true); assert.equal(m.canRegrade({ status: 'GRADED' }), true) // valid attempts unchanged
+})
