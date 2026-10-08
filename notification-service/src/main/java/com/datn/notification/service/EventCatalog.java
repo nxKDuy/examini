@@ -22,7 +22,9 @@ public final class EventCatalog {
         EXAM_SCHEDULE_CHANGED,EXAM_LIFECYCLE_CHANGED,EXAM_RECIPIENTS_CHANGED,GRADING_REVIEW_REQUIRED,GRADING_RESULT_REGRADED,
         // Organization events (contracts/organization-events.md), single-recipient inbox notices.
         OrganizationEvents.INVITATION_CREATED,OrganizationEvents.INVITATION_ACCEPTED,OrganizationEvents.INVITATION_DECLINED,OrganizationEvents.INVITATION_REVOKED,
-        OrganizationEvents.INVITATION_EXPIRED,OrganizationEvents.MEMBERSHIP_REVOKED,OrganizationEvents.ROLE_CHANGED,OrganizationEvents.OWNERSHIP_TRANSFERRED);
+        OrganizationEvents.INVITATION_EXPIRED,OrganizationEvents.MEMBERSHIP_REVOKED,OrganizationEvents.ROLE_CHANGED,OrganizationEvents.OWNERSHIP_TRANSFERRED,
+        // Participant / attempt events (contracts/participant-attempt.md). The older exam.participant.assigned stays accepted.
+        ParticipantEvents.CHANGED,ParticipantEvents.ATTEMPT_INVALIDATED);
     private static final int TITLE_LIMIT=150;
     private EventCatalog(){}
 
@@ -75,6 +77,7 @@ public final class EventCatalog {
             }
             default -> {
                 if(OrganizationEvents.handles(type))yield OrganizationEvents.draft(type,p);
+                if(ParticipantEvents.handles(type))yield ParticipantEvents.draft(type,p);
                 throw new IllegalArgumentException("Unsupported event type");
             }
         };
