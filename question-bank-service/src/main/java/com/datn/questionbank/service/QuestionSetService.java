@@ -38,6 +38,7 @@ public class QuestionSetService {
     private final ObjectMapper json;
     private final NamedParameterJdbcTemplate jdbc;
     private final PublicPostStatistics statistics;
+    private final PublicBookmarks bookmarks;
 
     @Transactional public QuestionSetResponse create(UUID bankId,QuestionSetWrite request,QuestionActor actor) {
         policy.requireAuthor(actor);
@@ -59,9 +60,21 @@ public class QuestionSetService {
         saveVersion(set,request.title(),request.description(),snapshot,actor);return response(set,snapshot);
     }
     public Page<QuestionSetResponse> list(UUID bankId,Pageable page,QuestionActor actor) {
+        return list(bankId,null,null,page,actor);
+    }
+    public Page<QuestionSetResponse> list(UUID bankId,String text,QuestionSet.SetStatus status,Pageable page,QuestionActor actor) {
         bounds(page);var bank=registry.get(bankId);registry.requireRead(bank,actor);
         if(!Objects.equals(bank.getOwnerUserId(),actor.userId()))throw missing();
-        return sets.findByBankIdAndOwnerUserId(bankId,actor.userId(),page).map(s->response(s,readVersion(s)));
+        org.springframework.data.jpa.domain.Specification<QuestionSet> filter=(r,q,b)->b.and(
+                b.equal(r.get("bankId"),bankId),b.equal(r.get("ownerUserId"),actor.userId()));
+        if(status!=null)filter=filter.and((r,q,b)->b.equal(r.get("status"),status));
+        if(text!=null&&text.length()>200)throw bad("Tìm kiếm tối đa 200 ký tự");
+        if(text!=null&&!text.isBlank()) {
+            var pattern="%"+text.trim().toLowerCase(Locale.ROOT).replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%";
+            filter=filter.and((r,q,b)->b.like(b.lower(r.get("title")),pattern,'\\'));
+        }
+        var stablePage=PageRequest.of(page.getPageNumber(),page.getPageSize(),page.getSort().and(Sort.by("id")));
+        return sets.findAll(filter,stablePage).map(s->response(s,readVersion(s)));
     }
     public QuestionSetResponse get(UUID id,QuestionActor actor) {var s=owned(id,actor);return response(s,readVersion(s));}
     public QuestionSetResponse version(UUID id,long version,QuestionActor actor) {
@@ -164,7 +177,7 @@ public class QuestionSetService {
         var listed=itemRows.stream().map(i->{try{var q=json.readValue(i.getSnapshot(),QuestionResponse.class);return new PublicPostItemResponse(i.getId(),i.getPosition(),i.getSourceQuestionId(),i.getSourceQuestionVersion(),q.withoutAnswers());}catch(Exception e){throw new IllegalStateException(e);}}).toList();
         var publicSubjects=itemRows.stream().filter(i->i.getSubjectId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getSubjectId,i->new PublicSubject(i.getSubjectId(),i.getSubjectName()),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         var publicCategories=itemRows.stream().filter(i->i.getCategoryId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getCategoryId,i->new PublicCategory(i.getCategoryId(),i.getCategoryName(),i.getSubjectId(),i.getSubjectName(),i.getCategoryParentId(),readPath(i.getCategoryPath())),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
-        var q=read(p.getSnapshot());var summary=ratingResponse(p.getId(),actor);var views=statistics.views(p.getId());var copies=statistics.copies(p.getId());return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),q.withoutAnswers(),p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),listed,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total());
+        var q=read(p.getSnapshot());var summary=ratingResponse(p.getId(),actor);var views=statistics.views(p.getId());var copies=statistics.copies(p.getId());return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),q.withoutAnswers(),p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),listed,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total(),bookmarks.isSaved(p.getId(),actor));
     }
     private List<String> readPath(String value){try{return value==null?List.of():json.readValue(value,new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});}catch(Exception e){return List.of();}}
     private PublicRatingResponse ratingResponse(UUID id,QuestionActor actor){var summary=jdbc.queryForMap("SELECT COALESCE(AVG(rating),0)::numeric AS average_rating,COUNT(*) AS rating_count FROM public_question_ratings WHERE publication_id=:id",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id));var my=actor.userId()==null?null:jdbc.query("SELECT rating FROM public_question_ratings WHERE publication_id=:id AND actor_user_id=:actor",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("id",id).addValue("actor",actor.userId()),(row,n)->row.getBigDecimal(1)).stream().findFirst().orElse(null);return new PublicRatingResponse(id,((BigDecimal)summary.get("average_rating")).setScale(2,RoundingMode.HALF_UP),((Number)summary.get("rating_count")).longValue(),my);}

@@ -86,6 +86,8 @@ public class Question {
     private String sourceExcerpt;
     @Column(name = "expected_answer", columnDefinition = "TEXT")
     private String expectedAnswer;
+    @Column(columnDefinition = "TEXT")
+    private String explanation;
 
     @Column(name = "question_version", nullable = false)
     @Builder.Default

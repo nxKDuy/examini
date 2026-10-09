@@ -26,7 +26,7 @@ public class BankDto {
         UUID archivedBy,LocalDateTime archivedAt,QuestionDto.SafeQuestionResponse question,PublicQuestion.PostType postType,String title,
         String description,long postVersion,int itemCount,List<PublicPostItemResponse> items,List<PublicSubject> subjects,
         List<PublicCategory> categories,long copies24h,long copies30d,long copies365d,long copiesTotal,BigDecimal averageRating,long ratingCount,BigDecimal myRating,
-        long views24h,long views30d,long views365d,long viewsTotal) {}
+        long views24h,long views30d,long views365d,long viewsTotal,boolean isSaved) {}
     public record PublicRatingRequest(@NotNull @DecimalMin("0.0") @DecimalMax("10.0") BigDecimal rating) {}
     public record PublicRatingResponse(UUID publicationId,BigDecimal averageRating,long ratingCount,BigDecimal myRating) {}
     public record PublicViewResponse(UUID publicationId,long views24h,long views30d,long views365d,long viewsTotal) {}
