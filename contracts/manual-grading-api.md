@@ -98,14 +98,29 @@ awardedPoints, showFeedback điều khiển feedback, showScore điều khiển 
 Correct answers chỉ khi showCorrectAnswers=true và Exam CLOSED, lấy frozen key.
 History: resultRevision/releasedAt/score/totalScore/publicReason theo policy.
 
-Các thiếu sót frozen explanation, safe answer label và studentDisplayName là
-[Contract Requests không chặn](manual-grading-contract-requests.md); frontend
-tiếp tục dùng fallback đã được người dùng duyệt, không lấy live QB để bù snapshot.
+## Backend Contract Lock — UX completion (2026-10-09)
 
-**Giới hạn thật:** frozen snapshot chưa có explanation nên backend chưa trả
-explanation dù policy có field. Không hiển thị toggle như capability hoạt động,
-không tự fetch live QB hoặc suy key. Own MCQ answer có thể là option UUID; dùng
-snapshot đã có nếu cần resolve label, báo Contract Request khi thiếu dữ liệu.
+Reviewed provider `fbb5094`, consumer `00f2305` (MAIN cherry-pick `0fcecfc`).
+Queue/detail thêm `studentDisplayName`, lấy từ trusted identity qua Exam participant;
+provider lỗi hoặc dữ liệu cũ fallback UUID. Không lấy tên từ caller header.
+Student item thêm optional `answerDisplay` và `explanation`.
+
+- `answerDisplay`: nội dung phương án đã chọn từ frozen Exam snapshot đối với
+  MCQ/TRUE_FALSE; own text cho SHORT_ANSWER/ESSAY. Publication đóng băng field;
+  publication cũ thiếu field fallback dữ liệu QuestionGrade frozen, không live QB.
+- `explanation`: author-provided, nullable, từ đúng QuestionVersion khi Publish
+  Exam; safe Exam DTO không có field. Student chỉ nhận explanation của publication
+  đã release khi `showExplanation=true` **và Exam CLOSED**. Snapshot cũ giữ null.
+- Không đổi endpoint/status/revision/409/publication history. Regrade draft vẫn
+  không làm đổi bản Student đang xem. Các field mới có thể thiếu ở dữ liệu cũ;
+  frontend giữ fallback an toàn, không suy đáp án hoặc tự fetch live QB.
+- Internal identity `GET /exams/{examId}/internal/identity/{userId}` chỉ dành cho
+  `EXAM_INTERNAL_TOKEN`, user phải là participant; Gateway chặn internal route.
+- Migration Grading V5 thêm display name (legacy UUID) và nullable explanation;
+  không rewrite publication snapshot cũ. QB V9 cung cấp explanation nguồn.
+
+[Contract Requests](manual-grading-contract-requests.md) đã có provider/consumer
+backend; frontend consumption và integrated runtime validation còn chờ đợt UX này.
 
 ## Errors
 
