@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpenCheck, Search, Layers3, FileQuestion, SlidersHorizontal, ArrowLeft } from 'lucide-react'
+import { BookOpenCheck, Search, Layers3, FileQuestion, SlidersHorizontal, ArrowLeft, Bookmark } from 'lucide-react'
 import './banks.css'
 import { bankApi, type PublicQuestion } from './bankApi'
 import BankPanel, { QuestionView } from './BankPanel'
-import { MAX_SEARCH, applyPublicViewStats, authorName, canForkPublic, canUnpublish, excerpt, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
+import { MAX_SEARCH, canBookmark, applyPublicViewStats, authorName, canForkPublic, canUnpublish, excerpt, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
 import { audienceOf } from '../../components/layout/navigation'
 import { useAuthStore, hasPersona } from '../../store/authStore'
 import { Dialog } from '../../components/Dialog'
 import { Badge, EmptyState, ErrorState, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
 import { errorText } from '../../lib/errors'
+import { optimisticallySetBookmark, rollbackBookmark } from './publicBookmarkCache'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib/format'
 
 const PERIODS = [{ id: 'DAY', label: '24 giờ' }, { id: 'MONTH', label: '30 ngày' }, { id: 'YEAR', label: '365 ngày' }]
@@ -18,6 +19,7 @@ const PERIODS = [{ id: 'DAY', label: '24 giờ' }, { id: 'MONTH', label: '30 ng�
 export default function PublicBankPage() {
   const user = useAuthStore(s => s.user)
   const teacher = hasPersona(user, 'TEACHER') && audienceOf(user) !== 'STUDENT'
+  const canSave = canBookmark(audienceOf(user))
   const navigate = useNavigate(), location = useLocation(), { postId } = useParams<{postId:string}>(), [searchParams,setSearchParams] = useSearchParams()
   const [text,setText] = useState(searchParams.get('q') ?? ''), [subjectText,setSubjectText] = useState(searchParams.get('subject') ?? ''), [categoryText,setCategoryText] = useState(searchParams.get('category') ?? '')
   const [advancedOpen,setAdvancedOpen] = useState(false)
@@ -29,14 +31,22 @@ export default function PublicBankPage() {
   const rawSort = searchParams.get('sort') ?? '', sort = (['COPY','RATING'].includes(rawSort) ? rawSort : 'NEWEST') as 'NEWEST' | 'COPY' | 'RATING'
   const rawPeriod = searchParams.get('period') ?? '', period = PERIODS.some(p => p.id === rawPeriod) ? rawPeriod : 'DAY'
   const authorId = searchParams.get('author') ?? '', authorNameFilter = searchParams.get('authorName') ?? ''
-  const mineOnly = searchParams.get('mine') === '1', rawPublication = searchParams.get('publication') ?? ''
+  const savedOnly = canSave && searchParams.get('saved') === '1', mineOnly = !savedOnly && searchParams.get('mine') === '1', rawPublication = searchParams.get('publication') ?? ''
   const publicationStatus = rawPublication === 'PUBLISHED' || rawPublication === 'ARCHIVED' ? rawPublication : ''
   const parsedPage = Number(searchParams.get('page') ?? 0), page = Number.isInteger(parsedPage) && parsedPage >= 0 ? parsedPage : 0
   const subjects = useQuery({ queryKey: ['banks', 'public-taxonomy', 'SUBJECT', subjectText], queryFn: () => bankApi.publicTaxonomy('SUBJECT', subjectText), enabled: !postId && !subjectId && !!subjectText })
   const categories = useQuery({ queryKey: ['banks', 'public-taxonomy', 'CATEGORY', categoryText, subjectId], queryFn: () => bankApi.publicTaxonomy('CATEGORY', categoryText, subjectId || undefined), enabled: !postId && !categoryId && !!categoryText })
   const ranking = sort === 'NEWEST' ? 'NEWEST' : `${sort}_${period}`
-  const params = publicParams({ text: applied, questionType: type, difficulty, author: authorId, page, mine: mineOnly, publicationStatus: mineOnly ? publicationStatus || undefined : undefined, subjectId, categoryId, postType, ranking })
+  const params = publicParams({ text: applied, questionType: type, difficulty, author: authorId, page, mine: mineOnly, saved: savedOnly, publicationStatus: mineOnly ? publicationStatus || undefined : undefined, subjectId, categoryId, postType, ranking })
   const list = useQuery({ queryKey: ['banks', 'public', user?.id ?? 'anonymous', params], queryFn: () => bankApi.publicList(params), placeholderData: prev => prev, enabled: !postId })
+  const qc = useQueryClient()
+  const [bookmarkError, setBookmarkError] = useState('')
+  const bookmark = useMutation({
+    mutationFn: ({ id, saved }: { id: string; saved: boolean }) => saved ? bankApi.bookmark(id) : bankApi.unbookmark(id),
+    onMutate: ({ id, saved }) => optimisticallySetBookmark(qc, id, user?.id, saved),
+    onError: (error, _variables, snapshot) => { if (snapshot) rollbackBookmark(qc, snapshot); setBookmarkError(errorText(error)) },
+    onSuccess: async (_result, variables) => { setBookmarkError(''); await Promise.all([qc.invalidateQueries({ queryKey: ['banks', 'public', user?.id ?? 'anonymous'] }), qc.invalidateQueries({ queryKey: publicDetailQueryKey(variables.id, user?.id) })]) },
+  })
   const items = list.data?.content ?? []
   const changeParams = (changes: Record<string,string | undefined>, resetPage = true) => setSearchParams(current => {
     const next = new URLSearchParams(current)
@@ -58,7 +68,7 @@ export default function PublicBankPage() {
 
   if (postId) {
     const back = () => location.state?.fromPublicBank ? navigate(-1) : navigate(`/public-bank${location.search}`)
-    return <div className="public-detail-route"><PublicPanel key={`${postId}:${user?.id ?? 'anonymous'}`} id={postId} teacher={teacher} userId={user?.id} onClose={back} page /></div>
+    return <div className="public-detail-route"><PublicPanel key={`${postId}:${user?.id ?? 'anonymous'}`} id={postId} teacher={teacher} canSave={canSave} userId={user?.id} onClose={back} page /></div>
   }
 
   return <div className="stack public-bank">
@@ -83,7 +93,8 @@ export default function PublicBankPage() {
           <label className="field"><span className="field-label">Kiểu bài đăng</span><select className="input" value={postType} onChange={e => changeParams({ kind: e.target.value || undefined })}><option value="">Tất cả</option><option value="SINGLE_QUESTION">Một câu</option><option value="QUESTION_SET">Bộ câu hỏi</option></select></label>
           <label className="field"><span className="field-label">Loại câu</span><select className="input" value={type} onChange={e => changeParams({ type: e.target.value || undefined })}><option value="">Tất cả</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <label className="field"><span className="field-label">Độ khó</span><select className="input" value={difficulty} onChange={e => changeParams({ difficulty: e.target.value || undefined })}><option value="">Tất cả</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-          {teacher && <label className="public-check"><input type="checkbox" checked={mineOnly} onChange={e => changeParams({ mine: e.target.checked ? '1' : undefined, author: undefined, authorName: undefined, publication: undefined })} /> Bài đã xuất bản của tôi</label>}
+          {canSave && <label className="public-check"><input type="checkbox" checked={savedOnly} onChange={e => changeParams({ saved: e.target.checked ? '1' : undefined, mine: undefined, publication: undefined })} /> Bài đã lưu</label>}
+          {teacher && <label className="public-check"><input type="checkbox" checked={mineOnly} onChange={e => changeParams({ mine: e.target.checked ? '1' : undefined, saved: undefined, author: undefined, authorName: undefined, publication: undefined })} /> Bài đã xuất bản của tôi</label>}
           {mineOnly && <label className="field"><span className="field-label">Trạng thái bài đăng</span><select className="input" value={publicationStatus} onChange={e => changeParams({ publication: e.target.value || undefined })}><option value="">Đang công khai và đã gỡ</option><option value="PUBLISHED">Đang công khai</option><option value="ARCHIVED">Đã gỡ công khai</option></select></label>}
           {authorId && <span className="public-filter-author small">Tác giả: {authorNameFilter || 'Unknown user'}</span>}
         </div>}
@@ -96,14 +107,17 @@ export default function PublicBankPage() {
         {postType && <button type="button" className="badge badge-info" onClick={() => changeParams({ kind: undefined })}>{postType === 'QUESTION_SET' ? 'Bộ câu hỏi' : 'Một câu'} ×</button>}
         {type && <button type="button" className="badge badge-info" onClick={() => changeParams({ type: undefined })}>{QUESTION_TYPE_LABEL[type] ?? type} ×</button>}
         {difficulty && <button type="button" className="badge badge-info" onClick={() => changeParams({ difficulty: undefined })}>{DIFFICULTY_LABEL[difficulty] ?? difficulty} ×</button>}
+        {canSave && savedOnly && <button type="button" className="badge badge-info" onClick={() => changeParams({ saved: undefined })}>Bài đã lưu ×</button>}
         {mineOnly && <button type="button" className="badge badge-info" onClick={() => changeParams({ mine: undefined, publication: undefined })}>Bài của tôi{publicationStatus ? ' · ' + (publicationStatus === 'ARCHIVED' ? 'Đã gỡ' : 'Đang công khai') : ''} ×</button>}
         {sort !== 'NEWEST' && <button type="button" className="badge badge-info" onClick={() => changeParams({sort:undefined,period:undefined})}>{sort === 'COPY' ? 'Top lượt sao chép' : 'Top đánh giá'} · {PERIODS.find(p => p.id === period)?.label ?? '24 giờ'} ×</button>}
       </div>
     </section>
+    {mineOnly && <Notice tone="info">Kho này hiển thị bài đăng và snapshot đã xuất bản của bạn. Lưu trữ bài nguồn không sửa nội dung snapshot hoặc đề thi đã xuất bản.</Notice>}
+    {bookmarkError && <Notice tone="danger" live>{bookmarkError}</Notice>}
     {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">Đang cập nhật bài đăng…</span>}
     {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
       : items.length === 0 ? <EmptyState icon={<BookOpenCheck size={28} />} title="Không có bài đăng phù hợp" description="Thử đổi từ khóa hoặc bỏ bớt bộ lọc." />
-      : <section className="public-grid" aria-label="Bài đăng công khai">{items.map(post => <PublicCard key={post.id} post={post}
+      : <section className="public-grid" aria-label="Bài đăng công khai">{items.map(post => <PublicCard key={post.id} post={post} canSave={canSave} bookmarkBusy={bookmark.isPending} onBookmark={() => bookmark.mutate({ id: post.id, saved: !post.isSaved })}
           onOpen={() => navigate('/public-bank/' + post.id + location.search, { state: { fromPublicBank: true } })}
           onAuthor={() => changeParams({ author: post.sourceOwnerUserId, authorName: authorName(post), mine: undefined, publication: undefined })} />)}</section>}
     {list.data && <Pagination label="Phân trang bài đăng công khai" page={page} totalPages={list.data.totalPages} onChange={p => changeParams({ page: p ? String(p) : undefined }, false)} />}
@@ -125,7 +139,7 @@ function TaxonomyFilter({ id, label, value, suggestions, loading, error, placeho
     </div>}
   </div>
 }
-function PublicCard({ post, onOpen, onAuthor }: { post: PublicQuestion; onOpen: () => void; onAuthor: () => void }) {
+function PublicCard({ post, onOpen, onAuthor, onBookmark, bookmarkBusy, canSave }: { post: PublicQuestion; onOpen: () => void; onAuthor: () => void; onBookmark: () => void; bookmarkBusy: boolean; canSave: boolean }) {
   const bundle = post.postType === 'QUESTION_SET'
   return <article className="public-post" data-archived={post.publicationStatus === 'ARCHIVED'}>
     <button type="button" className="public-post-cover" onClick={onOpen} aria-label={`Mở ${post.title || (bundle ? 'bộ câu hỏi' : 'câu hỏi')}`}><span className="public-cover-icon">{bundle ? <Layers3 size={28}/> : <FileQuestion size={28}/>}</span><span>{post.subjects?.map(s => s.name).join(' · ') || post.question.categoryName || 'Ngân hàng câu hỏi'}</span></button>
@@ -136,17 +150,23 @@ function PublicCard({ post, onOpen, onAuthor }: { post: PublicQuestion; onOpen: 
       <div className="public-post-tags">{post.subjects?.slice(0,2).map(s => <span key={s.id}>{s.name}</span>)}{post.categories?.slice(0,2).map(c => <span key={c.id}>{c.name}</span>)}<span>{QUESTION_TYPE_LABEL[post.question.questionType] ?? post.question.questionType}</span><span>{DIFFICULTY_LABEL[post.question.difficultyLevel] ?? post.question.difficultyLevel}</span></div>
       <div className="public-post-meta"><button type="button" className="bk-row-btn" onClick={onAuthor}>{authorName(post)}</button><span>v{post.postVersion ?? post.sourceQuestionVersion} · {formatDateTime(post.publishedAt, '-')}</span></div>
       <div className="public-post-stats"><span>{post.viewsTotal == null ? 'Chưa có số liệu xem' : `${post.viewsTotal} lượt xem`}</span><span>{post.copiesTotal == null ? 'Chưa có số liệu sao chép' : `${post.copiesTotal} lượt sao chép`}</span><span>{post.ratingCount == null ? 'Chưa có số liệu đánh giá' : post.ratingCount ? `${post.averageRating ?? '—'}/10 · ${post.ratingCount} đánh giá` : 'Chưa có đánh giá'}</span></div>
-      <button type="button" className="btn btn-secondary btn-sm" onClick={onOpen}>Xem chi tiết</button>
+      <div className="row"><button type="button" className="btn btn-secondary btn-sm" onClick={onOpen}>Xem chi tiết</button>{canSave && post.publicationStatus === 'PUBLISHED' && <button type="button" className="btn btn-secondary btn-sm" aria-pressed={!!post.isSaved} aria-label={post.isSaved ? 'Bỏ lưu bài đăng' : 'Lưu bài đăng'} disabled={bookmarkBusy} onClick={onBookmark}><Bookmark size={15} aria-hidden/>{bookmarkBusy ? 'Đang lưu…' : post.isSaved ? 'Đã lưu' : 'Lưu bài đăng'}</button>}</div>
     </div>
   </article>
 }
 
-function PublicPanel({ id, teacher, userId, onClose, page = false }: { id: string; teacher: boolean; userId: string | undefined; onClose: () => void; page?: boolean }) {
+function PublicPanel({ id, teacher, canSave, userId, onClose, page = false }: { id: string; teacher: boolean; canSave: boolean; userId: string | undefined; onClose: () => void; page?: boolean }) {
   const qc = useQueryClient()
   const detailKey = useMemo(() => publicDetailQueryKey(id, userId), [id, userId])
   const detail = useQuery({ queryKey: detailKey, queryFn: () => bankApi.publicGet(id), staleTime: Infinity, refetchOnWindowFocus: false, retry: false })
   const p = detail.data
   const [flash, setFlash] = useState<{tone:'success'|'danger';text:string}|null>(null), [confirm, setConfirm] = useState(false), [rating, setRating] = useState(''), [viewError, setViewError] = useState(false)
+  const bookmark = useMutation({
+    mutationFn: (saved: boolean) => saved ? bankApi.bookmark(id) : bankApi.unbookmark(id),
+    onMutate: saved => optimisticallySetBookmark(qc, id, userId, saved),
+    onError: (e, _saved, snapshot) => { if (snapshot) rollbackBookmark(qc, snapshot); setFlash({tone:'danger',text:errorText(e)}) },
+    onSuccess: async (_result, saved) => { setFlash({tone:'success',text:saved ? 'Đã lưu bài đăng.' : 'Đã bỏ lưu bài đăng.'}); await Promise.all([qc.invalidateQueries({queryKey:['banks','public',userId ?? 'anonymous']}), qc.invalidateQueries({queryKey:detailKey})]) },
+  })
   const forkSingle = useMutation({ mutationFn: ({itemId, version}: {itemId?:string;version:number}) => itemId ? bankApi.publicForkItem(id,itemId,version) : bankApi.publicFork(id,version), onSuccess: async () => { setFlash({tone:'success',text:'Đã tạo bản sao độc lập dạng bản nháp trong kho cá nhân.'}); await Promise.all([detail.refetch(), ...personalForkQueryKeys(userId, false).map(queryKey => qc.invalidateQueries({queryKey})), qc.invalidateQueries({queryKey:['banks','public']})]) }, onError: async e => { setFlash({tone:'danger',text:isStatus(e,409)?'Snapshot đã được gỡ hoặc thay đổi; hãy tải lại trước khi thử lại.':errorText(e)}); await detail.refetch() } })
   const forkSet = useMutation({ mutationFn: () => bankApi.publicForkSet(id), onSuccess: async () => { setFlash({tone:'success',text:'Đã sao chép bộ vào kho cá nhân. Các câu được sao chép ở trạng thái bản nháp; kích hoạt câu rồi cập nhật bộ trước khi xuất bản lại.'}); await Promise.all([detail.refetch(), ...personalForkQueryKeys(userId, true).map(queryKey => qc.invalidateQueries({queryKey})), qc.invalidateQueries({queryKey:['banks','public']})]) }, onError: async e => { setFlash({tone:'danger',text:isStatus(e,409)?'Snapshot đã được gỡ hoặc thay đổi; hãy tải lại trước khi thử lại.':errorText(e)}); await detail.refetch() } })
   const unpublish = useMutation({ mutationFn: () => bankApi.publicUnpublish(id), onSuccess: async () => { setConfirm(false); setFlash({tone:'success',text:'Đã gỡ công khai. Bài đăng ẩn khỏi tìm kiếm; bản sao và đề đã xuất bản giữ nguyên.'}); await qc.invalidateQueries({queryKey:['banks','public']}); await detail.refetch() }, onError: async e => { setConfirm(false); setFlash({tone:'danger',text:errorText(e)}); await detail.refetch() } })
@@ -174,6 +194,7 @@ function PublicPanel({ id, teacher, userId, onClose, page = false }: { id: strin
     {viewError && <Notice tone="warning" live action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void recordView()}>Thử ghi nhận lại</button>}>Chưa cập nhật được số lượt xem từ máy chủ.</Notice>}
     <div className="row"><Badge tone={badge.tone}>{badge.text}</Badge>{isOwner && <Badge tone="info">Của bạn</Badge>}<Badge tone="muted">{p.postType === 'QUESTION_SET' ? `Bộ · ${p.itemCount ?? items.length} câu` : 'Một câu'}</Badge></div>
     {p.description && <p>{p.description}</p>}
+    {isOwner && <Notice tone="info">Bài đăng là snapshot cố định của phiên bản nguồn. Thay đổi hoặc lưu trữ câu nguồn không sửa snapshot này hay đề thi đã xuất bản.</Notice>}
     <section className="public-detail-stats" aria-label="Số liệu thật"><span>{p.viewsTotal ?? '—'}<small>{p.viewsTotal == null ? 'chưa có số liệu xem' : 'lượt xem'}</small></span><span>{p.copiesTotal ?? '—'}<small>{p.copiesTotal == null ? 'chưa có số liệu sao chép' : 'lượt sao chép'}</small></span><span>{p.ratingCount == null ? '—' : p.ratingCount ? `${p.averageRating ?? '—'}/10` : 'Chưa có'}<small>{p.ratingCount == null ? 'chưa có số liệu đánh giá' : p.ratingCount ? `${p.ratingCount} đánh giá` : 'đánh giá'}</small></span></section>
     <section aria-label="Nguồn gốc" className="stack-sm"><strong className="field-label">Nguồn gốc</strong><dl className="small stack-sm" style={{margin:0}}><div><dt className="xsmall muted">Tác giả</dt><dd style={{margin:0}}>{authorName(p)}</dd></div><div><dt className="xsmall muted">Bản chụp nguồn</dt><dd style={{margin:0}}>Phiên bản {p.postVersion ?? p.sourceQuestionVersion}{p.items?.length ? ` · ${p.items.length} câu` : ''}</dd></div><div><dt className="xsmall muted">Xuất bản</dt><dd style={{margin:0}}>{formatDateTime(p.publishedAt,'-')}</dd></div>{p.archivedAt && <div><dt className="xsmall muted">Gỡ công khai</dt><dd style={{margin:0}}>{formatDateTime(p.archivedAt,'-')}</dd></div>}</dl></section>
     <Notice tone="info">Chỉ hiển thị nội dung và lựa chọn an toàn; đáp án và lời giải không được công khai.</Notice>
@@ -181,6 +202,7 @@ function PublicPanel({ id, teacher, userId, onClose, page = false }: { id: strin
     <div className="stack-sm">
       {teacher && p.postType === 'QUESTION_SET' && canForkPublic(p,true) && <button type="button" className="btn btn-primary" disabled={forkSet.isPending} onClick={() => forkSet.mutate()}>{forkSet.isPending?'Đang sao chép…':'Sao chép cả bộ về kho cá nhân'}</button>}
       {!teacher && <p className="xsmall muted">Học sinh chỉ xem và có thể đánh giá; chỉ giáo viên được sao chép.</p>}
+      {canSave && p.publicationStatus === 'PUBLISHED' && <button type="button" className="btn btn-secondary" aria-pressed={!!p.isSaved} disabled={bookmark.isPending} onClick={() => bookmark.mutate(!p.isSaved)}><Bookmark size={15} aria-hidden/>{bookmark.isPending ? 'Đang lưu…' : p.isSaved ? 'Bỏ lưu bài đăng' : 'Lưu bài đăng'}</button>}
       {!isOwner && <form className="public-rating" onSubmit={e => {e.preventDefault(); if (Number(rating)>=0 && Number(rating)<=10) rate.mutate()}}><label className="field"><span className="field-label">Đánh giá (0–10)</span><input className="input" type="number" min="0" max="10" step="any" required value={rating} onChange={e => setRating(e.target.value)} aria-describedby="rating-hint"/><span id="rating-hint" className="field-hint">Có thể nhập số thập phân. Đánh giá hiện tại của bạn: {p.myRating ?? 'chưa có'}.</span></label><button className="btn btn-secondary" disabled={!rating || rate.isPending}>{rate.isPending?'Đang lưu…':'Gửi đánh giá'}</button></form>}
       {isOwner && <p className="xsmall muted">Chủ bài đăng không thể tự đánh giá.</p>}
       {canUnpublish(p,userId) && <button type="button" className="btn btn-danger-ghost" onClick={() => setConfirm(true)}>Gỡ công khai</button>}

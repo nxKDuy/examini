@@ -5,7 +5,7 @@ export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | '
 
 /** Contract: manual-grading-api.md (MAIN lock 0d6090e). Scores are the draft/current result; publishedScore is what the Student sees. */
 export interface Submission {
-  id: string; examId: string; examTitle: string; studentId: string; attemptNumber: number
+  id: string; examId: string; examTitle: string; studentId: string; studentDisplayName?: string | null; attemptNumber: number
   status: GradingStatus; score: number | null; totalScore: number | null; publishedScore: number | null
   pendingManualItemCount: number; submittedAt: string | null; gradedAt: string | null; durationSeconds: number | null
   feedback: string | null; resultRevision: number; publishedRevision: number | null

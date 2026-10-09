@@ -227,6 +227,15 @@ a.stat:hover { background: var(--color-subtle); }
 .space-launcher-link { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px; color: #000; text-decoration: none; border: 1px solid transparent; }
 .space-launcher-link:hover,.space-launcher-link:focus-visible { background: var(--color-subtle); border-color: #000; }
 .space-launcher-link.active { color: #fff; background: var(--color-accent); }
+/* Narrow screens: anchor the panel to the topbar (the launcher button is not at the left edge), so it can never extend past the viewport. */
+@media (max-width: 640px) {
+  .space-launcher { position: static; }
+  .space-launcher-panel { left: 12px; right: 12px; width: auto; top: 66px; }
+}
+@media (max-width: 360px) { .space-launcher-grid { grid-template-columns: minmax(0,1fr); } }
+/* Very narrow phones: the name block and decorative avatar give way so Notification, the launcher and Đăng xuất all stay on screen. */
+@media (max-width: 420px) { .topbar-who, .topbar-avatar { display: none !important; } }
+@media (max-width: 360px) { .topbar-main { gap: 4px; } .topbar .brand { padding: 0; font-size: 1.05rem; } .topbar-user { gap: 2px !important; } .space-launcher > .btn { padding-left: 8px; padding-right: 8px; } }
 .quicklinks { display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; border-top: 1px solid var(--color-hairline); }
 .quicklink { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; color: #000; text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
 .quicklink:hover,.quicklink:focus-visible { background: var(--color-subtle); }

@@ -97,6 +97,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
       {message && <Notice tone={message.tone} live>{message.text}</Notice>}
 
       <QuestionBody question={q} />
+      {owns && q.explanation?.trim() && <section aria-label="Giải thích của người soạn"><span className="field-label">Giải thích của người soạn</span><p className="prewrap small">{q.explanation}</p><p className="xsmall muted">Chỉ được đưa vào kết quả học sinh khi chính sách cho phép và kỳ thi đã đóng.</p></section>}
 
       <ProvenanceBlock questionId={q.id} />
       {owns && <div className="stack" style={{ paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>

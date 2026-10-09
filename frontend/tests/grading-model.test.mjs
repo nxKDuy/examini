@@ -89,10 +89,18 @@ test('Student: statuses, no fake zero, UUID answers are not guessed, unreadable 
   assert.equal(m.studentPolls('SUBMITTED'), 3000); assert.equal(m.studentPolls('NEEDS_REVIEW'), 30000); assert.equal(m.studentPolls('GRADED'), false); assert.equal(m.studentPolls('IN_PROGRESS'), false)
   const uuid = '3f2b8c1e-1111-4222-8333-444455556666'
   assert.deepEqual(m.studentAnswerText('MULTIPLE_CHOICE', uuid), { text: 'Đã chọn một phương án', unresolved: true })
+  assert.deepEqual(m.studentAnswerText('MULTIPLE_CHOICE', uuid, 'Nội dung đáp án đã chọn'), { text: 'Nội dung đáp án đã chọn', unresolved: false })
+  assert.deepEqual(m.studentAnswerText('MULTIPLE_CHOICE', uuid, null), { text: 'Đã chọn một phương án', unresolved: true })
   assert.deepEqual(m.studentAnswerText('ESSAY', uuid), { text: uuid, unresolved: false }) // free text is shown as written
   assert.deepEqual(m.studentAnswerText('MULTIPLE_CHOICE', 'Hà Nội'), { text: 'Hà Nội', unresolved: false })
   assert.equal(m.studentAnswerText('ESSAY', undefined), null)
   assert.deepEqual(m.readableAnswers([uuid, 'Hà Nội']), ['Hà Nội']); assert.deepEqual(m.readableAnswers(undefined), [])
+})
+
+test('grading queue uses trusted studentDisplayName and retains UUID fallback for legacy/provider failures', async () => {
+  assert.equal(m.studentName({ studentId: '12345678-aaaa', studentDisplayName: '  Học sinh A  ' }), 'Học sinh A')
+  assert.equal(m.studentName({ studentId: '12345678-aaaa', studentDisplayName: null }), 'Thí sinh 12345678')
+  assert.equal(m.studentName({ studentId: '87654321-bbbb' }), 'Thí sinh 87654321')
 })
 
 const shortAnswer = (o = {}) => item({ questionId: 'q3', questionType: 'SHORT_ANSWER', pointValue: 5, autoScore: 5, awardedPoints: 5, needsReview: false, answerContent: 'Hà Nội', ...o })

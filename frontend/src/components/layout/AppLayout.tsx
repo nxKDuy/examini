@@ -62,13 +62,13 @@ export default function AppLayout() {
             <div style={{ flex: 1 }} />
             <div className="row topbar-user" style={{ gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
             <NotificationBell />
-            <div style={{ textAlign: 'right', minWidth: 0, lineHeight: 1.3 }}>
+            <div className="topbar-who" style={{ textAlign: 'right', minWidth: 0, lineHeight: 1.3 }}>
               <div className="small" style={{ color: 'var(--color-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
                 {user?.fullName}
               </div>
               <div className="xsmall muted">{AUDIENCE_LABEL[audience]}</div>
             </div>
-            <span aria-hidden style={{ width: 34, height: 34, border: '1px solid #000', background: '#fff', color: '#000',
+            <span aria-hidden className="topbar-avatar" style={{ width: 34, height: 34, border: '1px solid #000', background: '#fff', color: '#000',
               display: 'grid', placeItems: 'center', flexShrink: 0 }}>
               {user?.fullName?.trim().split(/\s+/).pop()?.[0]?.toUpperCase() ?? '?'}
             </span>
