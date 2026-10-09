@@ -40,19 +40,26 @@ public class QuestionService {
     public Page<QuestionProjection> findAll(UUID categoryId, DifficultyLevel difficulty, QuestionType type,
             QuestionStatus status, CreationMethod method, SourceType sourceType, String text,
             Pageable pageable, QuestionActor actor) {
+        return findAll(categoryId,difficulty,type,status,method,sourceType,text,null,pageable,actor);
+    }
+    public Page<QuestionProjection> findAll(UUID categoryId, DifficultyLevel difficulty, QuestionType type,
+            QuestionStatus status, CreationMethod method, SourceType sourceType, String text, QuestionScope scope,
+            Pageable pageable, QuestionActor actor) {
         Specification<Question> spec = accessible(actor);
+        if (scope != null) spec = spec.and((r,q,b) -> b.equal(r.get("scope"),scope));
         if (categoryId != null) spec = spec.and((r,q,b) -> b.equal(r.get("category").get("id"), categoryId));
         if (difficulty != null) spec = spec.and((r,q,b) -> b.equal(r.get("difficultyLevel"), difficulty));
         if (type != null) spec = spec.and((r,q,b) -> b.equal(r.get("questionType"), type));
         if (status != null) spec = spec.and((r,q,b) -> b.equal(r.get("status"), status));
         if (method != null) spec = spec.and((r,q,b) -> b.equal(r.get("creationMethod"), method));
         if (sourceType != null) spec = spec.and((r,q,b) -> b.equal(r.get("sourceType"), sourceType));
+        if (text != null && text.length() > 200) throw bad("Tìm kiếm tối đa 200 ký tự");
         if (text != null && !text.isBlank()) {
-            if (text.length() > 200) throw bad("Tìm kiếm tối đa 200 ký tự");
             String term = "%" + text.trim().toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
             spec = spec.and((r,q,b) -> b.like(b.lower(r.get("content")), term, '\\'));
         }
-        return repo.findAll(spec, pageable).map(q -> fullResponse(q).withoutAnswers());
+        return repo.findAll(spec, PageRequest.of(pageable.getPageNumber(),pageable.getPageSize(),pageable.getSort().and(Sort.by("id"))))
+                .map(q -> fullResponse(q).withoutAnswers());
     }
 
     public QuestionProjection findById(UUID id, boolean includeAnswers, QuestionActor actor) {
@@ -79,7 +86,8 @@ public class QuestionService {
                 .source(req.source()).sourceLabel(req.sourceLabel() != null ? req.sourceLabel() : req.source())
                 .sourceType(req.sourceType() == null ? SourceType.NONE : req.sourceType())
                 .sourceRefId(req.sourceRefId()).sourceUrl(req.sourceUrl()).sourceExcerpt(req.sourceExcerpt())
-                .expectedAnswer(req.expectedAnswer()).createdBy(actor.userId()).bankId(bankId).scope(scope).updatedAt(LocalDateTime.now())
+                .expectedAnswer(req.expectedAnswer()).explanation(req.explanation()==null||req.explanation().isBlank()?null:req.explanation().trim())
+                .createdBy(actor.userId()).bankId(bankId).scope(scope).updatedAt(LocalDateTime.now())
                 .build();
         replaceOptions(q, req.options());
         validate(q);
@@ -105,6 +113,7 @@ public class QuestionService {
         if (req.sourceUrl() != null) q.setSourceUrl(req.sourceUrl());
         if (req.sourceExcerpt() != null) q.setSourceExcerpt(req.sourceExcerpt());
         if (req.expectedAnswer() != null) q.setExpectedAnswer(req.expectedAnswer());
+        if (req.explanation() != null) q.setExplanation(req.explanation().isBlank()?null:req.explanation().trim());
         if (req.options() != null) replaceOptions(q, req.options());
         validate(q);
         q.setStatus(QuestionStatus.DRAFT);
@@ -267,7 +276,7 @@ public class QuestionService {
         if (bank.getType() != QuestionBank.BankType.PERSONAL) throw bad("Fork target phải là PERSONAL");
         Question q = Question.builder().bankId(bankId).category(categoryService.getOrThrow(source.categoryId()))
                 .content(source.content()).questionType(source.questionType()).difficultyLevel(source.difficultyLevel())
-                .expectedAnswer(source.expectedAnswer()).source(source.source()).sourceLabel(source.sourceLabel())
+                .expectedAnswer(source.expectedAnswer()).explanation(source.explanation()).source(source.source()).sourceLabel(source.sourceLabel())
                 .sourceUrl(source.sourceUrl()).sourceExcerpt(source.sourceExcerpt()).sourceType(sourceType).sourceRefId(sourceRef)
                 .creationMethod(CreationMethod.COPIED).createdBy(actor.userId()).updatedAt(LocalDateTime.now()).build();
         replaceOptions(q, source.options().stream().map(o -> new OptionRequest(o.content(), Boolean.TRUE.equals(o.correct()), o.displayOrder())).toList());
@@ -298,7 +307,7 @@ public class QuestionService {
                 .questionVersion(q.getQuestionVersion()).status(q.getStatus()).scope(q.getScope())
                 .bankId(q.getBankId()).bankType(QuestionBank.BankType.valueOf(q.getScope().name()))
                 .creationMethod(q.getCreationMethod()).sourceType(q.getSourceType()).sourceRefId(q.getSourceRefId())
-                .sourceLabel(q.getSourceLabel()).sourceUrl(q.getSourceUrl()).sourceExcerpt(q.getSourceExcerpt()).expectedAnswer(q.getExpectedAnswer())
+                .sourceLabel(q.getSourceLabel()).sourceUrl(q.getSourceUrl()).sourceExcerpt(q.getSourceExcerpt()).expectedAnswer(q.getExpectedAnswer()).explanation(q.getExplanation())
                 .options(q.getOptions().stream().sorted(Comparator.comparingInt(QuestionOption::getDisplayOrder))
                         .map(o -> new OptionResponse(o.getId(), o.getContent(), o.isCorrect(), o.getDisplayOrder())).toList()).build();
     }
