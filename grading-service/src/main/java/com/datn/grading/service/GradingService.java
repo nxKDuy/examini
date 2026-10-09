@@ -39,17 +39,19 @@ public class GradingService {
         if(!Set.of("SUBMITTED","AUTO_SUBMITTED").contains(session.status()))throw new IllegalStateException("Session not submitted");
         var keys=exams.key(session.examId(),token);if(keys.isEmpty())throw new IllegalStateException("Snapshot missing");
         var policy=exams.resultPolicy(session.examId(),token).policy();
+        String studentDisplayName=session.userId().toString();
+        try{var identity=exams.identity(session.examId(),session.userId(),token);if(identity!=null&&identity.displayName()!=null&&!identity.displayName().isBlank())studentDisplayName=identity.displayName();}catch(RuntimeException unavailable){/* identity is optional; stable userId fallback keeps grading available */}
         var answers=session.answers().stream().collect(Collectors.toMap(ExamSessionClient.AnswerDto::questionId,ExamSessionClient.AnswerDto::answerContent,(a,b)->b));
         Instant now=Instant.now();
         var result=ExamResult.builder().sessionId(sessionId).examId(session.examId()).userId(session.userId()).status(ExamResult.Status.GRADED)
-                .examTitle(session.examTitle()).submittedAt(session.submittedAt().toInstant(ZoneOffset.UTC))
+                .examTitle(session.examTitle()).studentDisplayName(studentDisplayName).submittedAt(session.submittedAt().toInstant(ZoneOffset.UTC))
                 .durationSeconds(Math.toIntExact(Duration.between(session.startedAt(),session.submittedAt()).getSeconds()))
                 .attemptNumber(session.attemptNumber()).resultRevision(1).gradingMode("AUTO").invalidatedAt(session.invalidatedAt()).invalidationReason(session.invalidationReason()).build();
         float max=0;
         for(var q:keys){
             max+=q.points().floatValue();String answer=answers.get(q.questionId());
             var grade=QuestionGrade.builder().examResult(result).questionId(q.questionId()).questionVersion(q.questionVersion()).position(q.position())
-                    .questionContent(q.content()).questionType(q.questionType()).pointValue(q.points().floatValue()).answerContent(answer).build();
+                    .questionContent(q.content()).questionType(q.questionType()).pointValue(q.points().floatValue()).answerContent(answer).explanation(q.explanation()).build();
             if("ESSAY".equals(q.questionType())&&answer!=null&&!answer.isBlank())try{
                 var aiGrade=ai.gradeEssay(q.content(),answer);float score=aiGrade.score()*q.points().floatValue();
                 validateScore(score,q.points().floatValue());grade.setAutoScore(score);grade.setFeedback(aiGrade.feedback());
@@ -157,13 +159,13 @@ public class GradingService {
         var latest=publications.findTopByResultIdOrderByResultRevisionDesc(result.getId());
         if(latest.isEmpty()){String status=switch(result.getStatus()){case NEEDS_REVIEW->"NEEDS_REVIEW";case PENDING->"GRADING";case GRADED->"GRADED_UNRELEASED";};return new SubmissionDto.StudentResult(sessionId,result.getExamId(),result.getExamTitle(),result.getAttemptNumber(),status,null,result.getSubmittedAt(),result.getGradedAt(),null,null,null,null,List.of(),List.of(),result.isInvalidated(),result.getInvalidatedAt(),result.getInvalidationReason());}
         var policy=policy(result);var p=policy.policy();var publication=latest.get();var publishedItems=readItems(publication).stream().collect(Collectors.toMap(PublicationItem::questionId,Function.identity()));
-        Map<UUID,ExamClient.Question> keys=Map.of();boolean reveal=p.showCorrectAnswers()&&"CLOSED".equals(policy.examStatus());
+        Map<UUID,ExamClient.Question> keys=Map.of();boolean closed="CLOSED".equals(policy.examStatus());boolean reveal=p.showCorrectAnswers()&&closed;boolean revealExplanation=p.showExplanation()&&closed;
         if(reveal)keys=exams.key(result.getExamId(),token).stream().collect(Collectors.toMap(ExamClient.Question::questionId,Function.identity()));
         var finalKeys=keys;
         var items=result.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->{
             var published=publishedItems.get(q.getQuestionId());
             return new SubmissionDto.StudentItem(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),
-                    p.showQuestionBreakdown()?published.score():null,p.showFeedback()?published.feedback():null,reveal?correct(finalKeys.get(q.getQuestionId())):null);
+                    published.answerDisplay()!=null?published.answerDisplay():answerDisplay(q),p.showQuestionBreakdown()?published.score():null,p.showFeedback()?published.feedback():null,reveal?correct(finalKeys.get(q.getQuestionId())):null,revealExplanation?published.explanation():null);
         }).toList();
         var history=publications.findByResultIdOrderByResultRevisionAsc(result.getId()).stream().map(h->new SubmissionDto.PublishedRevision(h.getResultRevision(),h.getReleasedAt(),p.showScore()?h.getTotalScore():null,p.showScore()?result.getMaxScore():null,h.getPublicReason())).toList();
         return new SubmissionDto.StudentResult(sessionId,result.getExamId(),result.getExamTitle(),result.getAttemptNumber(),"GRADED",publication.getResultRevision(),result.getSubmittedAt(),publication.getGradedAt(),publication.getReleasedAt(),
@@ -188,15 +190,16 @@ public class GradingService {
     private void releaseCurrent(ExamResult result,boolean regraded,Instant now){
         if(result.getTotalScore()==null)throw error(409,"Final score unavailable");
         try{
-            var items=result.getQuestionGrades().stream().map(q->new PublicationItem(q.getQuestionId(),q.getScore(),q.getFeedback())).toList();
+            var items=result.getQuestionGrades().stream().map(q->new PublicationItem(q.getQuestionId(),q.getScore(),q.getFeedback(),answerDisplay(q),q.getExplanation())).toList();
             publications.save(new ResultPublication(result.getId(),result.getResultRevision(),result.getTotalScore(),result.getFeedback(),result.getPendingPublicReason(),result.getGradingMode(),now,result.getGradedAt(),json.writeValueAsString(items)));
         }catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("Cannot freeze result publication",e);}
         result.setReleasedRevision(result.getResultRevision());result.setReleasedScore(result.getTotalScore());result.setPendingPublicReason(null);result.setPendingPrivateAuditNote(null);events.released(result,regraded);
     }
     private List<PublicationItem> readItems(ResultPublication publication){try{return json.readValue(publication.getItems(),new TypeReference<>(){});}catch(Exception e){throw new IllegalStateException("Invalid published result snapshot",e);}}
     private static List<String> correct(ExamClient.Question q){if(q==null)return List.of();if("SHORT_ANSWER".equals(q.questionType()))return q.expectedAnswer()==null?List.of():List.of(q.expectedAnswer());return q.options().stream().filter(ExamClient.Option::correct).map(ExamClient.Option::content).toList();}
-    private SubmissionDto.SummaryResponse summary(ExamResult r){return new SubmissionDto.SummaryResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
-    private SubmissionDto.DetailResponse detail(ExamResult r){return new SubmissionDto.DetailResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->new SubmissionDto.ItemResponse(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),q.getSelectedOptionContent(),q.getAutoScore(),q.getManualScore(),q.getScore(),q.isNeedsReview(),q.getFeedback(),q.getManualGradedBy(),q.getManualGradedAt())).toList(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
+    private static String answerDisplay(QuestionGrade q){return Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.getQuestionType())?q.getSelectedOptionContent():q.getAnswerContent();}
+    private SubmissionDto.SummaryResponse summary(ExamResult r){return new SubmissionDto.SummaryResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getStudentDisplayName(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
+    private SubmissionDto.DetailResponse detail(ExamResult r){return new SubmissionDto.DetailResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getStudentDisplayName(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->new SubmissionDto.ItemResponse(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),q.getSelectedOptionContent(),q.getAutoScore(),q.getManualScore(),q.getScore(),q.isNeedsReview(),q.getFeedback(),q.getManualGradedBy(),q.getManualGradedAt())).toList(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
     private record AuditChange(UUID questionId,Float oldScore,Float newScore,String oldFeedback,String newFeedback,String reason,String action){}
-    public record PublicationItem(UUID questionId,Float score,String feedback){}
+    public record PublicationItem(UUID questionId,Float score,String feedback,String answerDisplay,String explanation){}
 }

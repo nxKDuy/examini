@@ -36,6 +36,7 @@ public class QuestionGrade {
     private Float pointValue;
     @Column(columnDefinition="TEXT") private String answerContent;
     @Column(columnDefinition="TEXT") private String selectedOptionContent;
+    @Column(columnDefinition="TEXT") private String explanation;
     private boolean needsReview;
     private UUID manualGradedBy;
     private Instant manualGradedAt;

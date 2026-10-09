@@ -47,6 +47,7 @@ public class ExamResult {
 
     private Float maxScore;
     private String examTitle;
+    private String studentDisplayName;
     @Column(columnDefinition="TEXT") private String feedback;
     private Instant submittedAt;
     private Integer durationSeconds;

@@ -8,12 +8,12 @@ import java.util.UUID;
 public final class SubmissionDto {
     private SubmissionDto() {}
 
-    public record SummaryResponse(UUID id,UUID examId,String examTitle,UUID studentId,int attemptNumber,String status,
+    public record SummaryResponse(UUID id,UUID examId,String examTitle,UUID studentId,String studentDisplayName,int attemptNumber,String status,
                                   Float score,Float totalScore,Float publishedScore,int pendingManualItemCount,
                                   Instant submittedAt,Instant gradedAt,Integer durationSeconds,String feedback,
                                   long resultRevision,Long publishedRevision,boolean invalidated,Instant invalidatedAt,String invalidationReason) {}
 
-    public record DetailResponse(UUID id,UUID examId,String examTitle,UUID studentId,int attemptNumber,String status,
+    public record DetailResponse(UUID id,UUID examId,String examTitle,UUID studentId,String studentDisplayName,int attemptNumber,String status,
                                  Float score,Float totalScore,Float publishedScore,int pendingManualItemCount,
                                  Instant submittedAt,Instant gradedAt,Integer durationSeconds,String feedback,
                                  long resultRevision,Long publishedRevision,
@@ -45,7 +45,8 @@ public final class SubmissionDto {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record StudentItem(UUID questionId,long questionVersion,int position,String questionContent,String questionType,
-                              Float pointValue,String answer,Float awardedPoints,String feedback,List<String> correctAnswers) {}
+                              Float pointValue,String answer,String answerDisplay,Float awardedPoints,String feedback,
+                              List<String> correctAnswers,String explanation) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record PublishedRevision(long resultRevision,Instant releasedAt,Float score,Float totalScore,String publicReason) {}
