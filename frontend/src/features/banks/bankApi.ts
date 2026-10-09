@@ -75,7 +75,7 @@ export const bankApi = {
     return { ...metadata, content: content.filter(q => q.eligible === true) }
   },
   banks: (p: { type?: BankType; organizationId?: string; size?: number; page?: number } = {}) => api.get<Paged<Bank>>('/question-banks', { params: { size: 50, ...p } }).then(r => r.data),
-  personalQuestions: (bankId: string) => api.get<Paged<BankQuestion>>(`/question-banks/${bankId}/questions`, { params: { status: 'ACTIVE', size: 100, page: 0 } }).then(r => r.data),
+  personalQuestions: (bankId: string, page = 0, size = 20) => api.get<Paged<BankQuestion>>(`/question-banks/${bankId}/questions`, { params: { status: 'ACTIVE', size, page } }).then(r => r.data),
   // Public
   publicList: (f: PublicFilters) => api.get<Paged<PublicQuestion>>('/public-questions', { params: { size: 20, ...f } }).then(r => r.data),
   publicGet: (id: string) => api.get<PublicQuestion>(`/public-questions/${id}`).then(r => r.data),
@@ -86,7 +86,8 @@ export const bankApi = {
   publicFork: (id: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork`, { sourceQuestionVersion }).then(r => r.data),
   publicForkItem: (id: string, itemId: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork-items/${itemId}`, { sourceQuestionVersion }).then(r => r.data),
   publicForkSet: (id: string) => api.post<QuestionSet>(`/public-questions/${id}/fork-set`, {}).then(r => r.data),
-  questionSets: (bankId: string, page = 0) => api.get<Paged<QuestionSet>>(`/question-banks/${bankId}/question-sets`, { params: { page, size: 100 } }).then(r => r.data),
+  questionSets: (bankId: string, page = 0, size = 20) => api.get<Paged<QuestionSet>>(`/question-banks/${bankId}/question-sets`, { params: { page, size } }).then(r => r.data),
+  questionSet: (id: string) => api.get<QuestionSet>(`/question-sets/${id}`).then(r => r.data),
   createQuestionSet: (bankId: string, body: { title: string; description?: string; items: { questionId: string; questionVersion: number }[] }) => api.post<QuestionSet>(`/question-banks/${bankId}/question-sets`, body).then(r => r.data),
   updateQuestionSet: (id: string, body: { title: string; description?: string; items: { questionId: string; questionVersion: number }[]; expectedVersion: number }) => api.put<QuestionSet>(`/question-sets/${id}`, body).then(r => r.data),
   archiveQuestionSet: (id: string) => api.delete<void>(`/question-sets/${id}`).then(() => undefined),

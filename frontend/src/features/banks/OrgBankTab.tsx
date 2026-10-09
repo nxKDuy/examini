@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpenCheck, CheckCircle2, XCircle } from 'lucide-react'
 import './banks.css'
@@ -9,7 +9,7 @@ import { CONTRIBUTION_LABEL, ORG_BANK_TAB_LABEL, contributionQuery, excerpt, has
 import type { Organization } from '../organizations/orgApi'
 import { useAuthStore, hasPersona, isSystemAdmin } from '../../store/authStore'
 import { ConfirmDialog, Dialog } from '../../components/Dialog'
-import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, Pagination } from '../../components/ui'
+import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib/format'
 import { useIsNarrow } from '../../lib/hooks'
@@ -19,9 +19,19 @@ export default function OrgBankTab({ org }: { org: Organization }) {
   const tabs = orgBankTabs(org)
   const [tab, setTab] = useState<OrgBankTab>('approved')
   const active: OrgBankTab = tabs.includes(tab) ? tab : 'approved'
+  const [params,setParams] = useSearchParams(), detailId = params.get('question')
   const bank = useQuery({
     queryKey: ['banks', 'org', org.id], queryFn: async () => (await bankApi.banks({ type: 'ORGANIZATION', organizationId: org.id })).content.find(b => b.organizationId === org.id) ?? null,
   })
+  const question = useQuery({ queryKey: ['banks','org-question-detail',org.id,detailId], queryFn: () => bankApi.orgQuestion(detailId!), enabled: !!detailId && active === 'approved', retry: false })
+  const closeDetail = () => { const next = new URLSearchParams(params); next.delete('question'); setParams(next) }
+  const openDetail = (id: string) => { const next = new URLSearchParams(params); next.set('question',id); setParams(next) }
+  if (detailId && active === 'approved') {
+    const header = <PageHeader title="Câu hỏi tổ chức" crumbs={[{label:org.name},{label:'Ngân hàng câu hỏi'}]} actions={<button type="button" className="btn btn-secondary" onClick={closeDetail}>Quay lại danh sách</button>} />
+    if (question.isLoading) return <div className="stack">{header}<LoadingState rows={4}/></div>
+    if (question.isError || !question.data) return <div className="stack">{header}<ErrorState error={question.error} onRetry={() => void question.refetch()}/></div>
+    return <OrgQuestionDetailPage org={org} item={question.data} onBack={closeDetail} />
+  }
   return (
     <div className="stack">
       {org.status === 'ARCHIVED' && <Notice tone="info" title="Tổ chức đã lưu trữ">Chỉ đọc: không gửi, không duyệt, không sao chép câu hỏi mới.</Notice>}
@@ -30,57 +40,54 @@ export default function OrgBankTab({ org }: { org: Organization }) {
       </div>
       {bank.isLoading ? <LoadingState rows={3} /> : bank.isError ? <section className="card"><ErrorState error={bank.error} onRetry={() => void bank.refetch()} /></section>
         : !bank.data ? <EmptyState icon={<BookOpenCheck size={28} />} title="Chưa có ngân hàng câu hỏi" description="Ngân hàng của tổ chức này chưa được tạo hoặc bạn chưa có quyền xem." />
-        : active === 'approved' ? <ApprovedList org={org} bankId={bank.data.id} /> : <ContributionList key={active} org={org} bankId={bank.data.id} tab={active} />}
+        : active === 'approved' ? <ApprovedList bankId={bank.data.id} onOpen={openDetail} /> : <ContributionList key={active} org={org} bankId={bank.data.id} tab={active} />}
     </div>
   )
 }
 
-function ApprovedList({ org, bankId }: { org: Organization; bankId: string }) {
+function ApprovedList({ bankId, onOpen }: { bankId: string; onOpen: (id: string) => void }) {
   const [type, setType] = useState('')
   const [difficulty, setDifficulty] = useState('')
   const [page, setPage] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const narrowList = useIsNarrow(899), narrowPanel = useIsNarrow(1100)
+  const narrowList = useIsNarrow(899)
   const list = useQuery({ queryKey: ['banks', 'org-questions', bankId, type, difficulty, page], queryFn: () => bankApi.orgQuestions({ bankId, questionType: type || undefined, difficulty: difficulty || undefined, page }), placeholderData: prev => prev })
   const items = list.data?.content ?? []
-  const selected = items.find(i => i.id === selectedId) ?? null
-  const reset = (fn: () => void) => { fn(); setPage(0); setSelectedId(null) }
+  const reset = (fn: () => void) => { fn(); setPage(0) }
   return (
     <div className="stack">
       <div className="bk-filters">
         <label className="row small" style={{ gap: 6 }}>Loại<select className="input" style={{ width: 'auto' }} value={type} onChange={e => reset(() => setType(e.target.value))}><option value="">Tất cả</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label className="row small" style={{ gap: 6 }}>Độ khó<select className="input" style={{ width: 'auto' }} value={difficulty} onChange={e => reset(() => setDifficulty(e.target.value))}><option value="">Tất cả</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
       </div>
-      <div className="bk-layout" data-panel={selected ? 'open' : 'closed'}>
+      <div>
         <section className="card" aria-label="Câu hỏi đã duyệt" style={{ overflow: 'hidden', minWidth: 0 }}>
           {list.isLoading ? <LoadingState rows={3} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
             : items.length === 0 ? <EmptyState icon={<BookOpenCheck size={28} />} title="Chưa có câu hỏi đã duyệt" description={type || difficulty ? 'Không có câu khớp bộ lọc.' : 'Câu hỏi xuất hiện ở đây sau khi người duyệt chấp nhận đóng góp.'} />
-            : narrowList ? items.map(i => <OrgCard key={i.id} i={i} active={selectedId === i.id} onOpen={() => setSelectedId(i.id)} />)
+            : narrowList ? items.map(i => <OrgCard key={i.id} i={i} onOpen={() => onOpen(i.id)} />)
             : <table className="bk-table"><thead><tr><th scope="col">Câu hỏi</th><th scope="col">Loại</th><th scope="col">Độ khó</th><th scope="col">Phiên bản nguồn</th><th scope="col">Duyệt lúc</th></tr></thead>
                 <tbody>{items.map(i => (
-                  <tr key={i.id} aria-selected={selectedId === i.id}>
-                    <td><button type="button" className="bk-row-btn" onClick={() => setSelectedId(i.id)}>{excerpt(i.question.content)}</button></td>
+                  <tr key={i.id}>
+                    <td><button type="button" className="bk-row-btn" onClick={() => onOpen(i.id)}>{excerpt(i.question.content)}</button></td>
                     <td>{QUESTION_TYPE_LABEL[i.question.questionType]}</td><td>{DIFFICULTY_LABEL[i.question.difficultyLevel]}</td><td className="mono">{i.sourceQuestionVersion}</td><td>{formatDateTime(i.approvedAt, '-')}</td>
                   </tr>
                 ))}</tbody></table>}
-          {list.data && <Pagination label="Phân trang câu hỏi tổ chức" page={page} totalPages={list.data.totalPages} onChange={p => { setPage(p); setSelectedId(null) }} />}
+          {list.data && <Pagination label="Phân trang câu hỏi tổ chức" page={page} totalPages={list.data.totalPages} onChange={p => setPage(p)} />}
         </section>
-        {selected && <OrgQuestionPanel org={org} item={selected} narrow={narrowPanel} onClose={() => setSelectedId(null)} />}
       </div>
     </div>
   )
 }
 
-function OrgCard({ i, active, onOpen }: { i: OrgQuestion; active: boolean; onOpen: () => void }) {
+function OrgCard({ i, onOpen }: { i: OrgQuestion; onOpen: () => void }) {
   return (
-    <button type="button" className="bk-card" aria-current={active} onClick={onOpen}>
+    <button type="button" className="bk-card" onClick={onOpen}>
       <strong style={{ fontWeight: 400 }}>{excerpt(i.question.content, 110)}</strong>
       <span className="row xsmall muted" style={{ gap: 8 }}><span>{QUESTION_TYPE_LABEL[i.question.questionType]}</span><span>{DIFFICULTY_LABEL[i.question.difficultyLevel]}</span><span>Phiên bản nguồn {i.sourceQuestionVersion}</span></span>
     </button>
   )
 }
 
-function OrgQuestionPanel({ org, item, narrow, onClose }: { org: Organization; item: OrgQuestion; narrow: boolean; onClose: () => void }) {
+function OrgQuestionDetailPage({ org, item, onBack }: { org: Organization; item: OrgQuestion; onBack: () => void }) {
   const user = useAuthStore(s => s.user)
   const canUse = org.status === 'ACTIVE' && hasCapability(org, 'BANK_USE') && (hasPersona(user, 'TEACHER') || isSystemAdmin(user))
   const [flash, setFlash] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
@@ -89,15 +96,16 @@ function OrgQuestionPanel({ org, item, narrow, onClose }: { org: Organization; i
     onSuccess: () => setFlash({ tone: 'success', text: 'Đã sao chép về kho cá nhân thành một câu độc lập (bản nháp).' }),
     onError: e => setFlash({ tone: 'danger', text: errorText(e) }),
   })
-  return (
-    <BankPanel title="Câu hỏi của tổ chức" subtitle={`Phiên bản nguồn ${item.sourceQuestionVersion} · duyệt ${formatDateTime(item.approvedAt, '-')}`} narrow={narrow} onClose={onClose}>
+  return <div className="stack org-question-detail">
+      <PageHeader title="Câu hỏi của tổ chức" crumbs={[{label:org.name},{label:'Ngân hàng câu hỏi'},{label:`Nguồn v${item.sourceQuestionVersion}`}]} actions={<button type="button" className="btn btn-secondary" onClick={onBack}>Quay lại danh sách</button>} description={`Được duyệt ${formatDateTime(item.approvedAt, '-')}`} />
+      <section className="card card-body stack">
       {flash && <Notice tone={flash.tone} live action={flash.tone === 'success' ? <Link to="/questions" className="btn btn-secondary btn-sm">Mở kho cá nhân</Link> : undefined}>{flash.text}</Notice>}
       <QuestionView question={item.question} />
       {canUse
         ? <div><button type="button" className="btn btn-primary" disabled={fork.isPending} onClick={() => { setFlash(null); fork.mutate() }}>{fork.isPending ? 'Đang sao chép…' : 'Sao chép về kho cá nhân'}</button></div>
         : <p className="xsmall muted">Bạn không có quyền sao chép câu hỏi từ tổ chức này.</p>}
-    </BankPanel>
-  )
+      </section>
+    </div>
 }
 
 function ContributionList({ org, bankId, tab }: { org: Organization; bankId: string; tab: Exclude<OrgBankTab, 'approved'> }) {

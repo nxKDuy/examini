@@ -9,6 +9,7 @@ import DashboardPage from './features/dashboard/DashboardPage'
 const CalendarPage = lazy(() => import('./features/calendar/CalendarPage'))
 const NotificationsPage = lazy(() => import('./features/notifications/NotificationsPage'))
 const PublicBankPage = lazy(() => import('./features/banks/PublicBankPage'))
+const PersonalQuestionSetEditorPage = lazy(() => import('./features/banks/PersonalQuestionSets').then(m => ({ default: m.PersonalQuestionSetEditorPage })))
 const QuestionListPage = lazy(() => import('./features/question-bank/QuestionListPage'))
 import ExamListPage from './features/exams/ExamListPage'
 const ExamEditorPage = lazy(() => import('./features/exams/ExamEditorPage'))
@@ -40,6 +41,7 @@ function AppRoutes() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/public-bank" element={<PublicBankPage />} />
+          <Route path="/public-bank/:postId" element={<PublicBankPage />} />
           <Route path="/organizations" element={<OrganizationsPage />} />
           <Route path="/organizations/invitations" element={<Navigate to="/organizations?tab=invitations" replace />} />
           <Route path="/organizations/:id" element={<OrganizationDetailPage />} />
@@ -55,6 +57,8 @@ function AppRoutes() {
         {/* Teacher areas; system Admin may also enter (question review, exam management). */}
         <Route element={<ProtectedRoute persona="TEACHER"><AppLayout /></ProtectedRoute>}>
           <Route path="/questions" element={<QuestionListPage />} />
+          <Route path="/questions/sets/new" element={<PersonalQuestionSetEditorPage />} />
+          <Route path="/questions/sets/:setId" element={<PersonalQuestionSetEditorPage />} />
           <Route path="/exams" element={<ExamListPage />} />
           <Route path="/exams/create" element={<ExamEditorPage />} />
           <Route path="/exams/:id" element={<ExamDetailPage />} />

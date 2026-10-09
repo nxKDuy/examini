@@ -186,6 +186,17 @@ test('Question Set adapters preserve selected versions and explicit publish snap
   assert.deepEqual(JSON.parse(calls[2].data), { version: 3 })
 })
 
+test('Personal Question Set editor reads bank-owned pages and preserves ACTIVE filtering', async () => {
+  const calls = []
+  api.defaults.adapter = async config => { calls.push(config); return { status: 200, statusText: 'OK', config, headers: {}, data: { content: [], totalElements: 0, totalPages: 0, number: 0 } } }
+  await bankApi.personalQuestions('personal-bank', 3, 20)
+  await bankApi.questionSets('personal-bank', 2, 20)
+  await bankApi.questionSet('set-1')
+  assert.deepEqual(calls.map(c => c.url), ['/question-banks/personal-bank/questions', '/question-banks/personal-bank/question-sets', '/question-sets/set-1'])
+  assert.deepEqual(calls[0].params, { status: 'ACTIVE', size: 20, page: 3 })
+  assert.deepEqual(calls[1].params, { page: 2, size: 20 })
+})
+
 test('Public view adapter returns authoritative aggregate counts from the explicit detail-view endpoint', async () => {
   let request
   api.defaults.adapter = async config => { request = config; return { status: 200, statusText: 'OK', config, headers: {}, data: { publicationId: 'post-1', views24h: 2, views30d: 5, views365d: 8, viewsTotal: 9 } } }

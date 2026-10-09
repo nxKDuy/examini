@@ -24,6 +24,7 @@ export function bankFixture(url, method, body, identity) {
     }
     return [200, page(questionSets)]
   }
+  if (path === '/question-sets/set1' && method === 'GET') return questionSets[0] ? [200, questionSets[0]] : [404, { status: 404 }]
   if (path === '/question-sets/set1/publish-public' && method === 'POST') return [201, { ...publication, postType: 'QUESTION_SET', title: questionSets[0]?.title, postVersion: body.version, itemCount: questionSets[0]?.items.length }]
   if (path === '/questions/batch') return [200, body.map(id => ({ ...base, id, eligible: true, content: id === 'pub1' ? publication.question.content : id === 'orgq1' ? orgQuestion.question.content : personal.content }))]
   if (path === '/questions') return [200, page([personal].filter(q => !url.searchParams.get('status') || q.status === url.searchParams.get('status')))]
