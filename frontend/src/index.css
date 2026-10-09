@@ -219,26 +219,13 @@ a.stat:hover { background: var(--color-subtle); }
 .nav-link.active { background: var(--color-accent); color: #fff; border-bottom-color: var(--color-accent); }
 .topbar { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #000; display: grid; grid-template-columns: minmax(0,1fr); padding: 0 28px; }
 .topbar-main { min-height: 64px; display: flex; align-items: center; gap: 14px; min-width: 0; }
-.space-launcher { position: relative; flex: 0 0 auto; }
-.space-launcher-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 80; width: min(440px, calc(100vw - 24px)); max-height: min(70dvh, 580px); overflow: auto; padding: 12px; background: #fff; border: 1px solid #000; }
-.space-launcher-group + .space-launcher-group { margin-top: 12px; padding-top: 10px; border-top: 1px solid #000; }
-.space-launcher-group h2 { margin: 0 0 6px; }
-.space-launcher-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
-.space-launcher-link { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px; color: #000; text-decoration: none; border: 1px solid transparent; }
-.space-launcher-link:hover,.space-launcher-link:focus-visible { background: var(--color-subtle); border-color: #000; }
-.space-launcher-link.active { color: #fff; background: var(--color-accent); }
-/* Narrow screens: anchor the panel to the topbar (the launcher button is not at the left edge), so it can never extend past the viewport. */
-@media (max-width: 640px) {
-  .space-launcher { position: static; }
-  .space-launcher-panel { left: 12px; right: 12px; width: auto; top: 66px; }
-}
-@media (max-width: 360px) { .space-launcher-grid { grid-template-columns: minmax(0,1fr); } }
-/* Very narrow phones: the name block and decorative avatar give way so Notification, the launcher and Đăng xuất all stay on screen. */
+/* Very narrow phones: the name block and decorative avatar give way so the bell and Đăng xuất stay on screen. */
 @media (max-width: 420px) { .topbar-who, .topbar-avatar { display: none !important; } }
-@media (max-width: 360px) { .topbar-main { gap: 4px; } .topbar .brand { padding: 0; font-size: 1.05rem; } .topbar-user { gap: 2px !important; } .space-launcher > .btn { padding-left: 8px; padding-right: 8px; } }
+@media (max-width: 360px) { .topbar-main { gap: 4px; } .topbar .brand { padding: 0; font-size: 1.05rem; } .topbar-user { gap: 2px !important; } }
 .quicklinks { display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; border-top: 1px solid var(--color-hairline); }
 .quicklink { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; color: #000; text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
 .quicklink:hover,.quicklink:focus-visible { background: var(--color-subtle); }
+.quicklink { border-bottom-width: 3px; }
 .quicklink.active { border-bottom-color: var(--color-accent); color: var(--color-accent); }
 .main { min-width: 0; display: flex; flex-direction: column; }
 .page { width: 100%; max-width: 1260px; margin: 0 auto; padding: 32px 28px 56px; }
@@ -332,3 +319,24 @@ a.stat:hover { background: var(--color-subtle); }
 /* The card already draws the outer rule */
 .card > .list-item:last-child, .card > div > .list-item:last-child, .card li:last-child > .list-item { border-bottom: 0; }
 .split > .card { scroll-margin-top: 80px; }
+
+/* Dock: phones only. Fixed to the bottom with the safe-area inset, square, 1px black top rule, no shadow. */
+:root { --dock-h: 58px; }
+.dock, .dock-backdrop, .dock-sheet { display: none; }
+@media (max-width: 767px) {
+  .quicklinks { display: none; }
+  .shell { padding-bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); }
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); height: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); background: #fff; border-top: 1px solid #000; }
+  .dock-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 44px; padding: 4px 2px; background: #fff; border: 0; border-top: 3px solid transparent; color: #000; font: inherit; font-size: 0.7rem; line-height: 1.1; text-decoration: none; cursor: pointer; }
+  .dock-tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-tile:hover, .dock-tile:focus-visible { background: var(--color-subtle); }
+  .dock-tile[aria-current="page"], .dock-tile[data-active="true"] { border-top-color: var(--color-accent); color: var(--color-accent); }
+  .dock-backdrop { display: block; position: fixed; inset: 0; z-index: 65; background: rgb(196 196 196 / 0.82); border: 0; }
+  .dock-sheet { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; max-height: 70dvh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom, 0px); background: #fff; border-top: 1px solid #000; }
+  .dock-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #000; }
+  .dock-sheet-link { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 14px; color: #000; text-decoration: none; border-bottom: 1px solid var(--color-hairline); }
+  .dock-sheet-link:focus-visible, .dock-sheet-link:hover { background: var(--color-subtle); }
+  .dock-sheet-link[aria-current="page"] { color: #fff; background: var(--color-accent); }
+  /* Sticky bottom bars must sit above the dock, not under it. */
+  .main .grade-actions { bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); }
+}

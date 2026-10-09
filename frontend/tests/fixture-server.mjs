@@ -54,6 +54,7 @@ createServer(async (req, res) => {
     const att = (n, extra = {}) => ({ sessionId: `s${n}`, userId: 'x', attemptNumber: n, status: 'SUBMITTED', startedAt: '2026-10-05T01:00:00', invalidated: false, ...extra })
     const nowIso = new Date().toISOString()
     if (url.pathname === '/exams/e1') data = exam
+    else if (url.pathname === '/sessions/s-live') data = { sessionId: 's-live', examId: 'e1', title: exam.title, status: 'IN_PROGRESS', attemptNumber: 1, expiresAt: new Date(Date.now() + 36e5).toISOString(), serverNow: nowIso, questions: [{ questionId: 'q1', questionVersion: 1, questionType: 'ESSAY', content: 'Câu thử', points: 10, position: 1, options: [] }], answers: {} }
     else if (parts[2] === 'members') data = {}
     else if (parts[2] === 'schedule') data = { examId: 'e1', startAt: null, endAt: null, timezone: 'UTC', deadlineRule: 'FULL_DURATION', autoOpen: false, autoClose: false, reminderOffsetsMinutes: [], scheduleRevision: 1, lifecycleRevision: 1, serverNow: nowIso }
     else if (parts[2] === 'lobby') data = exam
