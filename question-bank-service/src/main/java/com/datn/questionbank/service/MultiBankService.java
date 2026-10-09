@@ -44,6 +44,7 @@ public class MultiBankService {
     private final ObjectMapper json;
     private final NamedParameterJdbcTemplate jdbc;
     private final PublicPostStatistics statistics;
+    private final PublicBookmarks bookmarks;
     private final EntityManager entityManager;
 
     @Transactional
@@ -83,6 +84,10 @@ public class MultiBankService {
     public BankResponse bank(UUID id,QuestionActor actor) {var b=registry.get(id);registry.requireRead(b,actor);return bankResponse(b);}
     public Page<BankQuestion> listQuestions(UUID bankId,Question.QuestionType type,Question.DifficultyLevel difficulty,
             Question.QuestionStatus status,Pageable page,QuestionActor actor) {
+        return listQuestions(bankId,type,difficulty,status,null,page,actor);
+    }
+    public Page<BankQuestion> listQuestions(UUID bankId,Question.QuestionType type,Question.DifficultyLevel difficulty,
+            Question.QuestionStatus status,String text,Pageable page,QuestionActor actor) {
         bounds(page);var bank=registry.get(bankId);registry.requireRead(bank,actor);
         if(bank.getType()==BankType.ORGANIZATION) throw bad("Organization Bank dùng GET /organization-questions?bankId=...");
         if(bank.getType()==BankType.PUBLIC) throw bad("Public Bank dùng GET /public-questions");
@@ -91,7 +96,13 @@ public class MultiBankService {
         if(type!=null)spec=spec.and((r,q,b)->b.equal(r.get("questionType"),type));
         if(difficulty!=null)spec=spec.and((r,q,b)->b.equal(r.get("difficultyLevel"),difficulty));
         if(status!=null)spec=spec.and((r,q,b)->b.equal(r.get("status"),status));
-        return questions.findAll(spec,page).map(q->new BankQuestion(bankId,core.findById(q.getId(),false,actor)));
+        if(text!=null&&text.length()>200)throw bad("Tìm kiếm tối đa 200 ký tự");
+        if(text!=null&&!text.isBlank()) {
+            var pattern="%"+text.trim().toLowerCase(Locale.ROOT).replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%";
+            spec=spec.and((r,q,b)->b.like(b.lower(r.get("content")),pattern,'\\'));
+        }
+        var stablePage=PageRequest.of(page.getPageNumber(),page.getPageSize(),page.getSort().and(Sort.by("id")));
+        return questions.findAll(spec,stablePage).map(q->new BankQuestion(bankId,core.findById(q.getId(),false,actor)));
     }
     @Transactional
     public BankQuestion createQuestion(UUID bankId,CreateRequest request,QuestionActor actor) {
@@ -216,12 +227,21 @@ public class MultiBankService {
     }
     public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,
             PublicQuestion.PublicationStatus publicationStatus,boolean mine,Pageable page,QuestionActor actor) {
-        return publicQuestions(bankId,owner,type,difficulty,text,publicationStatus,mine,null,null,null,"NEWEST",page,actor);
+        return publicQuestions(bankId,owner,type,difficulty,text,publicationStatus,mine,null,null,null,"NEWEST",false,page,actor);
     }
     public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,
             PublicQuestion.PublicationStatus publicationStatus,boolean mine,UUID subjectId,UUID categoryId,PublicQuestion.PostType postType,
             String ranking,Pageable page,QuestionActor actor) {
+        return publicQuestions(bankId,owner,type,difficulty,text,publicationStatus,mine,subjectId,categoryId,postType,ranking,false,page,actor);
+    }
+    public Page<PublicResponse> publicQuestions(UUID bankId,UUID owner,Question.QuestionType type,Question.DifficultyLevel difficulty,String text,
+            PublicQuestion.PublicationStatus publicationStatus,boolean mine,UUID subjectId,UUID categoryId,PublicQuestion.PostType postType,
+            String ranking,boolean saved,Pageable page,QuestionActor actor) {
         bounds(page);
+        if(saved) {
+            bookmarks.requireUser(actor);
+            if(publicationStatus==PublicQuestion.PublicationStatus.ARCHIVED)throw bad("Saved chỉ liệt kê bài PUBLISHED");
+        }
         UUID effectiveOwner=owner;
         if(mine) {
             if(owner!=null&&!owner.equals(actor.userId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"mine chỉ được truy vấn publication của actor");
@@ -237,6 +257,7 @@ public class MultiBankService {
         }
         entityManager.flush();
         String filter=" WHERE (CAST(:anyStatus AS boolean) OR p.status=CAST(:status AS varchar)) AND (CAST(:bank AS uuid) IS NULL OR p.bank_id=CAST(:bank AS uuid)) AND (CAST(:owner AS uuid) IS NULL OR p.source_owner_user_id=CAST(:owner AS uuid))"+
+                " AND (CAST(:saved AS boolean)=false OR (p.status='PUBLISHED' AND EXISTS(SELECT 1 FROM public_question_bookmarks b WHERE b.publication_id=p.id AND b.actor_user_id=CAST(:actor AS uuid))))"+
                 " AND (CAST(:postType AS varchar) IS NULL OR p.post_type=CAST(:postType AS varchar)) AND (CAST(:text AS varchar) IS NULL OR lower(p.search_content) LIKE CAST(:text AS varchar) ESCAPE E'\\\\')"+
                 " AND (CAST(:subject AS uuid) IS NULL OR EXISTS(SELECT 1 FROM public_question_items i WHERE i.publication_id=p.id AND i.subject_id=CAST(:subject AS uuid)))"+
                 " AND (CAST(:category AS uuid) IS NULL OR EXISTS(SELECT 1 FROM public_question_items i WHERE i.publication_id=p.id AND i.category_id=CAST(:category AS uuid)))"+
@@ -246,7 +267,8 @@ public class MultiBankService {
                 .addValue("status",(publicationStatus==null?PublicQuestion.PublicationStatus.PUBLISHED:publicationStatus).name()).addValue("bank",bankId)
                 .addValue("owner",effectiveOwner).addValue("postType",postType==null?null:postType.name()).addValue("text",text)
                 .addValue("subject",subjectId).addValue("category",categoryId).addValue("type",type==null?null:type.name())
-                .addValue("difficulty",difficulty==null?null:difficulty.name()).addValue("limit",page.getPageSize()).addValue("offset",page.getOffset());
+                .addValue("difficulty",difficulty==null?null:difficulty.name()).addValue("saved",saved).addValue("actor",actor.userId())
+                .addValue("limit",page.getPageSize()).addValue("offset",page.getOffset());
         var ids=jdbc.query("SELECT p.id FROM public_questions p"+filter+ordering+" LIMIT :limit OFFSET :offset",args,(row,n)->row.getObject(1,UUID.class));
         long total=jdbc.queryForObject("SELECT count(*) FROM public_questions p"+filter,args,Long.class);
         var byId=new HashMap<UUID,PublicQuestion>();publications.findAllById(ids).forEach(p->byId.put(p.getId(),p));
@@ -413,7 +435,7 @@ public class MultiBankService {
         var publicCategories=itemEntities.stream().filter(i->i.getCategoryId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getCategoryId,i->new PublicCategory(i.getCategoryId(),i.getCategoryName(),i.getSubjectId(),i.getSubjectName(),i.getCategoryParentId(),readPath(i.getCategoryPath())),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         var summary=ratingResponse(p.getId(),actor);
         var views=statistics.views(p.getId());var copies=statistics.copies(p.getId());
-        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total());
+        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total(),bookmarks.isSaved(p.getId(),actor));
     }
     private List<String> readPath(String value) {try{return value==null?List.of():json.readValue(value,new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});}catch(Exception e){return List.of();}}
     private String writeCategoryPath(Category category) {try{var names=new ArrayList<String>();for(var c=category;c!=null;c=c.getParent())names.add(c.getName());Collections.reverse(names);return json.writeValueAsString(names);}catch(Exception e){throw new IllegalStateException("Cannot serialize taxonomy snapshot",e);}}

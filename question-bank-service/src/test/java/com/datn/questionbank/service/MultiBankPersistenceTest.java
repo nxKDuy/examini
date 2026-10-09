@@ -37,6 +37,7 @@ import static org.mockito.Mockito.*;
 @Transactional
 class MultiBankPersistenceTest {
     @Autowired MultiBankService banks;
+    @Autowired PublicBookmarks bookmarks;
     @Autowired QuestionSetService sets;
     @Autowired OrganizationBankService organizations;
     @Autowired QuestionService questions;
@@ -305,6 +306,63 @@ class MultiBankPersistenceTest {
         assertEquals(4,banks.recordPublicView(post.id(),visitor).viewsTotal());
         assertEquals(2,banks.recordPublicView(post.id(),visitor).views24h());
         assertEquals(post.id(),banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"COPY_DAY",org.springframework.data.domain.PageRequest.of(0,1),visitor).getContent().getFirst().id());
+    }
+
+    @Test void bookmarksAreActorScopedIdempotentAndArchivedPostsDisappearFromSaved() {
+        var q=active("Saveable public question");var post=banks.publish(q.id(),new ContributionRequest(1),owner);
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        var teacher=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+        var page=org.springframework.data.domain.PageRequest.of(0,20);
+        assertFalse(banks.publicQuestion(post.id(),student).isSaved());
+        bookmarks.save(post.id(),student);bookmarks.save(post.id(),student);
+        assertTrue(banks.publicQuestion(post.id(),student).isSaved());
+        assertFalse(banks.publicQuestion(post.id(),teacher).isSaved());
+        assertEquals(1,banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"NEWEST",true,page,student).getTotalElements());
+        assertEquals(0,banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"NEWEST",true,page,teacher).getTotalElements());
+        assertEquals(0,banks.publicQuestion(post.id(),student).viewsTotal());
+        assertEquals(0,banks.publicQuestion(post.id(),student).copiesTotal());
+        assertEquals(0,banks.publicQuestion(post.id(),student).ratingCount());
+        fails(403,()->bookmarks.save(post.id(),new QuestionActor(UUID.randomUUID(),"SERVICE",true)));
+        banks.archivePublic(post.id(),owner);
+        assertEquals(0,banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"NEWEST",true,page,student).getTotalElements());
+        fails(404,()->banks.publicQuestion(post.id(),student));
+        fails(404,()->bookmarks.save(post.id(),student));
+        bookmarks.remove(post.id(),student);bookmarks.remove(post.id(),student);
+        assertFalse(bookmarks.isSaved(post.id(),student));
+    }
+
+    @Test void personalQuestionPickerAndSetListingSearchAcrossPages() {
+        var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseGet(()->{
+            var first=active("bootstrap picker");return bankRepo.findById(first.bankId()).orElseThrow();});
+        for(int i=0;i<102;i++)active("Picker topic "+i);
+        var matching=banks.listQuestions(bank.getId(),null,null,QuestionStatus.ACTIVE,"picker topic",
+                org.springframework.data.domain.PageRequest.of(0,50),owner);
+        assertEquals(102,matching.getTotalElements());
+        var second=banks.listQuestions(bank.getId(),null,null,QuestionStatus.ACTIVE,"picker topic",
+                org.springframework.data.domain.PageRequest.of(1,50),owner);
+        var third=banks.listQuestions(bank.getId(),null,null,QuestionStatus.ACTIVE,"picker topic",
+                org.springframework.data.domain.PageRequest.of(2,50),owner);
+        assertEquals(50,matching.getContent().size());assertEquals(50,second.getContent().size());assertEquals(2,third.getContent().size());
+        var all=new HashSet<UUID>();
+        java.util.stream.Stream.of(matching,second,third).flatMap(p->p.getContent().stream()).forEach(item->assertTrue(all.add(item.question().id())));
+        assertEquals(0,banks.listQuestions(bank.getId(),null,null,QuestionStatus.ACTIVE,"%",
+                org.springframework.data.domain.PageRequest.of(0,20),owner).getTotalElements());
+        fails(400,()->banks.listQuestions(bank.getId(),null,null,QuestionStatus.ACTIVE,"x".repeat(201),
+                org.springframework.data.domain.PageRequest.of(0,20),owner));
+        fails(400,()->banks.listQuestions(bank.getId(),null,null,QuestionStatus.ACTIVE," ".repeat(201),
+                org.springframework.data.domain.PageRequest.of(0,20),owner));
+        var item=matching.getContent().getFirst().question();
+        var set1=sets.create(bank.getId(),new QuestionSetWrite("Picker Set A",null,List.of(new SetItemRequest(item.id(),item.questionVersion())),null),owner);
+        sets.create(bank.getId(),new QuestionSetWrite("Picker Set B",null,List.of(new SetItemRequest(item.id(),item.questionVersion())),null),owner);
+        assertEquals(2,sets.list(bank.getId(),"picker set",QuestionSet.SetStatus.ACTIVE,
+                org.springframework.data.domain.PageRequest.of(0,1),owner).getTotalElements());
+        fails(400,()->sets.list(bank.getId()," ".repeat(201),QuestionSet.SetStatus.ACTIVE,
+                org.springframework.data.domain.PageRequest.of(0,20),owner));
+        assertEquals(1,sets.list(bank.getId(),"picker set",QuestionSet.SetStatus.ACTIVE,
+                org.springframework.data.domain.PageRequest.of(1,1),owner).getContent().size());
+        sets.archive(set1.id(),owner);
+        assertEquals(1,sets.list(bank.getId(),"picker set",QuestionSet.SetStatus.ACTIVE,
+                org.springframework.data.domain.PageRequest.of(0,20),owner).getTotalElements());
     }
 
     @Test void publicTaxonomySearchIsPublishedOnlyFrozenAndPaginated() throws Exception {

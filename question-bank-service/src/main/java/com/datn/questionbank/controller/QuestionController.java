@@ -32,10 +32,11 @@ public class QuestionController {
             @RequestParam(required=false) DifficultyLevel difficulty, @RequestParam(required=false) QuestionType questionType,
             @RequestParam(required=false) QuestionStatus status, @RequestParam(required=false) CreationMethod creationMethod,
             @RequestParam(required=false) SourceType sourceType, @RequestParam(required=false) String text,
+            @RequestParam(required=false) QuestionScope scope,
             @PageableDefault(size=20, sort="createdAt", direction=Sort.Direction.DESC) Pageable pageable,
             HttpServletRequest request) {
         if (pageable.getPageSize() > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "size tối đa 100");
-        return service.findAll(categoryId, difficulty, questionType, status, creationMethod, sourceType, text, pageable, actor(request));
+        return service.findAll(categoryId, difficulty, questionType, status, creationMethod, sourceType, text, scope, pageable, actor(request));
     }
     @GetMapping("/{id}")
     public QuestionProjection findById(@PathVariable UUID id, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) { return service.findById(id, includeAnswers, actor(req)); }

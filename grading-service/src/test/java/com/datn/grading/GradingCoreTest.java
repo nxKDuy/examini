@@ -41,10 +41,11 @@ class GradingCoreTest {
     @BeforeEach void setup(){
         outbox.deleteAll();audits.deleteAll();publications.deleteAll();results.deleteAll();
         session=UUID.randomUUID();exam=UUID.randomUUID();user=UUID.randomUUID();teacher=UUID.randomUUID();
-        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,true,true,true,true,false,"CLOSED"));
+        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,true,true,true,true,true,"CLOSED"));
         when(exams.permission(eq(exam),any(),eq(true),eq("test-internal"))).thenReturn("OWNER");
+        when(exams.identity(eq(exam),eq(user),eq("test-internal"))).thenReturn(new ExamClient.IdentityDisplay(user,"Student Name"));
     }
-    ExamClient.Question question(String type,String expected,int position){return new ExamClient.Question(UUID.randomUUID(),3,type,"Question "+position,List.of(new ExamClient.Option(UUID.randomUUID(),"Yes",0,true),new ExamClient.Option(UUID.randomUUID(),"No",1,false)),new BigDecimal("2.5"),expected,position);}
+    ExamClient.Question question(String type,String expected,int position){return new ExamClient.Question(UUID.randomUUID(),3,type,"Question "+position,List.of(new ExamClient.Option(UUID.randomUUID(),"Yes",0,true),new ExamClient.Option(UUID.randomUUID(),"No",1,false)),new BigDecimal("2.5"),expected,"Frozen explanation "+position,position);}
     ExamClient.ResultPolicy policy(boolean auto,boolean score,boolean breakdown,boolean feedback,boolean correct,boolean explanation,String status){return new ExamClient.ResultPolicy(status,new ExamClient.Policy(auto,score,breakdown,feedback,correct,explanation));}
     void submitted(List<ExamClient.Question> keys,List<ExamSessionClient.AnswerDto> answers){
         var now=LocalDateTime.now();when(sessions.get(session,"test-internal")).thenReturn(new ExamSessionClient.SessionDetailDto(session,exam,user,"SUBMITTED","Exam",2,now.minusMinutes(5),now,answers));
@@ -97,9 +98,9 @@ class GradingCoreTest {
         var draft=service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,"Overall",List.of(new SubmissionDto.ItemGrade(objective.questionId(),1.5f,"Override objective","Manual correction"),new SubmissionDto.ItemGrade(essay.questionId(),2f,"Essay feedback"))),teacher);
         assertEquals(2,draft.resultRevision());assertEquals("PENDING",draft.status());assertEquals(3.5f,draft.score());assertEquals(2.5f,draft.items().get(0).autoScore());assertEquals(1.5f,draft.items().get(0).manualScore());assertEquals(0,draft.pendingManualItemCount());assertEquals(2,draft.attemptNumber());
         var finalized=service.finalizeResult(resultId,2,teacher);assertEquals(3,finalized.resultRevision());assertEquals("GRADED",finalized.status());assertNotNull(finalized.gradedAt());assertEquals(3L,finalized.publishedRevision());
-        var first=service.student(session,user);assertEquals(3,first.resultRevision());assertEquals(3.5f,first.score());assertEquals(2,first.questions().size());assertEquals(1,first.history().size());assertThrows(ResponseStatusException.class,()->service.student(session,UUID.randomUUID()));
+        var first=service.student(session,user);assertEquals(3,first.resultRevision());assertEquals(3.5f,first.score());assertEquals(2,first.questions().size());assertEquals(1,first.history().size());assertEquals("Yes",first.questions().get(0).answerDisplay());assertEquals("Frozen explanation 0",first.questions().get(0).explanation());assertEquals("Student Name",service.detail(resultId,teacher).studentDisplayName());assertThrows(ResponseStatusException.class,()->service.student(session,UUID.randomUUID()));
         assertEquals(400,assertThrows(ResponseStatusException.class,()->service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3," ","private"),teacher)).getStatusCode().value());
-        var regrade=service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3,"Điều chỉnh đáp án","private audit only"),teacher);assertEquals(4,regrade.resultRevision());assertEquals(3L,service.student(session,user).resultRevision());assertEquals(3.5f,regrade.publishedScore());
+        var regrade=service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3,"Điều chỉnh đáp án","private audit only"),teacher);assertEquals(4,regrade.resultRevision());assertEquals(3L,service.student(session,user).resultRevision());assertEquals("Frozen explanation 0",service.student(session,user).questions().get(0).explanation());assertEquals(3.5f,regrade.publishedScore());
         service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(4,"Updated",List.of(new SubmissionDto.ItemGrade(objective.questionId(),0f,"Changed","Second correction"))),teacher);
         var refinalized=service.finalizeResult(resultId,5,teacher);assertEquals(6,refinalized.resultRevision());assertEquals(6L,refinalized.publishedRevision());
         var latest=service.student(session,user);assertEquals(2,latest.history().size());assertEquals("Điều chỉnh đáp án",latest.history().get(1).publicReason());assertFalse(json.writeValueAsString(latest).contains("private audit only"));
@@ -110,10 +111,20 @@ class GradingCoreTest {
         assertTrue(outbox.findAll().stream().filter(e->e.getExchangeName().equals("examini.events")).noneMatch(e->e.getPayload().contains("score")||e.getPayload().contains("answer")||e.getPayload().contains("private audit")));
         var released=json.readTree(outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.released")).findFirst().orElseThrow().getPayload()).path("payload");assertEquals(resultId.toString(),released.path("resultId").asText());assertEquals(3,released.path("resultRevision").asLong());
 
-        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,false,false,false,true,false,"OPEN"));
-        String hidden=mvc.perform(get("/grades/session/"+session).header("Authorization",token(user,"STUDENT"))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertFalse(hidden.contains("\"score\""));assertFalse(hidden.contains("awardedPoints"));assertFalse(hidden.contains("correctAnswers"));assertTrue(hidden.contains("Own essay"));
-        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,true,true,true,true,false,"CLOSED"));
+        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,false,false,false,true,true,"OPEN"));
+        String hidden=mvc.perform(get("/grades/session/"+session).header("Authorization",token(user,"STUDENT"))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();assertFalse(hidden.contains("\"score\""));assertFalse(hidden.contains("awardedPoints"));assertFalse(hidden.contains("correctAnswers"));assertFalse(hidden.contains("explanation"));assertTrue(hidden.contains("Own essay"));
+        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,true,true,true,true,true,"CLOSED"));
         assertNotNull(service.student(session,user).questions().get(0).correctAnswers());
+    }
+
+    @Test void identityFallbackAndLegacyExplanationStaySafe(){
+        when(exams.identity(eq(exam),eq(user),eq("test-internal"))).thenThrow(new IllegalStateException("identity unavailable"));
+        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,true,true,true,false,true,"CLOSED"));
+        var base=question("SHORT_ANSWER","Own text",0);var legacy=new ExamClient.Question(base.questionId(),base.questionVersion(),base.questionType(),base.content(),List.of(),base.points(),base.expectedAnswer(),null,base.position());
+        submitted(List.of(legacy),List.of(new ExamSessionClient.AnswerDto(legacy.questionId(),"Own text")));
+        var result=results.findBySessionId(session).orElseThrow();assertEquals(user.toString(),service.detail(result.getId(),teacher).studentDisplayName());
+        var candidate=service.student(session,user);assertEquals("Own text",candidate.questions().getFirst().answerDisplay());assertNull(candidate.questions().getFirst().explanation());
+        verify(exams,times(1)).key(exam,"test-internal");
     }
 
     @Test void explicitReleaseAndRoleIsolation()throws Exception{
@@ -129,7 +140,7 @@ class GradingCoreTest {
         mvc.perform(get("/submissions/"+result.getId()).header("Authorization",token(unrelated,"ADMIN"))).andExpect(status().isForbidden());
         mvc.perform(get("/submissions/"+result.getId()).header("Authorization",token(user,"STUDENT"))).andExpect(status().isForbidden());
         mvc.perform(get("/grades/session/"+session).header("Authorization",token(UUID.randomUUID(),"STUDENT"))).andExpect(status().isForbidden());
-        var before=service.overview(exam,owner);assertEquals(1,before.totalSubmissions());assertEquals(1,before.graded());assertEquals(0,before.released());assertEquals(1,service.getSubmissions(exam,null,false,org.springframework.data.domain.PageRequest.of(0,10),owner).getTotalElements());
+        var before=service.overview(exam,owner);assertEquals(1,before.totalSubmissions());assertEquals(1,before.graded());assertEquals(0,before.released());var queue=service.getSubmissions(exam,null,false,org.springframework.data.domain.PageRequest.of(0,10),owner);assertEquals(1,queue.getTotalElements());assertEquals("Student Name",queue.getContent().getFirst().studentDisplayName());
         var released=service.release(result.getId(),1,owner);assertEquals(2,released.resultRevision());assertEquals(2L,released.publishedRevision());assertEquals("GRADED",service.student(session,user).status());
         assertEquals(1,service.overview(exam,owner).released());assertEquals(1,service.getSubmissions(exam,null,true,org.springframework.data.domain.PageRequest.of(0,10),owner).getTotalElements());
     }

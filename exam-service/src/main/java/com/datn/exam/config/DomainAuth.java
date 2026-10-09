@@ -38,7 +38,7 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
         }
         boolean analyticsPermission="GET".equals(req.getMethod()) && mapped.equals("/exams/{id}/internal/permission") && "true".equals(req.getParameter("manage"));
         if(analyticsPermission && bearer==null && service!=null && !analyticsPermissionToken.isBlank() && MessageDigest.isEqual(analyticsPermissionToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))return true;
-        boolean internal=mapped.matches("/exams/[^/]+/internal/(start|safe|grading|permission|result-policy)|/sessions/[^/]+/internal/(answers|owner)|/sessions/exam/[^/]+/internal/eligibility");
+        boolean internal=mapped.matches("/exams/[^/]+/internal/(start|safe|grading|permission|result-policy|identity/[^/]+)|/sessions/[^/]+/internal/(answers|owner)|/sessions/exam/[^/]+/internal/eligibility");
         if(internal) {
             if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Internal service authentication required");

@@ -27,8 +27,15 @@ public class QuestionDto {
             @Size(max = 255) String sourceRefId,
             @Size(max = 500) String sourceLabel,
             @Size(max = 2000) String sourceUrl,
-            @Size(max = 10000) String sourceExcerpt
-    ) {}
+            @Size(max = 10000) String sourceExcerpt,
+            @Size(max = 10000) String explanation
+    ) {
+        public CreateRequest(UUID categoryId,String content,Question.QuestionType questionType,Question.DifficultyLevel difficultyLevel,
+                String source,List<OptionRequest> options,String expectedAnswer,Question.QuestionScope scope,Question.SourceType sourceType,
+                String sourceRefId,String sourceLabel,String sourceUrl,String sourceExcerpt) {
+            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,scope,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,null);
+        }
+    }
 
     public record UpdateRequest(
             UUID categoryId,
@@ -43,8 +50,15 @@ public class QuestionDto {
             @Size(max = 500) String sourceLabel,
             @Size(max = 2000) String sourceUrl,
             @Size(max = 10000) String sourceExcerpt,
-            @NotNull @Positive Long questionVersion
-    ) {}
+            @NotNull @Positive Long questionVersion,
+            @Size(max = 10000) String explanation
+    ) {
+        public UpdateRequest(UUID categoryId,String content,Question.QuestionType questionType,Question.DifficultyLevel difficultyLevel,
+                String source,List<OptionRequest> options,String expectedAnswer,Question.SourceType sourceType,String sourceRefId,
+                String sourceLabel,String sourceUrl,String sourceExcerpt,Long questionVersion) {
+            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,questionVersion,null);
+        }
+    }
 
     public record OptionResponse(UUID id, String content,
             @JsonInclude(JsonInclude.Include.NON_NULL) Boolean correct, short displayOrder) {}
@@ -83,17 +97,19 @@ public class QuestionDto {
             UUID createdBy, LocalDateTime updatedAt,
             Question.CreationMethod creationMethod, Question.SourceType sourceType,
             String sourceRefId, String sourceLabel, String sourceUrl, String sourceExcerpt,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String expectedAnswer, UUID bankId, QuestionBank.BankType bankType, String publicationStatus, boolean eligible
+            @JsonInclude(JsonInclude.Include.NON_NULL) String expectedAnswer,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String explanation,
+            UUID bankId, QuestionBank.BankType bankType, String publicationStatus, boolean eligible
     ) implements QuestionProjection {
         public QuestionResponse withContext(Question.QuestionStatus currentStatus, LocalDateTime currentUpdatedAt) {
             return new QuestionResponse(id, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options, questionVersion, currentStatus, scope, createdBy, currentUpdatedAt,
-                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, bankId, bankType, publicationStatus, eligible);
+                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, explanation, bankId, bankType, publicationStatus, eligible);
         }
         public QuestionResponse forExam(UUID resourceId, UUID resourceBank, QuestionBank.BankType type, String publication) {
             return new QuestionResponse(resourceId, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options, questionVersion, Question.QuestionStatus.ACTIVE, scope, createdBy, updatedAt,
-                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer,
+                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, explanation,
                     resourceBank, type, publication, true);
         }
         public SafeQuestionResponse withoutAnswers() {

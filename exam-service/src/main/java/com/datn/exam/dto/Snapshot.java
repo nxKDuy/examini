@@ -2,7 +2,10 @@ package com.datn.exam.dto;
 import java.util.*;
 import java.math.BigDecimal;
 public record Snapshot(UUID questionId, long questionVersion, String questionType, String content,
-                       List<Option> options, BigDecimal points, String expectedAnswer, int position) {
+                       List<Option> options, BigDecimal points, String expectedAnswer, String explanation, int position) {
+    public Snapshot(UUID questionId,long questionVersion,String questionType,String content,List<Option> options,BigDecimal points,String expectedAnswer,int position) {
+        this(questionId,questionVersion,questionType,content,options,points,expectedAnswer,null,position);
+    }
     public record Option(UUID id, String content, int displayOrder, boolean correct) {}
     public Safe safe() { return new Safe(questionId, questionVersion, questionType, content,
         options.stream().map(o -> new SafeOption(o.id(), o.content(), o.displayOrder())).toList(), points, position); }

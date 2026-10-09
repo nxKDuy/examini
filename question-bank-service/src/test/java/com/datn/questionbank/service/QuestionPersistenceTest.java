@@ -109,6 +109,55 @@ class QuestionPersistenceTest {
         assertEquals(List.of(b.id(),a.id()),result.stream().map(QuestionProjection::id).toList());
         assertTrue(result.stream().allMatch(q->q.questionVersion()==1&&q instanceof SafeQuestionResponse));
     }
+    @Test void explanationIsTrustedFrozenAndAbsentFromCandidateProjections() throws Exception {
+        when(identities.displayName(any())).thenReturn("Cô Lan");
+        var draft=service.create(new CreateRequest(category,"Explained question",QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,
+                "Book",List.of(new OptionRequest("Yes",true,(short)0),new OptionRequest("No",false,(short)1)),null,
+                QuestionScope.PERSONAL,SourceType.NONE,null,null,null,null,"Why Yes is correct"),owner);
+        service.activate(draft.id(),1,owner);
+        var publicPost=banks.publish(draft.id(),new com.datn.questionbank.dto.BankDto.ContributionRequest(1),owner);
+        var first=(QuestionResponse)service.getByIds(List.of(draft.id()),true,true,owner).getFirst();
+        assertEquals("Why Yes is correct",first.explanation());
+        var edited=service.update(draft.id(),new UpdateRequest(null,"Explained question v2",null,null,null,null,null,
+                null,null,null,null,null,1L,"Updated explanation"),owner);
+        service.activate(draft.id(),edited.questionVersion(),owner);
+        var second=(QuestionResponse)service.getByIds(List.of(draft.id()),true,true,owner).getFirst();
+        assertEquals("Updated explanation",second.explanation());
+        assertEquals("Why Yes is correct",((QuestionResponse)service.version(draft.id(),1,true,owner).question()).explanation());
+        var internal=new QuestionActor(UUID.randomUUID(),"SERVICE",true);
+        var frozen=(QuestionResponse)service.getByIds(List.of(publicPost.id()),true,true,internal).getFirst();
+        assertEquals("Why Yes is correct",frozen.explanation());
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        String candidate=json.writeValueAsString(service.getByIds(List.of(publicPost.id()),true,false,student));
+        assertFalse(candidate.contains("explanation"));assertFalse(candidate.contains("correct"));
+        assertFalse(json.writeValueAsString(banks.publicQuestion(publicPost.id(),student)).contains("explanation"));
+        assertFalse(json.writeValueAsString(service.findById(draft.id(),false,owner)).contains("explanation"));
+        var legacy=create("Legacy explanation null",DifficultyLevel.EASY);
+        assertNull(((QuestionResponse)service.version(legacy.id(),1,true,owner).question()).explanation());
+    }
+    @Test void bookmarkHttpUsesJwtActorAndSavedDiscoveryDoesNotExposeArchived() throws Exception {
+        when(identities.displayName(any())).thenReturn("Cô Lan");
+        var q=create("HTTP bookmark",DifficultyLevel.EASY);service.activate(q.id(),1,owner);
+        var post=banks.publish(q.id(),new com.datn.questionbank.dto.BankDto.ContributionRequest(1),owner);
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        var other=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+        for(int i=0;i<2;i++)http.perform(put("/public-questions/"+post.id()+"/bookmark")
+                .header("Authorization",jwt(student))).andExpect(status().isNoContent());
+        http.perform(get("/public-questions?saved=true").header("Authorization",jwt(student)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].isSaved").value(true));
+        http.perform(get("/public-questions?saved=true").header("Authorization",jwt(other)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        http.perform(get("/public-questions/"+post.id()).header("Authorization",jwt(other)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.isSaved").value(false));
+        banks.archivePublic(post.id(),owner);
+        http.perform(get("/public-questions?saved=true").header("Authorization",jwt(student)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        http.perform(put("/public-questions/"+post.id()+"/bookmark").header("Authorization",jwt(student)))
+                .andExpect(status().isNotFound());
+        http.perform(delete("/public-questions/"+post.id()+"/bookmark").header("Authorization",jwt(student)))
+                .andExpect(status().isNoContent());
+    }
     @Test void directHttpWorkflowAndHistoryProjectionsRespectAuthorization() throws Exception {
         http.perform(get("/categories/"+category).header("Authorization",jwt(owner))).andExpect(status().isOk());
         var input=new CreateRequest(category,"HTTP question",QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,"Book",

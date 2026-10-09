@@ -56,6 +56,7 @@ public class ExamController {
     @GetMapping("/{id}/result-policy") public ResultPolicyDto.Policy resultPolicy(@PathVariable UUID id,@RequestAttribute UUID actor){var e=core.load(id);core.require(e,actor,true);return ResultPolicyDto.Policy.from(e);}
     @PutMapping("/{id}/result-policy") public ResultPolicyDto.Policy resultPolicy(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody ResultPolicyDto.Policy request){var e=core.load(id);core.require(e,actor,true);e.setResultAutoRelease(request.autoRelease());e.setResultShowScore(request.showScore());e.setResultShowQuestionBreakdown(request.showQuestionBreakdown());e.setResultShowFeedback(request.showFeedback());e.setResultShowCorrectAnswers(request.showCorrectAnswers());e.setResultShowExplanation(request.showExplanation());core.audit(e,actor,"RESULT_POLICY_UPDATED",null);return ResultPolicyDto.Policy.from(e);}
     @GetMapping("/{id}/internal/result-policy") public ResultPolicyDto.Internal internalResultPolicy(@PathVariable UUID id){var e=core.load(id);return new ResultPolicyDto.Internal(e.getStatus().name(),ResultPolicyDto.Policy.from(e));}
+    @GetMapping("/{id}/internal/identity/{user}") public IdentityDisplay internalIdentity(@PathVariable UUID id,@PathVariable UUID user){if(!participantRows.existsByExamIdAndUserId(id,user))throw ExamCore.error(404,"Participant not found");var identity=participantService.identity(user);return new IdentityDisplay(user,identity==null?null:identity.displayName());}
     // ---- Participant & Attempt management ----
     @GetMapping("/{id}/participants") public ParticipantDto.Roster participants(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestParam(required=false) String status,@RequestParam(required=false) String source,@RequestParam(required=false) UUID userId,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size){return participantService.roster(id,actor,status,source,userId,page,size);}
     @GetMapping("/{id}/participants/counts") public ParticipantDto.Counts participantCounts(@PathVariable UUID id,@RequestAttribute UUID actor){return participantService.counts(id,actor);}
@@ -94,5 +95,6 @@ public class ExamController {
     @GetMapping("/{id}/internal/notification-recipients") public ScheduleDto.RecipientSnapshot notificationRecipients(@PathVariable UUID id,@RequestHeader("X-Service-Token")String serviceToken){return schedules.notificationRecipients(id,serviceToken,notificationToken);}
     @GetMapping("/{id}/internal/safe") public List<Snapshot.Safe> safe(@PathVariable UUID id){return core.load(id).getSnapshots().stream().map(Snapshot::safe).toList();}
     @GetMapping("/{id}/internal/grading") public List<Snapshot> grading(@PathVariable UUID id){return core.load(id).getSnapshots();}
+    public record IdentityDisplay(UUID userId,String displayName){}
     public record LifecycleAction(String reason){}
 }

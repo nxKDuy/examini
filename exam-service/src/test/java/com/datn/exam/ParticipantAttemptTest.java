@@ -78,6 +78,14 @@ class ParticipantAttemptTest {
     static Map<String,Object> ids(UUID... ids){return Map.of("userIds",List.of(ids));}
     static Map<String,Object> grant(Integer q,String reason,String request){var m=new HashMap<String,Object>();if(q!=null)m.put("quantity",q);if(reason!=null)m.put("reason",reason);if(request!=null)m.put("requestId",request);return m;}
 
+    @Test void internalIdentityUsesTrustedProviderAndParticipantBoundary()throws Exception{
+        var exam=exam(Exam.Status.PUBLISHED,Exam.AccessMode.ASSIGNED,10,1);core.addParticipant(exam,owner,s1);
+        mvc.perform(get("/exams/"+exam.getId()+"/internal/identity/"+s1).header("X-Service-Token","test-internal"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(s1.toString())).andExpect(jsonPath("$.displayName").value(directory.get(s1).displayName()));
+        mvc.perform(get("/exams/"+exam.getId()+"/internal/identity/"+stranger).header("X-Service-Token","test-internal")).andExpect(status().isNotFound());
+        mvc.perform(get("/exams/"+exam.getId()+"/internal/identity/"+s1).header("X-Service-Token","wrong")).andExpect(status().isUnauthorized());
+    }
+
     @Test void assignByIdAndEmailIsBulkIdempotentAndRespectsStateRolesAndProvider()throws Exception {
         for(Exam.Status status:List.of(Exam.Status.DRAFT,Exam.Status.PUBLISHED,Exam.Status.OPEN)) {
             var e=exam(status,Exam.AccessMode.ASSIGNED,10,1);UUID unknown=UUID.randomUUID();

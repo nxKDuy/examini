@@ -17,6 +17,7 @@ import java.util.UUID;
 public class MultiBankController {
     private final MultiBankService service;
     private final com.datn.questionbank.service.QuestionSetService sets;
+    private final com.datn.questionbank.service.PublicBookmarks bookmarks;
     private QuestionActor actor(HttpServletRequest r) {
         if(r.getAttribute(QuestionActor.class.getName()) instanceof QuestionActor a)return a;
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Yêu cầu xác thực");
@@ -32,13 +33,16 @@ public class MultiBankController {
     @GetMapping("/question-banks/{id}/questions")
     public Page<BankQuestion> questions(@PathVariable UUID id,@RequestParam(required=false) Question.QuestionType questionType,
             @RequestParam(required=false) Question.DifficultyLevel difficulty,@RequestParam(required=false) Question.QuestionStatus status,
+            @RequestParam(required=false) String text,
             @PageableDefault(size=20,sort="createdAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r) {
-        return service.listQuestions(id,questionType,difficulty,status,p,actor(r));
+        return service.listQuestions(id,questionType,difficulty,status,text,p,actor(r));
     }
     @PostMapping("/question-banks/{id}/questions") @ResponseStatus(HttpStatus.CREATED)
     public BankQuestion createQuestion(@PathVariable UUID id,@Valid @RequestBody CreateRequest b,HttpServletRequest r){return service.createQuestion(id,b,actor(r));}
     @GetMapping("/question-banks/{id}/question-sets")
-    public Page<QuestionSetResponse> questionSets(@PathVariable UUID id,@PageableDefault(size=20,sort="updatedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){return sets.list(id,p,actor(r));}
+    public Page<QuestionSetResponse> questionSets(@PathVariable UUID id,@RequestParam(required=false) String text,
+            @RequestParam(required=false) QuestionSet.SetStatus status,
+            @PageableDefault(size=20,sort="updatedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){return sets.list(id,text,status,p,actor(r));}
     @PostMapping("/question-banks/{id}/question-sets") @ResponseStatus(HttpStatus.CREATED)
     public QuestionSetResponse createSet(@PathVariable UUID id,@Valid @RequestBody QuestionSetWrite b,HttpServletRequest r){return sets.create(id,b,actor(r));}
     @GetMapping("/question-sets/{id}") public QuestionSetResponse questionSet(@PathVariable UUID id,HttpServletRequest r){return sets.get(id,actor(r));}
@@ -63,11 +67,16 @@ public class MultiBankController {
             @RequestParam(required=false) String text,@RequestParam(required=false) PublicQuestion.PublicationStatus publicationStatus,
             @RequestParam(defaultValue="false") boolean mine,@RequestParam(required=false) UUID subjectId,@RequestParam(required=false) UUID categoryId,
             @RequestParam(required=false) PublicQuestion.PostType postType,@RequestParam(defaultValue="NEWEST") String ranking,
-            @PageableDefault(size=20,sort="verifiedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){var actor=actor(r);return service.publicQuestions(bankId,sourceOwnerUserId,questionType,difficulty,text,publicationStatus,mine,subjectId,categoryId,postType,ranking,p,actor);}
+            @RequestParam(defaultValue="false") boolean saved,
+            @PageableDefault(size=20,sort="verifiedAt",direction=Sort.Direction.DESC) Pageable p,HttpServletRequest r){var actor=actor(r);return service.publicQuestions(bankId,sourceOwnerUserId,questionType,difficulty,text,publicationStatus,mine,subjectId,categoryId,postType,ranking,saved,p,actor);}
     @GetMapping("/public-questions/taxonomy") public Page<?> publicTaxonomy(@RequestParam PublicTaxonomyKind kind,
             @RequestParam(required=false) String text,@RequestParam(required=false) UUID subjectId,
             @PageableDefault(size=20) Pageable p,HttpServletRequest r){return service.publicTaxonomy(kind,text,subjectId,p,actor(r));}
     @GetMapping("/public-questions/{id}") public PublicResponse publication(@PathVariable UUID id,HttpServletRequest r){return service.publicQuestion(id,actor(r));}
+    @PutMapping("/public-questions/{id}/bookmark") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void saveBookmark(@PathVariable UUID id,HttpServletRequest r){bookmarks.save(id,actor(r));}
+    @DeleteMapping("/public-questions/{id}/bookmark") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeBookmark(@PathVariable UUID id,HttpServletRequest r){bookmarks.remove(id,actor(r));}
     @PutMapping("/public-questions/{id}/rating") public PublicRatingResponse ratePublic(@PathVariable UUID id,@Valid @RequestBody PublicRatingRequest b,HttpServletRequest r){return service.ratePublic(id,b,actor(r));}
     @PostMapping("/public-questions/{id}/view") public PublicViewResponse recordPublicView(@PathVariable UUID id,HttpServletRequest r){return service.recordPublicView(id,actor(r));}
     @DeleteMapping("/public-questions/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
