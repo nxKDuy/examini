@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, PenLine } from 'lucide-react'
 import { gradingApi, type GradeItem, type ResultPolicy, type SubmissionDetail } from './gradingApi'
 import {
-  canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isInvalidated, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, shortStudent,
+  canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isInvalidated, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, studentName,
   toDraftRequest, unresolvedItems, type GradeForm,
 } from './gradingModel'
 import { finalizeWithDraft, type DraftSavedError } from './gradingFlow'
@@ -115,7 +115,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
         <div className="card card-body stack-sm">
           {narrow && <div><button type="button" className="btn btn-secondary btn-sm" onClick={onBack}><ArrowLeft size={14} aria-hidden /> Danh sách bài nộp</button></div>}
           <div className="spread">
-            <h2 ref={headingRef} tabIndex={-1} style={{ outline: 'none' }}>Thí sinh <span className="grade-id" title={d.studentId}>{shortStudent(d.studentId)}</span> · Lần #{d.attemptNumber}</h2>
+            <h2 ref={headingRef} tabIndex={-1} title={d.studentId} style={{ outline: 'none' }}>{studentName(d)} · Lần #{d.attemptNumber}</h2>
             <span className="row"><ResultStatusBadge status={d.status} /><PublicationBadge s={d} /></span>
           </div>
           <p className="xsmall muted row" style={{ gap: 6 }}>

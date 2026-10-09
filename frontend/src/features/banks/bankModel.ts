@@ -56,9 +56,13 @@ export const authorName = (p: Pick<PublicQuestion, 'sourceOwnerDisplayName'>) =>
 
 export const MAX_SEARCH = 200
 /** Query params for discovery: blanks dropped, text capped at 200, owner filter only when set. */
-export function publicParams(f: { text: string; questionType: string; difficulty: string; author: string; page: number; mine?: boolean; publicationStatus?: 'PUBLISHED' | 'ARCHIVED'; subjectId?: string; categoryId?: string; postType?: string; ranking?: string }) {
+export function publicParams(f: { text: string; questionType: string; difficulty: string; author: string; page: number; mine?: boolean; saved?: boolean; publicationStatus?: 'PUBLISHED' | 'ARCHIVED'; subjectId?: string; categoryId?: string; postType?: string; ranking?: string }) {
   const text = f.text.trim().slice(0, MAX_SEARCH)
-  return { ...(text ? { text } : {}), ...(f.questionType ? { questionType: f.questionType } : {}), ...(f.difficulty ? { difficulty: f.difficulty } : {}), ...(f.author ? { sourceOwnerUserId: f.author } : {}), ...(f.subjectId ? { subjectId: f.subjectId } : {}), ...(f.categoryId ? { categoryId: f.categoryId } : {}), ...(f.postType ? { postType: f.postType } : {}), ...(f.ranking ? { ranking: f.ranking } : {}), ...(f.mine ? { mine: true, ...(f.publicationStatus ? { publicationStatus: f.publicationStatus } : {}) } : {}), page: f.page }
+  return { ...(text ? { text } : {}), ...(f.questionType ? { questionType: f.questionType } : {}), ...(f.difficulty ? { difficulty: f.difficulty } : {}), ...(f.author ? { sourceOwnerUserId: f.author } : {}), ...(f.subjectId ? { subjectId: f.subjectId } : {}), ...(f.categoryId ? { categoryId: f.categoryId } : {}), ...(f.postType ? { postType: f.postType } : {}), ...(f.ranking ? { ranking: f.ranking } : {}), ...(f.saved ? { saved: true } : {}), ...(f.mine && !f.saved ? { mine: true, ...(f.publicationStatus ? { publicationStatus: f.publicationStatus } : {}) } : {}), page: f.page }
+}
+
+export function applyBookmarkState<T extends PublicQuestion>(post: T, isSaved: boolean): T {
+  return { ...post, isSaved }
 }
 
 export const excerpt = (text: string, max = 140) => { const t = text.replace(/\s+/g, ' ').trim(); return t.length <= max ? t : `${t.slice(0, max - 1)}…` }
@@ -84,6 +88,8 @@ export function provenanceChain(l: Lineage | null): ChainLink[] {
 
 /** Publish failing with 503 means Auth could not confirm the author's display name: nothing was published. */
 export const isAuthorLookupFailure = (e: unknown) => (e as { response?: { status?: number } })?.response?.status === 503
+/** Save/Saved exist for Teacher and Student accounts only (backend answers 403 for other actors). Never inferred from TEACHER = ADMIN: the shared audience decides. */
+export const canBookmark = (audience: string) => audience === 'TEACHER' || audience === 'STUDENT'
 export const isStatus = (e: unknown, status: number) => (e as { response?: { status?: number } })?.response?.status === status
 
 /** Eligibility is the provider's decision, never a status approximation. */

@@ -1,6 +1,6 @@
 import { ClipboardCheck } from 'lucide-react'
 import type { Page, Submission } from './gradingApi'
-import { publicationOf, shortStudent } from './gradingModel'
+import { publicationOf, studentName } from './gradingModel'
 import { ResultStatusBadge } from '../../components/status'
 import { Badge, EmptyState, ErrorState, LoadingState, Pagination } from '../../components/ui'
 import { formatDateTime, formatScore } from '../../lib/format'
@@ -26,7 +26,7 @@ export default function SubmissionQueue({ data, loading, error, onRetry, activeI
         : data.content.map(s => (
           <button key={s.id} type="button" className="list-item" aria-current={activeId === s.id} onClick={() => onSelect(s.id)}>
             <div className="spread">
-              <span className="mono small" style={{ color: 'var(--color-ink)' }} title={s.studentId}>Thí sinh {shortStudent(s.studentId)} · #{s.attemptNumber}</span>
+              <span className="small" style={{ color: 'var(--color-ink)' }} title={s.studentId}>{studentName(s)} · #{s.attemptNumber}</span>
               <ResultStatusBadge status={s.status} />
             </div>
             <div className="row" style={{ marginTop: 6, gap: 6 }}>

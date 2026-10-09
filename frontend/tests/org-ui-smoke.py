@@ -55,7 +55,7 @@ wait(lambda: js("document.body.innerText.includes('Khoa CNTT')"), 'org card')
 assert js("document.body.innerText.includes('Chủ sở hữu')") and js("document.body.innerText.includes('Tạo tổ chức')")
 assert not js("document.body.innerText.includes('thành viên') && !!document.querySelector('.org-card .xsmall')"), 'member count must not be invented when the API sends none'
 js("(()=>{document.querySelector('.org-card').click(); return 1})()"); wait(lambda: '/organizations/o1' in browser('get', 'url'), 'detail opened')
-wait(lambda: tabs() == ['Thành viên', 'Lời mời', 'Nhật ký', 'Cài đặt'], 'OWNER sees four tabs')
+wait(lambda: tabs() == ['Thành viên', 'Lời mời', 'Nhật ký', 'Cài đặt', 'Ngân hàng câu hỏi'], 'OWNER sees the four management tabs plus the question bank')
 wait(lambda: js("document.querySelectorAll('.org-table tbody tr').length") == 3, 'roster rows')
 js("(()=>{[...document.querySelectorAll('.org-row-btn')].find(b=>b.textContent==='Học sinh A').click(); return 1})()"); wait(lambda: js("!!document.querySelector('.org-panel')"), 'panel opens')
 assert js("document.querySelector('#member-role')?.value") == 'MEMBER'
@@ -87,7 +87,7 @@ wait(lambda: js("document.body.innerText.includes('lời mời tham gia tổ ch�
 browser('open', ORIGIN + '/organizations?tab=invitations')
 wait(lambda: js("!!document.querySelector('#org-invitations')"), 'invitation block')
 click('Chấp nhận', '#org-invitations'); wait(lambda: '/organizations/o1' in browser('get', 'url'), 'accept leads to the organization')
-wait(lambda: tabs() == ['Thành viên'], 'MEMBER sees only Thành viên')
+wait(lambda: tabs() == ['Thành viên', 'Ngân hàng câu hỏi'], 'MEMBER sees Thành viên and the bank (BANK_READ) but none of the management tabs')
 assert not js("document.body.innerText.includes('Mời thành viên')"), 'MEMBER cannot invite'
 assert js("document.body.innerText.includes('Rời tổ chức')")
 print('organization UI smoke: PASS')

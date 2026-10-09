@@ -40,6 +40,7 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
     : [{ content: '', correct: true }, { content: '', correct: false }, { content: '', correct: false }, { content: '', correct: false }])
   const [trueCorrect, setTrueCorrect] = useState(initialTrueIsCorrect(initial))
   const [expectedAnswer, setExpectedAnswer] = useState(initial?.expectedAnswer ?? '')
+  const [explanation, setExplanation] = useState(initial?.explanation ?? '')
   const [sourceType, setSourceType] = useState<SourceType>(initial?.sourceType ?? 'NONE')
   const [sourceLabel, setSourceLabel] = useState(initial?.sourceLabel ?? initial?.source ?? '')
   const [sourceUrl, setSourceUrl] = useState(initial?.sourceUrl ?? '')
@@ -75,6 +76,7 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
     save.mutate({
       categoryId, content: content.trim(), questionType: type, difficultyLevel: difficulty, options: opts,
       expectedAnswer: type === 'SHORT_ANSWER' || type === 'ESSAY' ? expectedAnswer.trim() : '',
+      explanation,
       sourceType, sourceLabel: sourceType === 'NONE' ? '' : sourceLabel, sourceRefId: sourceType === 'NONE' ? '' : sourceRefId,
       sourceUrl: sourceType === 'NONE' ? '' : sourceUrl, sourceExcerpt: sourceType === 'NONE' ? '' : sourceExcerpt,
       questionVersion: initial?.questionVersion,
@@ -166,6 +168,10 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
             <textarea id="q-rubric" className="input" rows={3} maxLength={10000} value={expectedAnswer} onChange={e => setExpectedAnswer(e.target.value)} />
           </Field>
         )}
+
+        <Field label="Giải thích (tùy chọn)" htmlFor="q-explanation" hint="Tối đa 10.000 ký tự. Lưu cùng phiên bản câu hỏi; chỉ xuất hiện trong kết quả đã công bố khi chính sách cho phép và kỳ thi đã đóng.">
+          <textarea id="q-explanation" className="input" rows={3} maxLength={10000} value={explanation} onChange={e => setExplanation(e.target.value)} />
+        </Field>
 
         <details>
           <summary className="field-label" style={{ cursor: 'pointer' }}>Nguồn tham khảo (tùy chọn)</summary>

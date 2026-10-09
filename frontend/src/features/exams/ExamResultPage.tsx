@@ -100,7 +100,7 @@ export default function ExamResultPage() {
 }
 
 function QuestionResult({ q }: { q: ResultItem }) {
-  const mine = studentAnswerText(q.questionType, q.answer)
+  const mine = studentAnswerText(q.questionType, q.answer, q.answerDisplay)
   const correct = readableAnswers(q.correctAnswers)
   return (
     <li className="card card-pad stack-sm" style={{ boxShadow: 'none' }}>
@@ -114,6 +114,7 @@ function QuestionResult({ q }: { q: ResultItem }) {
         <p className="prewrap">{mine ? (mine.unresolved ? <em>{mine.text}</em> : mine.text) : <em className="muted">Không trả lời</em>}</p>
       </div>
       {correct.length > 0 && <div className="small"><span className="xsmall muted">Đáp án đúng</span><p className="prewrap">{correct.join(' · ')}</p></div>}
+      {q.explanation?.trim() && <div className="small" aria-label="Giải thích"><span className="xsmall muted">Giải thích</span><p className="prewrap">{q.explanation}</p></div>}
       {q.feedback && <div className="small"><span className="xsmall muted">Nhận xét</span><p className="prewrap">{q.feedback}</p></div>}
     </li>
   )
