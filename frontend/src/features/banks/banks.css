@@ -72,10 +72,14 @@
 /* Public discovery: a compact toolbar and adjoining ruled cards. */
 .public-filter-card { padding:12px; display:grid; gap:10px; }
 .public-toolbar { display:grid; gap:10px; }
-.public-primary-filters { display:grid; grid-template-columns:minmax(220px,1.4fr) repeat(2,minmax(140px,1fr)) minmax(130px,.7fr) auto; gap:10px; align-items:end; }
-.public-search-field .row { flex-wrap:nowrap; }
+.public-primary-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+.public-primary-filters > .field { flex:1 1 150px; min-width:0; position:relative; }
+.public-primary-filters > .public-search-field { flex:2 1 290px; }
+.public-primary-filters > .public-advanced-toggle { flex:0 0 auto; }
+.public-primary-filters .taxonomy-options,.public-advanced-filters .taxonomy-options { position:absolute; top:100%; left:0; right:0; z-index:15; margin-top:-1px; border-top:1px solid #000; box-shadow:none; }
+@media (min-width: 1024px) { .public-primary-filters { flex-wrap:nowrap; } }
 .public-search-field .input { min-width:0; }
-.public-advanced-toggle { min-height:40px; white-space:nowrap; }
+.public-advanced-toggle { min-height:42px; white-space:nowrap; }
 .public-advanced-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:10px; align-items:end; padding-top:10px; border-top:1px solid #000; }
 .public-filter-author { align-self:center; }
 .public-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr)); gap:0; border-top:1px solid #000; border-left:1px solid #000; }
@@ -98,14 +102,13 @@
 .set-order-row { flex-wrap:nowrap; }
 .set-order-number { width:28px; height:28px; flex:0 0 auto; display:grid; place-items:center; border:1px solid #000; }
 .org-question-detail .card { max-width:920px; }
-@media (max-width: 1050px) {
-  .public-primary-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .public-search-field { grid-column:1/-1; }
+@media (max-width: 1023px) {
+  .public-primary-filters > .public-search-field { flex-basis:100%; }
 }
 @media (max-width: 560px) {
   .public-filter-card { padding:10px; }
-  .public-primary-filters,.public-advanced-filters { grid-template-columns:minmax(0,1fr); }
-  .public-search-field { grid-column:auto; }
+  .public-advanced-filters { grid-template-columns:minmax(0,1fr); }
+  .public-primary-filters > .field,.public-primary-filters > .public-advanced-toggle { flex:1 1 100%; width:100%; }
   .public-detail-page { padding:14px; border-left:0; border-right:0; }
   .public-detail-header { flex-direction:column; }
   .set-order-row { align-items:flex-start; flex-wrap:wrap; }

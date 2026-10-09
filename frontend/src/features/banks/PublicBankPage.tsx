@@ -78,8 +78,8 @@ export default function PublicBankPage() {
         <div className="public-primary-filters">
           <div className="field public-search-field">
             <label className="field-label" htmlFor="pb-text">Tìm nội dung, tiêu đề</label>
-            <div className="row"><input id="pb-text" className="input" type="search" maxLength={MAX_SEARCH} value={text} onChange={e => setText(e.target.value)} aria-describedby="pb-search-hint" /><button type="submit" className="btn btn-primary"><Search size={16} aria-hidden /> Tìm</button></div>
-            <span id="pb-search-hint" className="field-hint">Tối đa {MAX_SEARCH} ký tự.</span>
+            <div className="input-group"><input id="pb-text" className="input" type="search" maxLength={MAX_SEARCH} value={text} onChange={e => setText(e.target.value)} title={`Tối đa ${MAX_SEARCH} ký tự`} aria-describedby="pb-search-hint" /><button type="submit" className="btn btn-primary"><Search size={16} aria-hidden /> Tìm</button></div>
+            <span id="pb-search-hint" className="sr-only">Tối đa {MAX_SEARCH} ký tự.</span>
           </div>
           <TaxonomyFilter id="pb-subject" label="Môn học" value={subjectText} suggestions={subjects.data?.content ?? []} loading={subjects.isFetching} error={subjects.isError} placeholder="Tất cả môn"
             onChange={value => { setSubjectText(value); changeParams({ subjectId: undefined, subject: undefined, categoryId: undefined, category: undefined }) }} onSelect={selectSubject} />
