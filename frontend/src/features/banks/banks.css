@@ -103,12 +103,17 @@
 
 /* Public post card: one post = one card; equal height per row; title/summary/meta lines are fixed so buttons line up on the bottom edge. */
 .public-post { position:relative; display:flex; flex-direction:column; gap:8px; min-width:0; padding:14px; background:#fff; }
-.public-post:hover { background:var(--color-subtle); }
+.public-post:hover { background:#fff; }
 .public-post:focus-within { box-shadow:inset 0 0 0 2px var(--color-accent); }
 .public-post-top { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:22px; font-size:.8rem; }
 .public-post-kind { display:inline-flex; align-items:center; gap:6px; color:var(--color-muted); white-space:nowrap; }
-.public-post-flag { padding:1px 6px; border:1px solid var(--color-accent); color:var(--color-accent); font-size:.75rem; white-space:nowrap; }
-.public-post-flag[data-tone="muted"] { border-color:#000; color:#000; border-style:dashed; }
+.public-post-flag { padding:1px 6px; border:1px solid var(--color-copied); background:var(--color-copied-soft); color:var(--color-copied); font-size:.75rem; white-space:nowrap; }
+.public-post-flag[data-tone="muted"] { border-color:#000; background:#fff; color:#000; border-style:dashed; }
+.public-post[data-saved="true"]::before { content:""; position:absolute; top:-1px; right:-1px; width:0; height:0; border-top:30px solid var(--color-accent); border-left:30px solid transparent; pointer-events:none; }
+.public-post[data-saved="true"] .public-post-top { padding-right:22px; }
+.public-post-stats .star { margin-right:-1px; }
+.public-rating .field-label { display:inline-flex; align-items:center; gap:6px; }
+.public-detail-stats .star { display:inline-block; vertical-align:-2px; margin-right:4px; }
 .public-post-heading { margin:0; font-size:1.05rem; font-weight:600; line-height:1.3; }
 .public-post-title { display:block; width:100%; padding:0; border:0; background:none; color:var(--color-ink); font:inherit; text-align:left; cursor:pointer; }
 .public-post-title span { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; min-height:2.6em; overflow-wrap:anywhere; }

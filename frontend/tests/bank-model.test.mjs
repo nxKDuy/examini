@@ -351,3 +351,10 @@ test('card text never repeats itself: equal title/summary hide the summary, a co
   assert.ok(c.title.endsWith('…') && c.summary && !c.summary.startsWith('Cho hàm số y = f(x)')) // continuation, not the first words again
   assert.equal(m.cardText({ title: 'T', description: '', question: q('') }).summary, null)
 })
+
+test('rating stat is flagged empty when there is no rating (grey star) and filled otherwise (gold star)', () => {
+  const rating = p => m.postStats(p).find(x => x.key === 'rating')
+  assert.equal(rating({ viewsTotal: 1, copiesTotal: 0, averageRating: null, ratingCount: 0 }).empty, true)
+  assert.equal(rating({}).empty, true)
+  assert.equal(rating({ averageRating: 8.4, ratingCount: 2 }).empty, undefined)
+})

@@ -4,7 +4,7 @@
    One serif (Tinos, metric-compatible with Times, full Vietnamese), regular weight,
    hierarchy by size. White paper, black 1px structure lines, #efefef secondary cells,
    one electric blue for selection / primary action / solid bars. Square corners,
-   no shadows. Red is reserved for destructive actions and errors. */
+   flat at rest (depth only appears on hover/focus/press, see "Depth on interaction"). Red is reserved for destructive actions and errors. */
 
 @theme {
   --font-sans: 'Tinos', 'Times New Roman', Times, serif;
@@ -230,10 +230,11 @@ a.stat:hover { background: var(--color-subtle); }
 @media (max-width: 420px) { .topbar-who, .topbar-avatar { display: none !important; } }
 @media (max-width: 360px) { .topbar-main { gap: 4px; } .topbar .brand { padding: 0; font-size: 1.05rem; } .topbar-user { gap: 2px !important; } }
 .quicklinks { display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; border-top: 1px solid var(--color-hairline); }
-.quicklink { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; color: #000; text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
+.quicklink { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; color: #000; text-decoration: none; white-space: nowrap; }
 .quicklink:hover,.quicklink:focus-visible { background: var(--color-subtle); }
-.quicklink { border-bottom-width: 3px; }
-.quicklink.active { border-bottom-color: var(--color-accent); color: var(--color-accent); }
+.quicklink::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--color-accent); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-pop); }
+.quicklink.active { color: var(--color-accent); }
+.quicklink.active::after { transform: scaleX(1); }
 .main { min-width: 0; display: flex; flex-direction: column; }
 .page { width: 100%; max-width: 1260px; margin: 0 auto; padding: 32px 28px 56px; }
 .page-narrow { max-width: 880px; }
@@ -334,10 +335,12 @@ a.stat:hover { background: var(--color-subtle); }
   .quicklinks { display: none; }
   .shell { padding-bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); }
   .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); height: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); background: #fff; border-top: 1px solid #000; }
-  .dock-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 44px; padding: 4px 2px; background: #fff; border: 0; border-top: 3px solid transparent; color: #000; font: inherit; font-size: 0.7rem; line-height: 1.1; text-decoration: none; cursor: pointer; }
+  .dock-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 44px; padding: 4px 2px; background: #fff; position: relative; border: 0; color: #000; font: inherit; font-size: 0.7rem; line-height: 1.1; text-decoration: none; cursor: pointer; }
   .dock-tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dock-tile:hover, .dock-tile:focus-visible { background: var(--color-subtle); }
-  .dock-tile[aria-current="page"], .dock-tile[data-active="true"] { border-top-color: var(--color-accent); color: var(--color-accent); }
+  .dock-tile[aria-current="page"], .dock-tile[data-active="true"] { color: var(--color-accent); }
+  .dock-tile::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--color-accent); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-pop); }
+  .dock-tile[aria-current="page"]::before, .dock-tile[data-active="true"]::before { transform: scaleX(1); }
   .dock-backdrop { display: block; position: fixed; inset: 0; z-index: 65; background: rgb(196 196 196 / 0.82); border: 0; }
   .dock-sheet { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; max-height: 70dvh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom, 0px); background: #fff; border-top: 1px solid #000; }
   .dock-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #000; }
@@ -346,4 +349,74 @@ a.stat:hover { background: var(--color-subtle); }
   .dock-sheet-link[aria-current="page"] { color: #fff; background: var(--color-accent); }
   /* Sticky bottom bars must sit above the dock, not under it. */
   .main .grade-actions { bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ===== Depth on interaction =====
+   Everything is FLAT AT REST. Hard-offset depth appears only on hover (fine pointer), keyboard focus, press and scroll-in.
+   Only transform / opacity / box-shadow animate; nothing changes layout size. Card list == LIFT_SELECTOR in src/lib/depth.ts. */
+:root {
+  --shadow-hard: 4px 4px 0 #000;
+  --shadow-hard-hover: 7px 7px 0 #000;
+  --shadow-btn: 3px 3px 0 #000;
+  --ease-pop: cubic-bezier(.2,.8,.2,1);
+  --ease-bounce: cubic-bezier(.34,1.56,.64,1);
+  --color-rating: #f5b301;
+  --color-rating-edge: #b7860b;
+  --color-copied: #157a3a;
+  --color-copied-soft: #e6f4ea;
+}
+
+/* Cards */
+.public-post, .org-card, .set-row, .grid-stats > .card { position: relative; transition: transform .28s var(--ease-bounce), box-shadow .22s var(--ease-pop); }
+@media (hover: hover) and (pointer: fine) {
+  .public-post:hover, .org-card:hover, .set-row:hover, .grid-stats > .card:hover {
+    transform: perspective(800px) translate(-3px, -3px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    box-shadow: var(--shadow-hard-hover); z-index: 3; }
+}
+.public-post:has(:focus-visible), .org-card:focus-visible, .set-row:has(:focus-visible), .grid-stats > .card:focus-visible {
+  transform: translate(-3px, -3px); box-shadow: var(--shadow-hard-hover); z-index: 3; }
+.public-post:active, .org-card:active, .set-row:active, .grid-stats > .card:active { transform: translate(0, 0); box-shadow: 0 0 0 #000; transition-duration: .08s; }
+
+/* Buttons: physical keys. Pressed = sunk flat, released = springs back. */
+.btn { transition: transform .2s var(--ease-bounce), box-shadow .18s var(--ease-pop), background-color .1s, color .1s, border-color .1s; }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled):not([aria-disabled="true"]) { transform: translate(-2px, -2px); box-shadow: var(--shadow-btn); }
+}
+.btn:focus-visible:not(:disabled) { transform: translate(-2px, -2px); box-shadow: var(--shadow-btn); outline-offset: 4px; }
+.btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translate(0, 0); box-shadow: 0 0 0 #000; transition-duration: .06s; }
+.btn-ghost:hover, .btn-ghost:focus-visible, .btn-ghost:active, .input-group > .btn:hover, .input-group > .btn:focus-visible, .input-group > .btn:active { transform: none; box-shadow: none; }
+.btn-icon.btn-ghost { transform: none; }
+
+/* Scroll-in: each card fades up once when it first enters the viewport (marked and released by depth.ts). */
+[data-reveal="pending"] { opacity: 0; translate: 0 8px; }
+[data-reveal="in"] { opacity: 1; translate: 0 0; transition: opacity .35s var(--ease-pop) var(--rd, 0ms), translate .35s var(--ease-pop) var(--rd, 0ms), transform .28s var(--ease-bounce), box-shadow .22s var(--ease-pop); }
+
+/* Dialogs and sheets */
+@keyframes dialog-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(28px); } }
+@keyframes fade-in { from { opacity: 0; } }
+.dialog { animation: dialog-in .2s var(--ease-pop); }
+.dialog-backdrop, .dock-backdrop, .cal-sheet-backdrop, .bk-sheet-backdrop, .org-sheet-backdrop, .pt-sheet-backdrop { animation: fade-in .18s ease-out; }
+@media (max-width: 1100px) { .cal-panel, .bk-panel, .org-panel, .pt-panel { animation: sheet-in .24s var(--ease-pop); } }
+@media (max-width: 767px) { .dock-sheet { animation: sheet-in .24s var(--ease-pop); } }
+
+/* State colours that carry meaning (kept under reduced motion) */
+.star { flex: 0 0 auto; }
+.star-on { fill: var(--color-rating); stroke: var(--color-rating-edge); }
+.star-off { fill: none; stroke: #8a8a8a; }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.pop { animation: pop .34s var(--ease-bounce); }
+.btn-save[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.btn-save[aria-pressed="true"]:hover:not(:disabled) { background: #000; border-color: #000; }
+.btn-save svg { transition: fill .15s; }
+.btn-save[aria-pressed="true"] svg { fill: currentColor; animation: pop .34s var(--ease-bounce); }
+.tag-copied { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-copied); background: var(--color-copied-soft); color: var(--color-copied); font-size: .78rem; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .public-post, .org-card, .set-row, .grid-stats > .card, .btn, .quicklink::after, .dock-tile::before { transition: none; }
+  .public-post:hover, .org-card:hover, .set-row:hover, .grid-stats > .card:hover, .btn:hover, .btn:focus-visible,
+  .public-post:has(:focus-visible), .set-row:has(:focus-visible), .org-card:focus-visible, .grid-stats > .card:focus-visible,
+  .public-post:active, .org-card:active, .set-row:active, .grid-stats > .card:active, .btn:active { transform: none; }
+  [data-reveal] { opacity: 1 !important; translate: none !important; transition: none !important; }
+  .dialog, .dialog-backdrop, .dock-backdrop, .cal-sheet-backdrop, .bk-sheet-backdrop, .org-sheet-backdrop, .pt-sheet-backdrop, .cal-panel, .bk-panel, .org-panel, .pt-panel, .dock-sheet, .pop, .btn-save svg { animation: none !important; }
 }

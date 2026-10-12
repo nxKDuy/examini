@@ -72,12 +72,12 @@ export function broadTopic(p: Pick<PublicQuestion, 'subjects' | 'categories' | '
   const own = p.question?.categoryName?.trim()
   return own ? { text: own, more: 0 } : null
 }
-export interface Stat { key: 'views' | 'copies' | 'rating'; value: string; label: string }
+export interface Stat { key: 'views' | 'copies' | 'rating'; value: string; label: string; empty?: boolean }
 /** Compact real numbers only: a missing figure is "—" (never 0 invented), no rating is stated as such, the average stays raw out of 10. */
 export function postStats(p: Pick<PublicQuestion, 'viewsTotal' | 'copiesTotal' | 'averageRating' | 'ratingCount'>): Stat[] {
   const count = (key: 'views' | 'copies', n: number | null | undefined, noun: string): Stat => (n == null ? { key, value: '—', label: `Chưa có số liệu ${noun}` } : { key, value: String(n), label: `${n} lượt ${noun}` })
-  const rating: Stat = p.ratingCount == null ? { key: 'rating', value: '—', label: 'Chưa có số liệu đánh giá' }
-    : p.ratingCount === 0 || p.averageRating == null ? { key: 'rating', value: 'Chưa có', label: 'Chưa có đánh giá' }
+  const rating: Stat = p.ratingCount == null ? { key: 'rating', value: '—', label: 'Chưa có số liệu đánh giá', empty: true }
+    : p.ratingCount === 0 || p.averageRating == null ? { key: 'rating', value: 'Chưa có', label: 'Chưa có đánh giá', empty: true }
     : { key: 'rating', value: `${Number(p.averageRating.toFixed(1))}/10 (${p.ratingCount})`, label: `${Number(p.averageRating.toFixed(1))}/10 từ ${p.ratingCount} đánh giá` }
   return [count('views', p.viewsTotal, 'xem'), count('copies', p.copiesTotal, 'sao chép'), rating]
 }

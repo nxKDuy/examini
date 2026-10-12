@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { authApi } from '../../features/auth/authApi'
 import { AUDIENCE_LABEL, audienceOf, navigationItems } from './navigation'
 import MobileDock from './MobileDock'
+import { useDepthEffects } from '../../lib/depth'
 import NotificationBell from '../../features/notifications/NotificationBell'
 
 export function Brand() {
@@ -14,6 +15,7 @@ export default function AppLayout() {
   const user = useAuthStore(s => s.user)
   const navigate = useNavigate()
   const audience = audienceOf(user)
+  useDepthEffects()
   const links = navigationItems(audience)
 
   async function logout() {
