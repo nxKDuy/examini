@@ -152,10 +152,11 @@ function PublicCard({ post, onOpen, onAuthor, onBookmark, bookmarkBusy, canSave 
   const copied = copiedBadge(post), topic = broadTopic(post), updated = updatedDate(post)
   const { title, summary } = cardText(post)
   const Kind = bundle ? Layers3 : FileQuestion
-  return <article className="public-post" data-archived={post.publicationStatus === 'ARCHIVED'} data-saved={post.isSaved ? 'true' : undefined}>
+  return <article className="public-post" data-archived={post.publicationStatus === 'ARCHIVED'} data-saved={post.isSaved ? 'true' : undefined} data-copied={copied ? 'true' : undefined}>
     <div className="public-post-top">
       <span className="public-post-kind"><Kind size={15} aria-hidden />{bundle ? `Bộ · ${post.itemCount ?? post.items?.length ?? 0} câu` : 'Một câu'}</span>
-      {post.publicationStatus === 'ARCHIVED' ? <span className="public-post-flag" data-tone="muted">Đã gỡ công khai</span> : copied && <span className="public-post-flag">{copied}</span>}
+      {post.publicationStatus === 'ARCHIVED' && <span className="public-post-flag" data-tone="muted">Đã gỡ công khai</span>}
+      {copied && <span className="sr-only">{copied}</span>}
     </div>
     <h3 className="public-post-heading"><button type="button" className="public-post-title" onClick={onOpen} aria-label={`Mở chi tiết: ${title}`}><span>{title}</span></button></h3>
     <p className="public-post-snippet" aria-hidden={!summary || undefined}>{summary}</p>

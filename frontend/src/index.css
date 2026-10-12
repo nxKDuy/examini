@@ -370,6 +370,7 @@ a.stat:hover { background: var(--color-subtle); }
   --color-rating-edge: #b7860b;
   --color-copied: #157a3a;
   --color-copied-soft: #e6f4ea;
+  --color-copied-edge: #6fcf8f;
 }
 
 /* Cards */

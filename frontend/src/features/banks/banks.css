@@ -107,8 +107,12 @@
 .public-post-kind { display:inline-flex; align-items:center; gap:6px; color:var(--color-muted); white-space:nowrap; }
 .public-post-flag { padding:1px 6px; border:1px solid var(--color-copied); background:var(--color-copied-soft); color:var(--color-copied); font-size:.75rem; white-space:nowrap; }
 .public-post-flag[data-tone="muted"] { border-color:#000; background:#fff; color:#000; border-style:dashed; }
-.public-post[data-saved="true"]::before { content:""; position:absolute; top:-1px; right:-1px; width:0; height:0; border-top:30px solid var(--color-accent); border-left:30px solid transparent; pointer-events:none; }
-.public-post[data-saved="true"] .public-post-top { padding-right:22px; }
+/* Corner marks (decorative; the state is also in the Lưu button / sr-only text). Saved = one blue triangle. Copied = a dark green triangle
+   stacked on a larger light green one so a thin green band shows along the lower hypotenuse. Saved + copied = blue on top of that band. */
+.public-post[data-saved="true"]::after, .public-post[data-copied="true"]::after { content:""; position:absolute; top:-1px; right:-1px; width:0; height:0; border-top:30px solid var(--ribbon-top, var(--color-copied)); border-left:30px solid transparent; pointer-events:none; z-index:1; }
+.public-post[data-saved="true"] { --ribbon-top: var(--color-accent); }
+.public-post[data-copied="true"]::before { content:""; position:absolute; top:-1px; right:-1px; width:0; height:0; border-top:39px solid var(--color-copied-edge); border-left:39px solid transparent; pointer-events:none; }
+.public-post[data-saved="true"] .public-post-top, .public-post[data-copied="true"] .public-post-top { padding-right:28px; }
 .public-post-stats .star { margin-right:-1px; }
 .public-rating .field-label { display:inline-flex; align-items:center; gap:6px; }
 .public-detail-stats .star { display:inline-block; vertical-align:-2px; margin-right:4px; }
