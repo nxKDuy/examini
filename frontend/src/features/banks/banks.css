@@ -135,3 +135,21 @@
 .publish-row-main strong { font-weight:400; overflow-wrap:anywhere; }
 
 .public-post:has(:focus-visible) { outline:2px solid var(--color-accent); outline-offset:-2px; }
+/* Copy version sync: flat at rest; an unresolved conflict carries the 6px inset bar. */
+.sync-entry { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #000; background: #fff; }
+.sync-entry[data-state="pending"] { box-shadow: inset 6px 0 0 var(--color-accent); padding-left: 18px; }
+.sync-entry[data-state="unavailable"] { background: var(--color-subtle); }
+.sync-list { display: grid; gap: 12px; }
+.sync-row { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid #000; background: #fff; }
+.sync-row[data-conflict="open"] { box-shadow: inset 6px 0 0 var(--color-danger); border-color: var(--color-danger); padding-left: 20px; }
+.sync-row[data-conflict="done"] { box-shadow: inset 6px 0 0 var(--color-accent); padding-left: 20px; }
+.sync-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--color-hairline); }
+.sync-value { padding: 8px 10px; min-width: 0; overflow-wrap: anywhere; }
+.sync-value + .sync-value { border-left: 1px solid var(--color-hairline); }
+.sync-value p, .sync-value summary { margin: 4px 0 0; }
+.sync-choice { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 0; padding: 0; border: 0; }
+.sync-drafts { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+@media (max-width: 640px) {
+  .sync-values { grid-template-columns: minmax(0, 1fr); }
+  .sync-value + .sync-value { border-left: 0; border-top: 1px solid var(--color-hairline); }
+}

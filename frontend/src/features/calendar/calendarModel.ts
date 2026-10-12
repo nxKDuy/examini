@@ -199,6 +199,7 @@ const STATES: Record<string, StateInfo> = {
   CAPACITY_FULL: { label: 'Đã đủ chỗ', tone: 'warning', icon: 'alert' },
   SNAPSHOT_UNAVAILABLE: { label: 'Tạm thời không khả dụng', tone: 'danger', icon: 'alert' },
   PARTICIPATION_REVOKED: { label: 'Đã bị gỡ', tone: 'muted', icon: 'ban' },
+  EXAM_INTEGRITY_LOCKED: { label: 'Đang khóa', tone: 'warning', icon: 'lock' },
 }
 export const stateInfo = (state: string | null | undefined): StateInfo =>
   STATES[state ?? ''] ?? { label: state ?? 'Không rõ', tone: 'neutral', icon: 'clock' }
@@ -215,6 +216,7 @@ export const REASON_TEXT: Record<string, string> = {
   CAPACITY_FULL: 'Kỳ thi đã đủ số người làm bài cùng lúc. Hãy thử lại sau ít phút.',
   SNAPSHOT_UNAVAILABLE: 'Nội dung đề tạm thời không khả dụng. Hãy thử lại sau.',
   PARTICIPATION_REVOKED: 'Bạn không còn trong danh sách của kỳ thi này nên không thể tham gia hoặc bắt đầu lượt mới.',
+  EXAM_INTEGRITY_LOCKED: 'Giáo viên đang khóa kỳ thi nên chưa nhận lượt bắt đầu mới.',
 }
 export const reasonText = (code: string | null | undefined) => (code ? REASON_TEXT[code] ?? `Chưa thể bắt đầu (${code}).` : null)
 

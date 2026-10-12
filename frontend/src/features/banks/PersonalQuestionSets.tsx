@@ -8,6 +8,7 @@ import { Dialog } from '../../components/Dialog'
 import { Badge, EmptyState, ErrorState, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { excerpt, isStatus } from './bankModel'
+import { CopySyncEntry } from './CopySync'
 
 const SETS_PER_PAGE = 6
 const QUESTIONS_PER_PAGE = 20
@@ -64,6 +65,7 @@ function SetEditor({ bank, initial, onClose, onSaved }: { bank: Bank; initial?: 
   function move(id:string,delta:number){setOrder(prev=>{const from=prev.indexOf(id),to=from+delta;if(from<0||to<0||to>=prev.length)return prev;const next=[...prev];[next[from],next[to]]=[next[to],next[from]];return next})}
   return <div className="stack set-editor-page">
     <PageHeader title={initial?'Sửa bộ câu hỏi':'Tạo bộ câu hỏi'} crumbs={[{label:'Kho cá nhân',to:'/questions'},{label:'Bộ câu hỏi',to:SETS_HOME}]} description={`${initial ? `Phiên bản v${initial.version} · ${initial.status === 'ACTIVE' ? 'Đang dùng' : 'Đã lưu trữ'}. ` : ''}Bộ chỉ chứa câu ACTIVE, lưu bộ không xuất bản Public; Question DRAFT phải kích hoạt riêng.${initial ? ' Lưu bộ gửi expectedVersion để tránh ghi đè.' : ''}`} actions={<button type="button" className="btn btn-secondary" onClick={onClose}><ArrowLeft size={16} aria-hidden/> Quay lại</button>} />
+    {initial?.status === 'ACTIVE' && <section className="card card-body"><CopySyncEntry kind="set" id={initial.id} /></section>}
     <section className="card card-body stack">
       <label className="field"><span className="field-label">Tên bộ</span><input className="input" maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} required/></label>
       <label className="field"><span className="field-label">Mô tả</span><textarea className="input" maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)}/></label>

@@ -24,11 +24,12 @@ export default function QuestionListPage() {
   const [subjectId, setSubjectId] = useState('')
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Filters>({ page: 0 })
-  const [selectedId, setSelectedId] = useState('')
+  const [params, setParams] = useSearchParams()
+  // `?q=<id>` opens a question directly (links from copy sync to the new DRAFT children).
+  const [selectedId, setSelectedId] = useState(() => params.get('q') ?? '')
   const [editing, setEditing] = useState<Question | null | 'new'>(null)
   const [importing, setImporting] = useState(false)
   const detailRef = useRef<HTMLDivElement>(null)
-  const [params, setParams] = useSearchParams()
   // Single questions are the default view; Question Sets live in their own tab so the list is never pushed below the fold.
   const view = !admin && params.get('view') === 'sets' ? 'sets' : 'questions'
 

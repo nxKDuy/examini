@@ -9,6 +9,9 @@ import PolicyFields from './PolicyFields'
 import { legacyScheduleFields } from './examInput'
 import { DEFAULT_POLICY, policyError } from './policy'
 import QuestionPicker from './QuestionPicker'
+import IntegrityFields from '../integrity/IntegrityFields'
+import { integrityApi, type IntegrityPolicy } from '../integrity/integrityApi'
+import { DISABLED_POLICY, counts, limitError, policySummary } from '../integrity/integrityModel'
 import { EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, DIFFICULTY_LABEL, EXAM_TYPE_LABEL, QUESTION_TYPE_LABEL, formatScore, shortId } from '../../lib/format'
@@ -47,6 +50,7 @@ function Editor({ exam }: { exam?: Exam }) {
   const [items, setItems] = useState<Item[]>(exam ? exam.questions.map(q => ({ questionId: q.questionId, weight: q.weight })) : [])
   const [known, setKnown] = useState<Record<string, Question>>({})
   const [policy, setPolicy] = useState<Policy>(exam ? { accessMode: exam.accessMode, maxParticipants: exam.maxParticipants, maxConcurrentSessions: exam.maxConcurrentSessions, attemptLimit: exam.attemptLimit } : DEFAULT_POLICY)
+  const [integrity, setIntegrity] = useState<IntegrityPolicy>(exam?.integrityPolicy ? { ...DISABLED_POLICY, ...exam.integrityPolicy } : DISABLED_POLICY)
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -71,7 +75,7 @@ function Editor({ exam }: { exam?: Exam }) {
       if (items.some(i => !(i.weight > 0))) return 'Mỗi câu hỏi cần điểm lớn hơn 0.'
       if (passing !== null && (!Number.isFinite(passing) || passing < 0 || passing > total)) return `Điểm đạt phải từ 0 đến tổng điểm (${formatScore(total)}).`
     }
-    if (target >= 2) return policyError(policy)
+    if (target >= 2) return policyError(policy) ?? (counts(integrity) ? limitError(integrity.warningEventLimit) : null)
     return null
   }
 
@@ -102,6 +106,11 @@ function Editor({ exam }: { exam?: Exam }) {
       await examApi.policy(saved.id, { ...policy, joinCode: policy.accessMode === 'JOIN_CODE' ? policy.joinCode : undefined })
     } catch (e) {
       warning = `Đã lưu đề thi nhưng chưa lưu được chính sách tham gia: ${errorText(e)}`
+    }
+    try {
+      await integrityApi.savePolicy(saved.id, integrity)
+    } catch (e) {
+      warning = `${warning ? `${warning} ` : 'Đã lưu đề thi nhưng '}chưa lưu được cấu hình giám sát trình duyệt: ${errorText(e)}`
     }
     await qc.invalidateQueries({ queryKey: ['exams'] })
     await qc.invalidateQueries({ queryKey: ['exam', saved.id] })
@@ -199,6 +208,7 @@ function Editor({ exam }: { exam?: Exam }) {
           <PolicyFields value={policy} onChange={setPolicy} />
           {exam?.accessMode === 'JOIN_CODE' && <p className="small muted">Mã tham gia hiện tại: <strong className="mono">{exam.code}</strong></p>}
           <p className="small muted">Phân công thí sinh (khi chọn Được phân công) thực hiện ở trang chi tiết đề sau khi lưu.</p>
+          <IntegrityFields value={integrity} onChange={setIntegrity} />
         </>}
 
         {step === 3 && (
@@ -210,6 +220,7 @@ function Editor({ exam }: { exam?: Exam }) {
             <div><dt>Số câu / tổng điểm</dt><dd>{items.length} câu · {formatScore(total)} điểm</dd></div>
             <div><dt>Điểm đạt</dt><dd>{passing === null ? 'Không đặt' : formatScore(passing)}</dd></div>
             <div><dt>Cách tham gia</dt><dd>{ACCESS_MODE_LABEL[policy.accessMode]}</dd></div>
+            <div><dt>Giám sát trình duyệt</dt><dd>{policySummary(integrity)}</dd></div>
             <div><dt>Giới hạn</dt><dd>{policy.maxParticipants} người · {policy.maxConcurrentSessions} phiên đồng thời · {policy.attemptLimit} lượt/người</dd></div>
           </dl>
         )}

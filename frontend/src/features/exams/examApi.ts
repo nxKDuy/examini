@@ -1,4 +1,5 @@
 import api from '../../lib/api'
+import type { IntegrityPolicy } from '../integrity/integrityApi'
 
 export type ExamStatus = 'DRAFT' | 'PUBLISHED' | 'OPEN' | 'CLOSED' | 'COMPLETED'
 export type AccessMode = 'ASSIGNED' | 'JOIN_CODE' | 'PUBLIC'
@@ -10,6 +11,7 @@ export interface Exam {
   questions: QuestionPoints[]; questionIds: string[]; shuffleQuestions: boolean; shuffleOptions: boolean
   status: ExamStatus; accessMode: AccessMode; maxParticipants: number; maxConcurrentSessions: number; attemptLimit: number
   startTime: string | null; endTime: string | null; createdAt: string
+  integrityPolicy?: IntegrityPolicy | null; integrityLocked?: boolean
 }
 export interface Page<T> { content: T[]; totalElements: number; totalPages: number; number: number }
 export interface ExamInput {
