@@ -107,7 +107,7 @@ function SessionPanel({ examId, event, manage, narrow, onClose }: { examId: stri
                 <span className="xsmall muted">{formatDateTime(a.occurredAt)} · {a.actorType === 'SYSTEM' ? 'Hệ thống' : `Người thực hiện ${shortId(a.actorUserId)}`}{a.eventCount != null ? ` · ${a.eventCount} tín hiệu` : ''}</span>
                 {a.actorType !== 'SYSTEM' && a.metadata && <span className="xsmall">Lý do: {a.metadata}</span>}
               </li>)}</ul>}
-            {ended && manage && <button type="button" className="btn btn-primary btn-sm" onClick={() => setGranting(true)}>Cấp lượt mới</button>}
+            {ended && manage && <button type="button" className="btn btn-primary btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} onClick={() => setGranting(true)}>Cấp lượt mới</button>}
             {ended && !manage && <p className="xsmall muted">Chủ sở hữu hoặc Quản lý có thể cấp lượt mới cho thí sinh này.</p>}
           </section>
           <section className="stack-sm" aria-label="Dòng thời gian">
