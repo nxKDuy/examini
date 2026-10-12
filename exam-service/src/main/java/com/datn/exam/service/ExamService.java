@@ -26,6 +26,8 @@ public class ExamService {
     private final ExamRepository repo;
     private final QuestionBankClient questionBankClient;
     private final ExamCore core;
+    private final com.datn.exam.repository.ExamParticipantRepository participantRows;
+    private final com.datn.exam.repository.AttemptGrantRepository attemptGrants;
     private final ExamEventPublisher events;
     @org.springframework.beans.factory.annotation.Value("${question-bank.internal-token:}") private String questionToken="";
 
@@ -145,8 +147,17 @@ public class ExamService {
 
     @Transactional
     public void delete(UUID id) {
-        if (!repo.existsById(id)) throw notFound(id);
-        repo.deleteById(id);
+        var exam = repo.findById(id).orElseThrow(() -> notFound(id));
+        core.draft(exam);
+        // DRAFT chưa publish: không có session/lịch sử; dọn bảng phụ thuộc không cascade trước khi xoá đề.
+        attemptGrants.deleteAllByExam(id);
+        participantRows.deleteAllByExam(id);
+        try {
+            repo.delete(exam);
+            repo.flush();
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            throw ExamCore.error(409, "Exam still has dependent records and cannot be deleted");
+        }
     }
 
     /**

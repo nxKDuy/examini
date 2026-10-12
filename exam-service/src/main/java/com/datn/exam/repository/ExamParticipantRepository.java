@@ -22,4 +22,7 @@ public interface ExamParticipantRepository extends JpaRepository<ExamParticipant
     List<Object[]> activeCounts(@Param("examIds") Collection<UUID> examIds);
     @Query("select p from ExamParticipant p where p.examId=:examId and (:status is null or p.status=:status) and (:source is null or p.source=:source) and (:userId is null or p.userId=:userId)")
     Page<ExamParticipant> roster(@Param("examId") UUID examId,@Param("status") ExamParticipant.Status status,@Param("source") String source,@Param("userId") UUID userId,Pageable pageable);
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically=true,clearAutomatically=true)
+    @Query("delete from ExamParticipant p where p.examId=:examId")
+    int deleteAllByExam(@Param("examId") UUID examId);
 }
