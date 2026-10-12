@@ -264,8 +264,11 @@ public class CopySyncService {
             new MapSqlParameterSource().addValue("kind",type).addValue("id",id).addValue("local",local).addValue("source",source).addValue("actions",actions).addValue("actor",actor.userId()));}
     public List<SyncEvent> questionHistory(UUID id,QuestionActor actor){ownedQuestion(id,actor,false);return history("QUESTION",id);}
     public List<SyncEvent> setHistory(UUID id,QuestionActor actor){ownedSet(id,actor,false);return history("QUESTION_SET",id);}
-    private List<SyncEvent> history(String kind,UUID id){return jdbc.query("SELECT id,local_version,source_version,actions,actor_user_id,created_at FROM copy_sync_events WHERE resource_kind=:kind AND resource_id=:id ORDER BY created_at DESC,id DESC",
-            new MapSqlParameterSource().addValue("kind",kind).addValue("id",id),(r,n)->new SyncEvent(r.getObject(1,UUID.class),kind,r.getLong(2),r.getLong(3),r.getString(4),r.getObject(5,UUID.class),r.getTimestamp(6).toLocalDateTime()));}
+    private List<SyncEvent> history(String kind,UUID id){return jdbc.query("SELECT e.id,e.local_version,e.source_version,e.actions,e.actor_user_id,e.created_at,c.corrected_value,c.reason,c.created_at"
+            +" FROM copy_sync_events e LEFT JOIN copy_sync_event_corrections c ON c.event_id=e.id AND c.field='LOCAL_VERSION'"
+            +" WHERE e.resource_kind=:kind AND e.resource_id=:id ORDER BY e.created_at DESC,e.id DESC",
+            new MapSqlParameterSource().addValue("kind",kind).addValue("id",id),(r,n)->new SyncEvent(r.getObject(1,UUID.class),kind,r.getLong(2),r.getLong(3),r.getString(4),r.getObject(5,UUID.class),r.getTimestamp(6).toLocalDateTime(),
+                    r.getObject(7,Long.class),r.getString(8),r.getTimestamp(9)==null?null:r.getTimestamp(9).toLocalDateTime()));}
     private ResponseStatusException missing(){return new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy bản sao hoặc nguồn");}
     private ResponseStatusException bad(String m){return new ResponseStatusException(HttpStatus.BAD_REQUEST,m);}
     private ResponseStatusException conflict(String m){return new ResponseStatusException(HttpStatus.CONFLICT,m);}

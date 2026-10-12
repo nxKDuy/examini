@@ -22,8 +22,9 @@ public final class CopySyncDto {
             Availability availability,Question.QuestionStatus localStatus,List<FieldChange> changes) {}
     public record QuestionApplyRequest(@NotNull Long expectedLocalVersion,@NotNull Long expectedReferenceSourceVersion,@NotNull Long expectedCursorRevision,@NotNull Long expectedSourceVersion,
             @NotNull Map<QuestionField,Choice> decisions) {}
+    /** localVersion stays as originally recorded; a correction row never rewrites it (V13). */
     public record SyncEvent(UUID id,String resourceKind,long localVersion,long sourceVersion,String actions,
-            UUID actorUserId,LocalDateTime createdAt) {}
+            UUID actorUserId,LocalDateTime createdAt,Long correctedLocalVersion,String correctionReason,LocalDateTime correctedAt) {}
 
     public record SetItemChange(UUID sourceQuestionId,UUID localQuestionId,String kind,Integer referencePosition,
             Integer localPosition,Integer latestPosition,Long referenceVersion,Long latestVersion,
