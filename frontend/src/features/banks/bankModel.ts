@@ -81,6 +81,24 @@ export function postStats(p: Pick<PublicQuestion, 'viewsTotal' | 'copiesTotal' |
     : { key: 'rating', value: `${Number(p.averageRating.toFixed(1))}/10 (${p.ratingCount})`, label: `${Number(p.averageRating.toFixed(1))}/10 từ ${p.ratingCount} đánh giá` }
   return [count('views', p.viewsTotal, 'xem'), count('copies', p.copiesTotal, 'sao chép'), rating]
 }
+const squash = (t: string) => t.replace(/\s+/g, ' ').replace(/[\s….]+$/u, '').trim().toLowerCase()
+/**
+ * Card title + summary without repeating itself. A real title that merely equals the summary text hides the summary; a title that fell back
+ * to the question content shows only what follows it (the continuation), or nothing when the whole content already fits in the title.
+ */
+export function cardText(p: Pick<PublicQuestion, 'title' | 'description' | 'question'>): { title: string; summary: string | null } {
+  const content = p.question?.content ?? ''
+  const given = p.title?.trim() ?? ''
+  const title = given || excerpt(content, 76)
+  const source = (p.description?.trim() || content).trim()
+  const t = squash(title), src = squash(source)
+  if (!src || src === t) return { title, summary: null }
+  if (!given && src.startsWith(t)) {
+    const rest = source.slice(Math.min(source.length, title.replace(/…$/u, '').length)).replace(/^[\s,.;:–—-]+/u, '').trim()
+    return { title, summary: rest ? excerpt(rest, 140) : null }
+  }
+  return { title, summary: excerpt(source, 140) }
+}
 export const authorName = (p: Pick<PublicQuestion, 'sourceOwnerDisplayName'>) => p.sourceOwnerDisplayName?.trim() || 'Unknown user'
 
 export const MAX_SEARCH = 200

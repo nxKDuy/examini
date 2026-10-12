@@ -337,3 +337,17 @@ test('card helpers: update date prefers the content edit time, topic is the broa
   const missing = m.postStats({}); assert.deepEqual(missing.map(x => x.value), ['—', '—', '—']); assert.match(missing[0].label, /Chưa có số liệu xem/) // unknown is never shown as 0
   assert.equal(m.postStats({ viewsTotal: 0, copiesTotal: 0, ratingCount: 0 })[0].value, '0') // a real zero stays 0
 })
+
+test('card text never repeats itself: equal title/summary hide the summary, a content-derived title shows only the continuation', () => {
+  const q = content => ({ content })
+  assert.deepEqual(m.cardText({ title: 'Câu công khai fixture', question: q('Câu công khai fixture') }), { title: 'Câu công khai fixture', summary: null }) // identical
+  assert.equal(m.cardText({ title: ' Câu  công khai FIXTURE… ', question: q('Câu công khai fixture') }).summary, null) // equal after normalising case/space/ellipsis
+  assert.equal(m.cardText({ title: 'Hà Nội', question: q('Thủ đô của Việt Nam?') }).summary, 'Thủ đô của Việt Nam?') // different text stays
+  assert.equal(m.cardText({ title: 'Bộ ôn tập', description: 'Bộ ôn tập', question: q('x') }).summary, null)
+  assert.equal(m.cardText({ title: 'Bộ ôn tập', description: 'Tổng hợp các dạng bài thường gặp', question: q('x') }).summary, 'Tổng hợp các dạng bài thường gặp')
+  assert.deepEqual(m.cardText({ question: q('Thủ đô của Việt Nam?') }), { title: 'Thủ đô của Việt Nam?', summary: null }) // no title: content fits the title, nothing left to add
+  const long = 'Cho hàm số y = f(x) xác định trên R. ' + 'Tìm giá trị lớn nhất của biểu thức đã cho khi x thay đổi. '.repeat(3)
+  const c = m.cardText({ question: q(long) })
+  assert.ok(c.title.endsWith('…') && c.summary && !c.summary.startsWith('Cho hàm số y = f(x)')) // continuation, not the first words again
+  assert.equal(m.cardText({ title: 'T', description: '', question: q('') }).summary, null)
+})

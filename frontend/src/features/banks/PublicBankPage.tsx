@@ -6,7 +6,7 @@ import './banks.css'
 import { bankApi, type PublicQuestion } from './bankApi'
 import BankPanel, { QuestionView } from './BankPanel'
 import PublishToPublicDialog from './PublishToPublicDialog'
-import { MAX_SEARCH, broadTopic, canBookmark, postStats, updatedDate, applyPublicViewStats, authorName, canForkPublic, canUnpublish, copiedBadge, excerpt, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
+import { MAX_SEARCH, broadTopic, cardText, canBookmark, postStats, updatedDate, applyPublicViewStats, authorName, canForkPublic, canUnpublish, copiedBadge, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
 import { audienceOf } from '../../components/layout/navigation'
 import { useAuthStore, hasPersona } from '../../store/authStore'
 import { Dialog } from '../../components/Dialog'
@@ -149,7 +149,7 @@ const STAT_ICON = { views: Eye, copies: Copy, rating: Star } as const
 function PublicCard({ post, onOpen, onAuthor, onBookmark, bookmarkBusy, canSave }: { post: PublicQuestion; onOpen: () => void; onAuthor: () => void; onBookmark: () => void; bookmarkBusy: boolean; canSave: boolean }) {
   const bundle = post.postType === 'QUESTION_SET'
   const copied = copiedBadge(post), topic = broadTopic(post), updated = updatedDate(post)
-  const title = post.title?.trim() || excerpt(post.question.content, 76)
+  const { title, summary } = cardText(post)
   const Kind = bundle ? Layers3 : FileQuestion
   return <article className="public-post" data-archived={post.publicationStatus === 'ARCHIVED'}>
     <div className="public-post-top">
@@ -157,7 +157,7 @@ function PublicCard({ post, onOpen, onAuthor, onBookmark, bookmarkBusy, canSave 
       {post.publicationStatus === 'ARCHIVED' ? <span className="public-post-flag" data-tone="muted">Đã gỡ công khai</span> : copied && <span className="public-post-flag">{copied}</span>}
     </div>
     <h3 className="public-post-heading"><button type="button" className="public-post-title" onClick={onOpen} aria-label={`Mở chi tiết: ${title}`}><span>{title}</span></button></h3>
-    <p className="public-post-snippet">{excerpt(post.description || post.question.content, 140)}</p>
+    <p className="public-post-snippet" aria-hidden={!summary || undefined}>{summary}</p>
     <p className="public-post-topic">{topic ? <>{topic.text}{topic.more > 0 && <span className="muted"> +{topic.more}</span>}</> : <span className="muted">Chưa phân loại</span>}</p>
     <div className="public-post-meta"><button type="button" className="bk-row-btn" onClick={onAuthor} aria-label={`Lọc theo tác giả ${authorName(post)}`}>{authorName(post)}</button><span>{updated ? `Cập nhật ${updated}` : ''}</span></div>
     <div className="public-post-stats" role="group" aria-label="Số liệu bài đăng">{postStats(post).map(st => { const Icon = STAT_ICON[st.key]; return <span key={st.key} role="img" aria-label={st.label} title={st.label}><Icon size={14} aria-hidden />{st.value}</span> })}</div>

@@ -1,17 +1,18 @@
 """Desktop/mobile smoke for the shared in-memory fixture; not real backend E2E."""
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 BASE = 'http://127.0.0.1:3107'
-SESSION = 'examini-ux-stage1'
+SESSION = os.environ.get('SMOKE_SESSION', 'examini-ux-stage1')  # set a private name when several workers run smokes at once
 checks = []
 
 def run(*args):
     if args[0] == 'wait':
-        for _ in range(40):
+        for _ in range(150):  # 30s: the machine can be busy with other workers' browsers
             if args[1] == '--text':
                 ready = args[2] in run('get', 'text', 'body')
             elif args[1] == '--url':
@@ -108,6 +109,7 @@ try:
     click('Kích hoạt')
     confirm_dialog()
     run('wait', '--text', 'Đã kích hoạt câu hỏi')
+    run('wait', '--text', 'Gửi vào tổ chức')  # the detail refetches after the flash; wait for it instead of racing it
     check('Personal lifecycle still activates the current question revision', 'Gửi vào tổ chức' in body() and 'Xuất bản công khai' in body())
 
     click('Tạo bộ')
@@ -151,6 +153,8 @@ try:
     check('Each post (including a 12-question set) is exactly one card: 3 posts, 3 cards, the set appears once', layout['cards'] == 3 and layout['setCards'] == 1 and layout['itemCards'] == 0)
     check('Cards in a row share one height and their footer buttons and stat lines line up exactly', layout['rowSize'] >= 2 and len(set(layout['heights'])) == 1 and len(set(layout['bottoms'])) == 1 and len(set(layout['statTops'])) == 1 and not layout['overflow'])
     card_text = run('eval', 'Array.from(document.querySelectorAll(".public-post")).map(c => c.innerText).join("|||")')
+    dup = json.loads(run('eval', '(() => Array.from(document.querySelectorAll(".public-post")).map(c => ({ t: c.querySelector(".public-post-title").innerText.trim().toLowerCase(), s: c.querySelector(".public-post-snippet").innerText.trim().toLowerCase(), h: c.querySelector(".public-post-snippet").getAttribute("aria-hidden") })))()'))
+    check('A card never repeats its title as the summary: the identical-text fixture post shows no summary (space kept) while others keep theirs', all(x['t'] != x['s'] for x in dup) and any(x['s'] == '' and x['h'] == 'true' for x in dup) and any(x['s'] for x in dup))
     check('Cover blocks and boxed tag chips are gone; question type and difficulty stay out of the card', layout['covers'] == 0 and 'Trắc nghiệm' not in card_text and 'Dễ' not in card_text)
     check('Set card states type + broad subject (+N), update date, partial-copied tag and compact real stats', 'Bộ · 12 câu' in card_text and 'Toán +1' in card_text and 'Cập nhật 05/10/2026' in card_text and 'Đã sao chép một phần' in card_text and 'Thầy Minh' in card_text)
     check('A post without subjects names its top-level category, and a post without ratings says so through its accessible stats', 'Văn học' in card_text and run('eval', 'Array.from(document.querySelectorAll(".public-post-stats [aria-label]")).map(e => e.getAttribute("aria-label")).join("|")').find('Chưa có đánh giá') >= 0)
