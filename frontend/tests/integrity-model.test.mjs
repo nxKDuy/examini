@@ -61,7 +61,7 @@ test('grant is offered only for attempts ended by integrity', () => {
 })
 
 test('budget signals match the contract; wording never says gian lận except to deny it', () => {
-  assert.deepEqual([...m.BUDGET_SIGNALS].sort(), ['EXIT_FULLSCREEN', 'NETWORK_DISCONNECT', 'PAGE_RELOAD', 'TAB_SWITCH', 'WINDOW_BLUR'])
+  assert.deepEqual([...m.BUDGET_SIGNALS].sort(), ['EXIT_FULLSCREEN', 'PAGE_RELOAD', 'TAB_SWITCH', 'WINDOW_BLUR'])
   assert.ok(Object.values(m.SIGNAL_LABEL).every(l => !/gian lận/i.test(l)))
 })
 
@@ -118,4 +118,11 @@ test('leaving the tab while fullscreen is one transition: EXIT_FULLSCREEN covers
   const u = new m.LeaveTracker(false, true)
   u.onBlur(0); u.onFullscreenExit(50)
   assert.equal(u.onTimeout(), null)
+})
+
+test('acknowledgment follows Receipt.counted; older receipts without the field count', () => {
+  assert.equal(m.leaveCounted({ counted: true }), true)
+  assert.equal(m.leaveCounted({ counted: false }), false)
+  assert.equal(m.leaveCounted({}), true)
+  assert.equal(m.counts({ ...m.DISABLED_POLICY, monitorNetwork: true }), false, 'network alone has no budget')
 })

@@ -8,8 +8,8 @@ export const DISABLED_POLICY: IntegrityPolicy = {
   monitorNetwork: false, warningPolicy: 'LOG_ONLY', warningEventLimit: DEFAULT_LIMIT,
 }
 
-/** Signals that count toward the per-attempt budget (contract); COPY/PASTE/recovery signals are recorded only. */
-export const BUDGET_SIGNALS: SignalType[] = ['TAB_SWITCH', 'WINDOW_BLUR', 'EXIT_FULLSCREEN', 'PAGE_RELOAD', 'NETWORK_DISCONNECT']
+/** Signals that count toward the per-attempt budget (contract A): network, recovery and COPY/PASTE are audit only. */
+export const BUDGET_SIGNALS: SignalType[] = ['TAB_SWITCH', 'WINDOW_BLUR', 'EXIT_FULLSCREEN', 'PAGE_RELOAD']
 
 export const SIGNAL_LABEL: Record<SignalType, string> = {
   TAB_SWITCH: 'Chuyển tab', WINDOW_BLUR: 'Rời cửa sổ', WINDOW_FOCUS: 'Quay lại cửa sổ', EXIT_FULLSCREEN: 'Thoát toàn màn hình',
@@ -21,7 +21,7 @@ export const MONITORS: { key: keyof IntegrityPolicy; label: string; hint: string
   { key: 'monitorTabSwitch', label: 'Chuyển tab', hint: 'Ghi nhận khi trang bài thi bị ẩn. Có tính vào ngưỡng.' },
   { key: 'monitorWindowBlur', label: 'Rời cửa sổ', hint: 'Ghi nhận khi cửa sổ trình duyệt mất tiêu điểm. Có tính vào ngưỡng.' },
   { key: 'requireFullscreen', label: 'Yêu cầu toàn màn hình', hint: 'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng.' },
-  { key: 'monitorNetwork', label: 'Mất kết nối mạng', hint: 'Ghi nhận khi mất mạng. Có tính vào ngưỡng.' },
+  { key: 'monitorNetwork', label: 'Mất kết nối mạng', hint: 'Chỉ ghi nhận để đối chiếu, không tính vào ngưỡng. Thí sinh vẫn làm bài khi mất mạng.' },
   { key: 'monitorCopy', label: 'Sao chép', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
   { key: 'monitorPaste', label: 'Dán', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
 ]
@@ -31,7 +31,7 @@ export const monitored = (p: IntegrityPolicy | null | undefined) =>
 
 /** Budget is meaningful only when at least one counted signal is monitored. */
 export const counts = (p: IntegrityPolicy | null | undefined) =>
-  !!p && (p.monitorTabSwitch || p.monitorWindowBlur || p.requireFullscreen || p.monitorNetwork)
+  !!p && (p.monitorTabSwitch || p.monitorWindowBlur || p.requireFullscreen)
 
 export function limitError(value: number) {
   return Number.isInteger(value) && value >= MIN_LIMIT && value <= MAX_LIMIT ? null : `Ngưỡng phải là số nguyên từ ${MIN_LIMIT} đến ${MAX_LIMIT}.`
@@ -135,3 +135,6 @@ export class LeaveTracker {
     return result
   }
 }
+
+/** Acknowledge a leave only when the server counted it (COALESCED/STALE never ask twice). Older servers: counted. */
+export const leaveCounted = (r: Pick<Receipt, 'counted'>) => r.counted !== false

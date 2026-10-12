@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { integrityApi, type IntegrityPolicy, type Receipt, type SignalInput, type SignalMetadata, type SignalType } from './integrityApi'
-import { LEAVE_WINDOW_MS, LeaveTracker, monitored, retryDelay } from './integrityModel'
+import { LEAVE_WINDOW_MS, LeaveTracker, leaveCounted, monitored, retryDelay } from './integrityModel'
 import { errorStatus } from '../../lib/errors'
 import { FULLSCREEN_EVENTS, fullscreenSupported, isFullscreen, requestFullscreen } from '../../lib/fullscreen'
 
@@ -22,6 +22,8 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
   receiptRef.current = onReceipt
   // Events that could not reach the server (offline / network error). Same clientEventId on resend: the server dedupes.
   const offlineQueue = useRef<SignalInput[]>([])
+  // Verdict for the latest leave signal: the overlay asks for acknowledgment only when the server counted it.
+  const leaveVerdict = useRef<{ id: string; counted?: boolean } | null>(null)
   const p: IntegrityPolicy | undefined = policy.data
   const on = !!sessionId && active && monitored(p)
 
@@ -41,15 +43,24 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
     const send = (input: SignalInput, attempt = 0) => {
       if (stopped) return
       if (!navigator.onLine) { offlineQueue.current.push(input); return }
-      integrityApi.report(sessionId, input).then(r => { if (!stopped) receiptRef.current(r) }, e => {
+      integrityApi.report(sessionId, input).then(r => {
+        if (leaveVerdict.current?.id === input.clientEventId) {
+          leaveVerdict.current.counted = leaveCounted(r)
+          if (!leaveVerdict.current.counted) setAck(false)
+        }
+        if (!stopped) receiptRef.current(r)
+      }, e => {
         const status = errorStatus(e)
         if (status === 0) { offlineQueue.current.push(input); return }
         const wait = retryDelay(status, attempt)
         if (wait !== null) later(wait, () => send(input, attempt + 1))
       })
     }
-    const report = (type: SignalType, metadata?: SignalMetadata) =>
-      send({ clientEventId: crypto.randomUUID(), type, occurredAt: new Date().toISOString(), metadata: metadata ?? null })
+    const report = (type: SignalType, metadata?: SignalMetadata) => {
+      const input: SignalInput = { clientEventId: crypto.randomUUID(), type, occurredAt: new Date().toISOString(), metadata: metadata ?? null }
+      send(input)
+      return input.clientEventId
+    }
     const flush = () => offlineQueue.current.splice(0).forEach(i => send(i))
     flush()
 
@@ -65,14 +76,14 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
 
     const leave = new LeaveTracker(p.monitorTabSwitch, p.monitorWindowBlur)
     let leaveTimer = 0, offlineAt = 0
-    const emit = (s: ReturnType<LeaveTracker['onTimeout']>) => { if (s) report(s.type, s.metadata) }
+    const emit = (s: ReturnType<LeaveTracker['onTimeout']>) => { if (s) leaveVerdict.current = { id: report(s.type, s.metadata) } }
     const back = () => {
       if (document.visibilityState !== 'visible' || !document.hasFocus()) return
       window.clearTimeout(leaveTimer)
       const r = leave.onReturn(Date.now())
       emit(r.signal)
       if (r.focusDurationMs !== null) report('WINDOW_FOCUS', { visibilityState: 'VISIBLE', durationMs: r.focusDurationMs })
-      if (r.ack) setAck(true)
+      if (r.ack && leaveVerdict.current?.counted !== false) setAck(true)
     }
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') { window.clearTimeout(leaveTimer); emit(leave.onHidden(Date.now())) }
