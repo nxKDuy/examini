@@ -15,6 +15,7 @@ const KNOWN: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/^Exam is not OPEN$/, 'Kỳ thi hiện không mở. Chỉ có thể bắt đầu khi kỳ thi ở trạng thái Đang mở.'],
   [/^Outside exam schedule$/, 'Hiện không nằm trong khung giờ làm bài của kỳ thi.'],
   [/^Attempt limit reached$/, 'Bạn đã dùng hết số lượt làm bài cho kỳ thi này.'],
+  [/^QUESTION_NOT_ELIGIBLE/, 'Có câu hỏi không còn đủ điều kiện hoặc không còn quyền sử dụng. Bỏ hoặc đổi các câu đó rồi lưu lại.'],
   [/^EXAM_INTEGRITY_LOCKED$/, 'Giáo viên đang khóa kỳ thi nên chưa nhận lượt bắt đầu mới.'],
   [/^Participant capacity full$/, 'Kỳ thi đã đủ số người tham gia tối đa.'],
   [/^Not assigned$/, 'Bạn chưa được phân công vào kỳ thi này. Hãy liên hệ giáo viên phụ trách.'],
