@@ -123,6 +123,12 @@ class ParticipationEventsIntegrationTest {
         assertEquals(0, new BigDecimal("10").compareTo(s.averageScore()));
         assertEquals(0, new BigDecimal("0.2500").compareTo(s.submissionRate()));   // 1 of 4 eligible
         assertEquals(0, new BigDecimal("1.0000").compareTo(s.gradingCompletionRate())); // 1 graded of 1 valid submission
+        assertNull(s.kpi().participatedStudents());
+        assertNull(s.kpi().publishedAverageScore());
+        assertEquals(1, s.kpi().submittedStudents());
+        assertEquals(0, new BigDecimal("0.2500").compareTo(s.kpi().completionRate())); // 1 / 4 registered
+        assertEquals(0, s.kpi().needsGradingCount());
+        assertEquals(2, s.kpi().unavailable().size());
         assertEquals(1, s.scoreDistribution().stream().mapToLong(b -> b.count()).sum());
         assertEquals(1, queries.questions(exam).get(0).attempts());
         // Trace is kept: all three results stay listed, invalidated ones flagged.
@@ -167,6 +173,7 @@ class ParticipationEventsIntegrationTest {
         assertEquals(0, s.submissions());
         assertNull(s.submissionRate());
         assertNull(s.gradingCompletionRate());
+        assertNull(s.kpi().completionRate());
         // Same session claimed by another exam is a contract violation.
         assertThrows(AmqpRejectAndDontRequeueException.class,
                 () -> deliver(invalidated(UUID.randomUUID(), session, UUID.randomUUID(), user, 1, "CANCELLED")));

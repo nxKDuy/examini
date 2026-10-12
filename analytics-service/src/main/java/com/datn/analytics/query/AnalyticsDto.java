@@ -36,7 +36,28 @@ public final class AnalyticsDto {
             Integer eligibleCount,
             long invalidatedCount,
             BigDecimal submissionRate,
-            BigDecimal gradingCompletionRate
+            BigDecimal gradingCompletionRate,
+            Kpi kpi
+    ) {}
+
+    /**
+     * Header KPIs. A null value is "source data not available", never 0; the reason is in
+     * unavailable[kpiName]. Invalidated attempts are excluded everywhere.
+     * participatedStudents: distinct Students who started an attempt (needs a Session attempt-start event).
+     * submittedStudents: distinct Students with a valid submission (denominator for nothing; informational).
+     * completionRate = submittedStudents / registeredCount (needs registered snapshot); null otherwise.
+     * publishedAverageScore: mean of each Student's latest RELEASED score (needs Grading publication snapshot).
+     * needsGradingCount: attempt-level NEEDS_REVIEW + PENDING valid results.
+     */
+    public record Kpi(
+            Long participatedStudents,
+            long submittedStudents,
+            Integer registeredCount,
+            BigDecimal completionRate,
+            String completionRateDenominator,
+            BigDecimal publishedAverageScore,
+            long needsGradingCount,
+            java.util.Map<String, String> unavailable
     ) {}
 
     /** Half-open percent range [fromPercent, toPercent); the last bucket includes 100. */

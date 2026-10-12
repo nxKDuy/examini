@@ -62,10 +62,19 @@ public class ExamAnalyticsQueries {
             BigDecimal gradingCompletionRate = submissions == 0 ? null
                     : BigDecimal.valueOf(graded).divide(BigDecimal.valueOf(submissions), 4, java.math.RoundingMode.HALF_UP);
             long invalidated = jdbc.queryForObject("SELECT count(*) FROM attempt_invalidation WHERE exam_id = :exam", exam, Long.class);
+            long needsReview = rs.getLong("needs_review"), pending = rs.getLong("pending");
+            var unavailable = new java.util.LinkedHashMap<String, String>();
+            unavailable.put("participatedStudents", "Chưa có event bắt đầu attempt từ Session (Contract Request ANALYTICS-SESSION-ATTEMPT-STARTED)");
+            unavailable.put("publishedAverageScore", "Chưa có snapshot điểm đã công bố từ Grading (Contract Request ANALYTICS-GRADING-RELEASED-SCORE)");
+            BigDecimal completion = registered == null || registered == 0 ? null
+                    : BigDecimal.valueOf(candidates).divide(BigDecimal.valueOf(registered), 4, java.math.RoundingMode.HALF_UP);
+            if (completion == null) unavailable.put("completionRate", "Chưa có snapshot participant hoặc registeredCount = 0");
+            var kpi = new Kpi(null, candidates, registered, completion, "registeredCount (Student đã đăng ký, gồm đã thu hồi)",
+                    null, needsReview + pending, unavailable);
             return new ExamSummary(examId, candidates, submissions, graded,
                     rs.getLong("needs_review"), rs.getLong("pending"), rs.getBigDecimal("max_possible"),
                     rs.getBigDecimal("avg_score"), rs.getBigDecimal("min_score"), rs.getBigDecimal("max_score"),
-                    rs.getBigDecimal("avg_percent"), buckets, registered, eligible, invalidated, rate, gradingCompletionRate);
+                    rs.getBigDecimal("avg_percent"), buckets, registered, eligible, invalidated, rate, gradingCompletionRate, kpi);
         });
     }
 

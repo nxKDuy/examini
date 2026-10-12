@@ -166,3 +166,11 @@ anything else is dead-lettered without retry and does not consume its `eventId`.
   `invalidatedCount`, `submissionRate` = candidates with a valid submission / `eligibleCount`
   (null when eligible is null or 0). Invalidated results stay in `/results` with `invalidated: true`.
 - Not provided: pass rate (no passing score in any event).
+
+## Header KPIs (`ExamSummary.kpi`, scope lock 2026-10-12)
+
+`participatedStudents` (null: no attempt-start event), `submittedStudents` (distinct Students with a valid
+submission), `registeredCount`, `completionRate` = submittedStudents / registeredCount (null without participant
+snapshot or when 0; denominator named in `completionRateDenominator`), `publishedAverageScore` (null: no Grading
+released-score snapshot), `needsGradingCount` = valid NEEDS_REVIEW + PENDING attempts. Null is never 0; reasons are in
+`kpi.unavailable`. Contract Requests for MAIN: `ANALYTICS-SESSION-ATTEMPT-STARTED`, `ANALYTICS-GRADING-RELEASED-SCORE`.
