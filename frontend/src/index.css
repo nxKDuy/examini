@@ -30,7 +30,7 @@
   --color-warning: #000000;
   --color-warning-soft: #efefef;
   --color-danger: #c8102e;
-  --color-danger-hover: #000000;
+  --color-danger-hover: #b3001b;  /* deep, saturated red: the red counterpart of the electric-blue hover */
   --color-danger-soft: #fbe9ec;
   --color-info-soft: #e8eafb;
 
@@ -95,9 +95,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-ghost { background: transparent; border-color: transparent; color: #000; }
 .btn-ghost:hover:not(:disabled) { text-decoration: underline; }
 .btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
-.btn-danger:hover:not(:disabled) { background: #a30f24; border-color: #a30f24; }
+.btn-danger:hover:not(:disabled) { background: var(--color-danger-hover); border-color: var(--color-danger-hover); }
 .btn-danger-ghost { background: transparent; border-color: transparent; color: var(--color-danger); }
-.btn-danger-ghost:hover:not(:disabled) { text-decoration: underline; }
+.btn-danger-ghost:hover:not(:disabled) { background: var(--color-danger-soft); border-color: var(--color-danger); color: var(--color-danger-hover); }
 .btn-sm { min-height: 32px; padding: 4px 10px; font-size: 0.9rem; }
 .btn-lg { min-height: 50px; padding: 10px 24px; font-size: 1.1rem; }
 .btn-icon { min-height: 38px; min-width: 38px; padding: 6px; }
@@ -425,3 +425,11 @@ a.stat:hover { background: var(--color-subtle); }
   [data-reveal] { opacity: 1 !important; translate: none !important; transition: none !important; }
   .dialog, .dialog-backdrop, .dock-backdrop, .cal-sheet-backdrop, .bk-sheet-backdrop, .org-sheet-backdrop, .pt-sheet-backdrop, .cal-panel, .bk-panel, .org-panel, .pt-panel, .dock-sheet, .pop, .btn-save svg { animation: none !important; }
 }
+
+/* Danger actions: hover is RED (fill/border, offset shadow), never the blue used elsewhere. Same specificity as the generic .btn hover rules, so it must stay below them. */
+:root { --shadow-btn-danger: 3px 3px 0 #f0627a; --shadow-lift-danger: inset 0 0 0 1px var(--color-danger-hover), 6px 6px 0 #f0627a; }
+@media (hover: hover) and (pointer: fine) {
+  .btn.btn-danger:hover:not(:disabled):not([aria-disabled="true"]), .btn.btn-danger-ghost:hover:not(:disabled):not([aria-disabled="true"]) { box-shadow: var(--shadow-btn-danger); }
+}
+.btn.btn-danger:focus-visible:not(:disabled), .btn.btn-danger-ghost:focus-visible:not(:disabled) { box-shadow: var(--shadow-btn-danger); outline-color: var(--color-danger); }
+.btn.btn-danger:active:not(:disabled), .btn.btn-danger-ghost:active:not(:disabled) { box-shadow: 0 0 0 #000; }
