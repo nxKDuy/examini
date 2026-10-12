@@ -118,6 +118,15 @@ Teacher không có system authority từ persona.
 PublicResponse giữ field cũ; thêm postType,title,description,postVersion,itemCount,
 items,subjects,categories,copies24h,copies30d,copies365d,copiesTotal,
 averageRating,ratingCount,myRating,views24h,views30d,views365d,viewsTotal.
+`contentUpdatedAt` là thời điểm sửa nội dung nguồn của snapshot đang đăng;
+`publishedAt` là lúc snapshot được xuất bản. Bài đăng cũ không đổi ngày khi tác giả
+sửa nguồn hoặc đăng một phiên bản mới. Dữ liệu lịch sử trước V10 dùng ngày đăng
+làm mốc cập nhật do không có thời điểm sửa nguồn chính xác.
+`isCopied` trên PublicResponse cho biết actor hiện tại đã sao chép ít nhất một câu
+từ bài đăng này. Mỗi item có `isCopied` riêng; bộ chỉ sao chép một phần được UI
+ghi rõ. OrganizationResponse cũng có `isCopied`. Các cờ này lấy từ lineage trên
+server theo actor, không lấy từ localStorage; người khác không xem được lịch sử
+sao chép của actor. Sao chép lại vẫn tạo bản độc lập, không cần xác nhận trùng.
 Item `{id,position,sourceQuestionId,sourceQuestionVersion,question}` là safe frozen DTO.
 Subject/category giữ ID/name/path snapshot. Không email, private source bank name hay answer key.
 
@@ -140,3 +149,28 @@ Fork/source/public/Exam snapshots không tự đổi khi source sửa.
 V7 tạo Set/version/items/copy events; V8 ratings/views/frozen taxonomy, nâng cấp dữ liệu cũ.
 Worker xác nhận 60 module tests và Flyway fresh/upgrade PostgreSQL PASS;
 đây không thay thế unified runtime/E2E sau tích hợp UI.
+
+## Backend Contract Lock — Saved / picker / explanation (2026-10-09)
+
+Provider reviewed `fbb5094`, integrated vào MAIN. Frontend/runtime validation còn chờ.
+
+- `PUT /public-questions/{id}/bookmark` → 204 idempotent; Teacher/Student JWT actor,
+  chỉ PUBLISHED, missing/ARCHIVED → 404, actor không phù hợp → 403.
+- `DELETE /public-questions/{id}/bookmark` → 204 idempotent; chỉ xóa bookmark của
+  actor, kể cả bài đã archived/missing. Không tăng view/copy/rating.
+- `GET /public-questions?saved=true` giữ toàn bộ filter/ranking/pagination, chỉ
+  PUBLISHED đã lưu của actor; saved + ARCHIVED → 400. PublicResponse thêm `isSaved`.
+- `GET /question-banks/{bankId}/questions?status=ACTIVE&text=&page=&size=`:
+  quyền bank hiện hữu, literal content search case-insensitive, text ≤200, size≤100,
+  stable pagination. Có cả `GET /questions?scope=PERSONAL&status=ACTIVE&text=...`.
+- `GET /question-banks/{bankId}/question-sets?text=&status=&page=&size=`:
+  owner-only, literal title search, status ACTIVE/ARCHIVED, size≤100, stable paging.
+  Pool không giới hạn 100 câu; Set tối đa 100 item như contract hiện hữu.
+- Create/Update Question thêm optional `explanation` ≤10000. Update thiếu/null
+  giữ giá trị, empty string xóa. Trusted includeAnswers DTO giữ đúng QuestionVersion;
+  SafeQuestionResponse/Public response không có explanation/answer key.
+- Migration V9: nullable questions.explanation và bookmark PK(actor_user_id,publication_id)
+  trong chính database QB; không cross-service DB. Fork/publication giữ frozen lineage.
+
+Frontend không được coi field explanation là dữ liệu Public/candidate-safe; author
+editor dùng trusted author API, Student result chỉ dùng Grading policy-filtered DTO.

@@ -59,6 +59,13 @@ test('public: unpublish only by the owner of a live publication; fork only for a
   assert.equal(m.authorName({ sourceOwnerDisplayName: ' Cô Lan ' }), 'Cô Lan'); assert.equal(m.authorName({}), 'Unknown user')
 })
 
+test('copy tag distinguishes a copied question from a partially copied set', () => {
+  assert.equal(m.copiedBadge({ isCopied: false }), null)
+  assert.equal(m.copiedBadge({ isCopied: true, postType: 'SINGLE_QUESTION' }), 'Đã sao chép')
+  assert.equal(m.copiedBadge({ isCopied: true, postType: 'QUESTION_SET', itemCount: 2, items: [{ isCopied: true }, { isCopied: false }] }), 'Đã sao chép một phần')
+  assert.equal(m.copiedBadge({ isCopied: true, postType: 'QUESTION_SET', itemCount: 2, items: [{ isCopied: true }, { isCopied: true }] }), 'Đã sao chép')
+})
+
 test('discovery params: blanks dropped, text capped at 200, author filter only when chosen', () => {
   assert.deepEqual(m.publicParams({ text: '  ', questionType: '', difficulty: '', author: '', page: 0 }), { page: 0 })
   const long = 'x'.repeat(300)
@@ -118,6 +125,8 @@ const { QUESTION_STATUS } = await import('../src/components/statusDefs.tsx')
 const React = await import('react')
 const { renderToStaticMarkup } = await import('react-dom/server')
 const { QuestionView } = await import('../src/features/banks/BankPanel.tsx')
+const { QueryClient } = await import('@tanstack/react-query')
+const { optimisticallySetBookmark, rollbackBookmark } = await import('../src/features/banks/publicBookmarkCache.ts')
 
 test('Personal lifecycle labels are independent from Organization review; bank-aware eligibility fails closed', () => {
   assert.deepEqual(Object.keys(QUESTION_STATUS), ['DRAFT', 'ACTIVE', 'ARCHIVED'])
@@ -186,6 +195,45 @@ test('Question Set adapters preserve selected versions and explicit publish snap
   assert.deepEqual(JSON.parse(calls[2].data), { version: 3 })
 })
 
+test('Personal Question Set search adapters use provider-owned literal search and server pagination/status', async () => {
+  const calls = []
+  api.defaults.adapter = async config => { calls.push(config); return { status: 200, statusText: 'OK', config, headers: {}, data: { content: [], totalElements: 0, totalPages: 0, number: 0 } } }
+  await bankApi.personalQuestions('personal-bank', 3, 20, '  đạo hàm  ')
+  await bankApi.questionSets('personal-bank', 2, 20, { text: ' hàm số ', status: 'ACTIVE' })
+  await bankApi.questionSet('set-1')
+  assert.deepEqual(calls.map(c => c.url), ['/question-banks/personal-bank/questions', '/question-banks/personal-bank/question-sets', '/question-sets/set-1'])
+  assert.deepEqual(calls[0].params, { status: 'ACTIVE', text: 'đạo hàm', size: 20, page: 3 })
+  assert.deepEqual(calls[1].params, { text: 'hàm số', status: 'ACTIVE', page: 2, size: 20 })
+})
+
+test('Bookmarks use authenticated API routes and saved query composes with discovery filters', async () => {
+  const calls = []
+  api.defaults.adapter = async config => { calls.push(config); return { status: 204, statusText: 'No Content', config, headers: {}, data: undefined } }
+  await bankApi.bookmark('p1'); await bankApi.unbookmark('p1');
+  await bankApi.publicList({ saved: true, text: 'algebra', subjectId: 's1', ranking: 'COPY_MONTH', page: 2 })
+  assert.deepEqual(calls.slice(0,2).map(c => [c.method,c.url]), [['put','/public-questions/p1/bookmark'],['delete','/public-questions/p1/bookmark']])
+  assert.deepEqual(calls[2].params, { size: 20, saved: true, text: 'algebra', subjectId: 's1', ranking: 'COPY_MONTH', page: 2 })
+})
+
+test('Optimistic bookmarks are actor-scoped and failure restores exact list and detail state', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const post = { id: 'p1', isSaved: false }
+  const teacherKey = ['banks','public','teacher',{ page: 0 }], studentKey = ['banks','public','student',{ page: 0 }]
+  client.setQueryData(teacherKey, { content: [post], totalElements: 1, totalPages: 1, number: 0 })
+  client.setQueryData(studentKey, { content: [{ ...post, isSaved: true }], totalElements: 1, totalPages: 1, number: 0 })
+  const detailKey = m.publicDetailQueryKey('p1','teacher')
+  client.setQueryData(detailKey, post)
+  const snapshot = await optimisticallySetBookmark(client, 'p1', 'teacher', true)
+  assert.equal(client.getQueryData(teacherKey).content[0].isSaved, true)
+  assert.equal(client.getQueryData(studentKey).content[0].isSaved, true)
+  assert.equal(client.getQueryData(detailKey).isSaved, true)
+  rollbackBookmark(client, snapshot)
+  assert.equal(client.getQueryData(teacherKey).content[0].isSaved, false)
+  assert.equal(client.getQueryData(studentKey).content[0].isSaved, true)
+  assert.equal(client.getQueryData(detailKey).isSaved, false)
+  client.clear()
+})
+
 test('Public view adapter returns authoritative aggregate counts from the explicit detail-view endpoint', async () => {
   let request
   api.defaults.adapter = async config => { request = config; return { status: 200, statusText: 'OK', config, headers: {}, data: { publicationId: 'post-1', views24h: 2, views30d: 5, views365d: 8, viewsTotal: 9 } } }
@@ -229,6 +277,16 @@ test('Personal edits and archival carry exact revision; provider conflict is not
   assert.equal(JSON.parse(calls[1].data).questionVersion, 7)
 })
 
+test('Author question create/update forwards optional frozen explanation, including empty-string clear', async () => {
+  const { questionBankApi } = await import('../src/features/question-bank/questionApi.ts')
+  const calls = []
+  api.defaults.adapter = async config => { calls.push(config); return { status: 200, statusText: 'OK', config, headers: {}, data: {} } }
+  await questionBankApi.createQuestion({ explanation: 'Giải thích nguồn' })
+  await questionBankApi.updateQuestion('q1', { questionVersion: 4, explanation: '' })
+  assert.equal(JSON.parse(calls[0].data).explanation, 'Giải thích nguồn')
+  assert.equal(JSON.parse(calls[1].data).explanation, '')
+})
+
 test('Archived organizations never expose queue even with stale reviewer capability', () => {
   assert.deepEqual(m.orgBankTabs(org(['BANK_READ', 'BANK_REVIEW'], 'ARCHIVED')), ['approved', 'mine', 'history'])
 })
@@ -258,4 +316,45 @@ test('Locked adapter: lineage respects unavailable metadata and frozen SOURCE; b
   assert.match(chain[1].detail, /không khả dụng/); assert.doesNotMatch(chain[1].detail, /MUST_NOT_SHOW|Đã gỡ/)
   assert.match(chain[2].detail, /Bản nháp.*Kho của tôi/)
   assert.doesNotMatch(chain.map(c => c.detail).join(' '), /Tác giả|Unknown user/)
+})
+
+test('Save/Saved exist only for Teacher and Student audiences: ADMIN (global admin) and unknown audiences get none, and TEACHER is never inferred from ADMIN', () => {
+  assert.equal(m.canBookmark('TEACHER'), true); assert.equal(m.canBookmark('STUDENT'), true)
+  assert.equal(m.canBookmark('ADMIN'), false); assert.equal(m.canBookmark(''), false); assert.equal(m.canBookmark('teacher'), false)
+})
+
+test('card helpers: update date prefers the content edit time, topic is the broadest taxonomy, stats are real numbers with honest gaps', () => {
+  assert.match(m.updatedDate({ contentUpdatedAt: '2026-10-05T08:00:00', publishedAt: '2026-09-20T00:00:00' }), /05\/10\/2026/)
+  assert.match(m.updatedDate({ publishedAt: '2026-09-20T00:00:00' }), /20\/09\/2026/); assert.equal(m.updatedDate({}), null)
+  const q = { categoryName: 'Toán' }
+  assert.deepEqual(m.broadTopic({ subjects: [{ id: 'a', name: 'Toán' }, { id: 'b', name: 'Lý' }, { id: 'c', name: 'Toán' }], categories: [], question: q }), { text: 'Toán', more: 1 })
+  assert.deepEqual(m.broadTopic({ subjects: [], categories: [{ id: 'x', name: 'Thơ hiện đại', path: ['Văn học', 'Thơ hiện đại'] }, { id: 'y', name: 'Truyện', path: ['Văn học', 'Truyện'] }], question: q }), { text: 'Văn học', more: 0 })
+  assert.deepEqual(m.broadTopic({ subjects: [], categories: [], question: q }), { text: 'Toán', more: 0 }); assert.equal(m.broadTopic({ subjects: [], categories: [], question: {} }), null)
+  const label = s => Object.fromEntries(s.map(x => [x.key, x.label]))
+  assert.deepEqual(label(m.postStats({ viewsTotal: 12, copiesTotal: 4, averageRating: 8.46, ratingCount: 2 })), { views: '12 lượt xem', copies: '4 lượt sao chép', rating: '8.5/10 từ 2 đánh giá' })
+  assert.equal(m.postStats({ viewsTotal: 12, copiesTotal: 4, averageRating: 8.5, ratingCount: 2 }).find(x => x.key === 'rating').value, '8.5/10 (2)')
+  assert.equal(m.postStats({ viewsTotal: 0, copiesTotal: 0, averageRating: null, ratingCount: 0 }).find(x => x.key === 'rating').label, 'Chưa có đánh giá')
+  const missing = m.postStats({}); assert.deepEqual(missing.map(x => x.value), ['—', '—', '—']); assert.match(missing[0].label, /Chưa có số liệu xem/) // unknown is never shown as 0
+  assert.equal(m.postStats({ viewsTotal: 0, copiesTotal: 0, ratingCount: 0 })[0].value, '0') // a real zero stays 0
+})
+
+test('card text never repeats itself: equal title/summary hide the summary, a content-derived title shows only the continuation', () => {
+  const q = content => ({ content })
+  assert.deepEqual(m.cardText({ title: 'Câu công khai fixture', question: q('Câu công khai fixture') }), { title: 'Câu công khai fixture', summary: null }) // identical
+  assert.equal(m.cardText({ title: ' Câu  công khai FIXTURE… ', question: q('Câu công khai fixture') }).summary, null) // equal after normalising case/space/ellipsis
+  assert.equal(m.cardText({ title: 'Hà Nội', question: q('Thủ đô của Việt Nam?') }).summary, 'Thủ đô của Việt Nam?') // different text stays
+  assert.equal(m.cardText({ title: 'Bộ ôn tập', description: 'Bộ ôn tập', question: q('x') }).summary, null)
+  assert.equal(m.cardText({ title: 'Bộ ôn tập', description: 'Tổng hợp các dạng bài thường gặp', question: q('x') }).summary, 'Tổng hợp các dạng bài thường gặp')
+  assert.deepEqual(m.cardText({ question: q('Thủ đô của Việt Nam?') }), { title: 'Thủ đô của Việt Nam?', summary: null }) // no title: content fits the title, nothing left to add
+  const long = 'Cho hàm số y = f(x) xác định trên R. ' + 'Tìm giá trị lớn nhất của biểu thức đã cho khi x thay đổi. '.repeat(3)
+  const c = m.cardText({ question: q(long) })
+  assert.ok(c.title.endsWith('…') && c.summary && !c.summary.startsWith('Cho hàm số y = f(x)')) // continuation, not the first words again
+  assert.equal(m.cardText({ title: 'T', description: '', question: q('') }).summary, null)
+})
+
+test('rating stat is flagged empty when there is no rating (grey star) and filled otherwise (gold star)', () => {
+  const rating = p => m.postStats(p).find(x => x.key === 'rating')
+  assert.equal(rating({ viewsTotal: 1, copiesTotal: 0, averageRating: null, ratingCount: 0 }).empty, true)
+  assert.equal(rating({}).empty, true)
+  assert.equal(rating({ averageRating: 8.4, ratingCount: 2 }).empty, undefined)
 })

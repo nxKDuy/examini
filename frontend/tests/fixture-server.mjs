@@ -54,6 +54,7 @@ createServer(async (req, res) => {
     const att = (n, extra = {}) => ({ sessionId: `s${n}`, userId: 'x', attemptNumber: n, status: 'SUBMITTED', startedAt: '2026-10-05T01:00:00', invalidated: false, ...extra })
     const nowIso = new Date().toISOString()
     if (url.pathname === '/exams/e1') data = exam
+    else if (url.pathname === '/sessions/s-live') data = { sessionId: 's-live', examId: 'e1', title: exam.title, status: 'IN_PROGRESS', attemptNumber: 1, expiresAt: new Date(Date.now() + 36e5).toISOString(), serverNow: nowIso, questions: [{ questionId: 'q1', questionVersion: 1, questionType: 'ESSAY', content: 'Câu thử', points: 10, position: 1, options: [] }], answers: {} }
     else if (parts[2] === 'members') data = {}
     else if (parts[2] === 'schedule') data = { examId: 'e1', startAt: null, endAt: null, timezone: 'UTC', deadlineRule: 'FULL_DURATION', autoOpen: false, autoClose: false, reminderOffsetsMinutes: [], scheduleRevision: 1, lifecycleRevision: 1, serverNow: nowIso }
     else if (parts[2] === 'lobby') data = exam
@@ -78,12 +79,17 @@ createServer(async (req, res) => {
   else if (url.pathname === '/exams' && req.method === 'GET') data = { content: [{ id: 'e1', title: 'Fixture exam', status: 'CLOSED', questionIds: [] }, { id: 'e2', title: 'Other exam', status: 'CLOSED', questionIds: [] }], totalElements: 2, totalPages: 1, number: 0 }
   else if (url.pathname === '/submissions/overview') data = { totalSubmissions: 2, needsReview: 1, pending: 0, graded: 1, released: 1, pendingManualItems: 1 }
   else if (url.pathname === '/submissions' && req.method === 'GET') {
-    const row = (id, status) => ({ id, examId: 'e1', examTitle: 'Fixture exam', studentId: `${id}-0000-aaaa`, attemptNumber: 1, status, score: null, totalScore: 10, publishedScore: null, pendingManualItemCount: status === 'NEEDS_REVIEW' ? 1 : 0, submittedAt: null, gradedAt: null, durationSeconds: null, feedback: null, resultRevision: 1, publishedRevision: null })
+    const row = (id, status) => ({ id, examId: 'e1', examTitle: 'Fixture exam', studentId: `${id}-0000-aaaa`, ...(id === 'aaaa1111' ? { studentDisplayName: 'Học sinh Fixture' } : {}), attemptNumber: 1, status, score: null, totalScore: 10, publishedScore: null, pendingManualItemCount: status === 'NEEDS_REVIEW' ? 1 : 0, submittedAt: null, gradedAt: null, durationSeconds: null, feedback: null, resultRevision: 1, publishedRevision: null })
     data = { content: [row('aaaa1111', 'NEEDS_REVIEW'), row('bbbb2222', 'NEEDS_REVIEW')], totalElements: 2, totalPages: 1, number: 0 }
   } else if (/^\/submissions\/[^/]+$/.test(url.pathname)) {
     const id = url.pathname.split('/').pop()
-    data = { id, examId: 'e1', examTitle: 'Fixture exam', studentId: `${id}-0000-aaaa`, attemptNumber: 1, status: 'NEEDS_REVIEW', score: null, totalScore: 10, publishedScore: null, pendingManualItemCount: 1, submittedAt: null, gradedAt: null, durationSeconds: null, feedback: null, resultRevision: 1, publishedRevision: null,
+    data = { id, examId: 'e1', examTitle: 'Fixture exam', studentId: `${id}-0000-aaaa`, ...(id === 'aaaa1111' ? { studentDisplayName: 'Học sinh Fixture' } : {}), attemptNumber: 1, status: 'NEEDS_REVIEW', score: null, totalScore: 10, publishedScore: null, pendingManualItemCount: 1, submittedAt: null, gradedAt: null, durationSeconds: null, feedback: null, resultRevision: 1, publishedRevision: null,
       items: [{ questionId: 'q1', questionVersion: 1, position: 1, questionContent: 'Viết đoạn văn', questionType: 'ESSAY', pointValue: 10, answerContent: 'Bài làm', selectedOptionContent: null, autoScore: null, manualScore: null, awardedPoints: null, needsReview: true, feedback: null, manualGradedBy: null, manualGradedAt: null }] }
+  } else if (/^\/grades\/session\//.test(url.pathname)) {
+    const legacy = url.pathname.endsWith('/s-legacy')
+    data = { sessionId: legacy ? 's-legacy' : 's-result', examId: 'e1', title: 'Kỳ thi kết quả fixture', attemptNumber: 1, status: 'GRADED', resultRevision: 2, submittedAt: '2026-10-01T00:00:00Z', gradedAt: '2026-10-01T01:00:00Z', releasedAt: '2026-10-01T02:00:00Z', score: 8, totalScore: 10,
+      questions: [{ questionId: 'q1', questionVersion: 4, position: 1, questionContent: 'Câu có nhãn trả lời', questionType: 'MULTIPLE_CHOICE', pointValue: 5, answer: 'option-uuid-legacy', answerDisplay: legacy ? null : 'Phương án B đã chọn', awardedPoints: 5, ...(legacy ? {} : { explanation: 'Giải thích trong snapshot đã công bố.' }) },
+        { questionId: 'q2', questionVersion: 2, position: 2, questionContent: 'Câu legacy chỉ có mã', questionType: 'MULTIPLE_CHOICE', pointValue: 5, answer: '550e8400-e29b-41d4-a716-446655440000', answerDisplay: null, awardedPoints: 3, correctAnswers: [] }], history: [] }
   } else if (/\/result-policy$/.test(url.pathname)) data = { autoRelease: true, showScore: true, showQuestionBreakdown: true, showFeedback: true, showCorrectAnswers: false, showExplanation: false }
   else data = { content: [], totalElements: 0, totalPages: 0, number: 0 }
   res.end(JSON.stringify(data))

@@ -15,20 +15,21 @@ export type PublicationStatus = 'PUBLISHED' | 'ARCHIVED'
 export interface PublicQuestion {
   id: string; bankId: string; sourceQuestionId: string; sourceQuestionVersion: number; sourceBankId?: string
   sourceOwnerUserId: string; sourceOwnerDisplayName?: string; publicationStatus: PublicationStatus
-  publishedBy?: string; publishedAt?: string; archivedBy?: string; archivedAt?: string; question: SafeQuestion
+  publishedBy?: string; publishedAt?: string; contentUpdatedAt?: string; archivedBy?: string; archivedAt?: string; question: SafeQuestion
   postType?: 'SINGLE_QUESTION' | 'QUESTION_SET'; title?: string; description?: string; postVersion?: number; itemCount?: number
   items?: PublicPostItem[]; subjects?: { id: string; name: string }[]; categories?: { id: string; name: string; subjectId: string; subjectName: string; parentCategoryId?: string; path: string[] }[]
   copies24h?: number; copies30d?: number; copies365d?: number; copiesTotal?: number
   averageRating?: number | null; ratingCount?: number; myRating?: number | null
   views24h?: number; views30d?: number; views365d?: number; viewsTotal?: number
+  isSaved?: boolean; isCopied?: boolean
 }
-export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion }
+export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion; isCopied?: boolean }
 export interface PublicViewResponse { publicationId: string; views24h: number; views30d: number; views365d: number; viewsTotal: number }
-export interface QuestionSet { id: string; bankId: string; ownerUserId: string; title: string; description?: string; version: number; status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT'; updatedAt?: string; items: PublicPostItem[] }
+export interface QuestionSet { id: string; bankId: string; ownerUserId: string; title: string; description?: string; version: number; status: 'ACTIVE' | 'ARCHIVED'; updatedAt?: string; items: PublicPostItem[] }
 export interface Taxonomy { id: string; name: string; subjectId?: string; subjectName?: string; parentCategoryId?: string; path?: string[] }
 export interface OrgQuestion {
   id: string; bankId: string; sourceQuestionId: string; sourceQuestionVersion: number; sourceOwnerUserId: string
-  publicationStatus?: string; approvedBy?: string; approvedAt?: string; question: SafeQuestion
+  publicationStatus?: string; approvedBy?: string; approvedAt?: string; question: SafeQuestion; isCopied?: boolean
 }
 export type ContributionStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'
 /** `question` is a projection: reviewers asking for answers receive the full question, everyone else a safe one. */
@@ -45,7 +46,7 @@ export interface Lineage {
 }
 export interface BankQuestion { bankId: string; question: Question }
 
-export interface PublicFilters { mine?: boolean; publicationStatus?: PublicationStatus; bankId?: string; text?: string; questionType?: string; difficulty?: string; sourceOwnerUserId?: string; subjectId?: string; categoryId?: string; postType?: string; ranking?: string; page?: number; size?: number }
+export interface PublicFilters { mine?: boolean; saved?: boolean; publicationStatus?: PublicationStatus; bankId?: string; text?: string; questionType?: string; difficulty?: string; sourceOwnerUserId?: string; subjectId?: string; categoryId?: string; postType?: string; ranking?: string; page?: number; size?: number }
 
 export const bankApi = {
   allBanks: async () => {
@@ -75,10 +76,12 @@ export const bankApi = {
     return { ...metadata, content: content.filter(q => q.eligible === true) }
   },
   banks: (p: { type?: BankType; organizationId?: string; size?: number; page?: number } = {}) => api.get<Paged<Bank>>('/question-banks', { params: { size: 50, ...p } }).then(r => r.data),
-  personalQuestions: (bankId: string) => api.get<Paged<BankQuestion>>(`/question-banks/${bankId}/questions`, { params: { status: 'ACTIVE', size: 100, page: 0 } }).then(r => r.data),
+  personalQuestions: (bankId: string, page = 0, size = 20, text = '') => api.get<Paged<BankQuestion>>(`/question-banks/${bankId}/questions`, { params: { status: 'ACTIVE', ...(text.trim() ? { text: text.trim().slice(0, 200) } : {}), size, page } }).then(r => r.data),
   // Public
   publicList: (f: PublicFilters) => api.get<Paged<PublicQuestion>>('/public-questions', { params: { size: 20, ...f } }).then(r => r.data),
   publicGet: (id: string) => api.get<PublicQuestion>(`/public-questions/${id}`).then(r => r.data),
+  bookmark: (id: string) => api.put<void>(`/public-questions/${id}/bookmark`).then(() => undefined),
+  unbookmark: (id: string) => api.delete<void>(`/public-questions/${id}/bookmark`).then(() => undefined),
   publicTaxonomy: (kind: 'SUBJECT' | 'CATEGORY', text = '', subjectId?: string) => api.get<Paged<Taxonomy>>('/public-questions/taxonomy', { params: { kind, ...(text ? { text } : {}), ...(subjectId ? { subjectId } : {}), size: 100 } }).then(r => r.data),
   publicView: (id: string) => api.post<PublicViewResponse>(`/public-questions/${id}/view`).then(r => r.data),
   publicRate: (id: string, rating: number) => api.put(`/public-questions/${id}/rating`, { rating }).then(r => r.data),
@@ -86,7 +89,8 @@ export const bankApi = {
   publicFork: (id: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork`, { sourceQuestionVersion }).then(r => r.data),
   publicForkItem: (id: string, itemId: string, sourceQuestionVersion: number) => api.post<BankQuestion>(`/public-questions/${id}/fork-items/${itemId}`, { sourceQuestionVersion }).then(r => r.data),
   publicForkSet: (id: string) => api.post<QuestionSet>(`/public-questions/${id}/fork-set`, {}).then(r => r.data),
-  questionSets: (bankId: string, page = 0) => api.get<Paged<QuestionSet>>(`/question-banks/${bankId}/question-sets`, { params: { page, size: 100 } }).then(r => r.data),
+  questionSets: (bankId: string, page = 0, size = 20, filters: { text?: string; status?: 'ACTIVE' | 'ARCHIVED' } = {}) => api.get<Paged<QuestionSet>>(`/question-banks/${bankId}/question-sets`, { params: { ...(filters.text?.trim() ? { text: filters.text.trim().slice(0, 200) } : {}), ...(filters.status ? { status: filters.status } : {}), page, size } }).then(r => r.data),
+  questionSet: (id: string) => api.get<QuestionSet>(`/question-sets/${id}`).then(r => r.data),
   createQuestionSet: (bankId: string, body: { title: string; description?: string; items: { questionId: string; questionVersion: number }[] }) => api.post<QuestionSet>(`/question-banks/${bankId}/question-sets`, body).then(r => r.data),
   updateQuestionSet: (id: string, body: { title: string; description?: string; items: { questionId: string; questionVersion: number }[]; expectedVersion: number }) => api.put<QuestionSet>(`/question-sets/${id}`, body).then(r => r.data),
   archiveQuestionSet: (id: string) => api.delete<void>(`/question-sets/${id}`).then(() => undefined),

@@ -14,12 +14,13 @@ export interface Question {
   status: QuestionStatus; questionVersion: number; scope: 'PERSONAL' | 'ORGANIZATION' | 'SYSTEM'
   creationMethod: 'MANUAL' | 'IMPORT' | 'AI_GENERATED' | 'COPIED'; sourceType: SourceType
   sourceRefId?: string | null; sourceLabel?: string | null; sourceUrl?: string | null; sourceExcerpt?: string | null
-  expectedAnswer?: string | null
+  expectedAnswer?: string | null; explanation?: string | null
 }
 export interface QuestionInput {
   categoryId: string; content: string; questionType: QuestionType; difficultyLevel: Question['difficultyLevel']
   options: { content: string; correct: boolean; displayOrder: number }[]; expectedAnswer: string
   sourceType: SourceType; sourceRefId: string; sourceLabel: string; sourceUrl: string; sourceExcerpt: string
+  explanation?: string | null
   questionVersion?: number
 }
 export interface Page<T> { content: T[]; totalElements: number; totalPages: number; number: number }

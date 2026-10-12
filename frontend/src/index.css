@@ -4,7 +4,7 @@
    One serif (Tinos, metric-compatible with Times, full Vietnamese), regular weight,
    hierarchy by size. White paper, black 1px structure lines, #efefef secondary cells,
    one electric blue for selection / primary action / solid bars. Square corners,
-   no shadows. Red is reserved for destructive actions and errors. */
+   flat at rest (depth only appears on hover/focus/press, see "Depth on interaction"). Red is reserved for destructive actions and errors. */
 
 @theme {
   --font-sans: 'Tinos', 'Times New Roman', Times, serif;
@@ -30,7 +30,7 @@
   --color-warning: #000000;
   --color-warning-soft: #efefef;
   --color-danger: #c8102e;
-  --color-danger-hover: #000000;
+  --color-danger-hover: #b3001b;  /* deep, saturated red: the red counterpart of the electric-blue hover */
   --color-danger-soft: #fbe9ec;
   --color-info-soft: #e8eafb;
 
@@ -89,15 +89,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; text-decoration: none; white-space: nowrap; transition: background-color .1s, color .1s, border-color .1s; }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
 .btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #000; border-color: #000; }
+.btn-primary:hover:not(:disabled) { background: var(--color-hover-solid); border-color: var(--color-hover-solid); }
 .btn-secondary { background: #fff; color: #000; }
-.btn-secondary:hover:not(:disabled) { background: #000; color: #fff; }
+.btn-secondary:hover:not(:disabled) { background: var(--color-hover-soft); border-color: var(--color-accent); color: #000; }
 .btn-ghost { background: transparent; border-color: transparent; color: #000; }
 .btn-ghost:hover:not(:disabled) { text-decoration: underline; }
 .btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
-.btn-danger:hover:not(:disabled) { background: #000; border-color: #000; }
+.btn-danger:hover:not(:disabled) { background: var(--color-danger-hover); border-color: var(--color-danger-hover); }
 .btn-danger-ghost { background: transparent; border-color: transparent; color: var(--color-danger); }
-.btn-danger-ghost:hover:not(:disabled) { text-decoration: underline; }
+.btn-danger-ghost:hover:not(:disabled) { background: var(--color-danger-soft); border-color: var(--color-danger); color: var(--color-danger-hover); }
 .btn-sm { min-height: 32px; padding: 4px 10px; font-size: 0.9rem; }
 .btn-lg { min-height: 50px; padding: 10px 24px; font-size: 1.1rem; }
 .btn-icon { min-height: 38px; min-width: 38px; padding: 6px; }
@@ -114,6 +114,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .input:disabled { background: var(--color-subtle); color: var(--color-muted); border-color: var(--color-hairline); }
 .input[aria-invalid="true"] { border-color: var(--color-danger); box-shadow: inset 0 0 0 1px var(--color-danger); }
 textarea.input { min-height: 104px; resize: vertical; line-height: 1.45; }
+/* Filter bars: labels share one top line, controls share one height and baseline (the bottom), the search button sits flush against its input. */
+.filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.filter-row > .field { flex: 0 1 200px; min-width: 0; }
+.filter-row > .filter-grow { flex: 1 1 260px; }
+.input-group { display: flex; min-width: 0; }
+.input-group > .input { flex: 1 1 auto; min-width: 0; }
+.input-group > .btn { flex: 0 0 auto; min-height: 42px; margin-left: -1px; white-space: nowrap; }
 select.input { padding-right: 28px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #000 50%), linear-gradient(135deg, #000 50%, transparent 50%);
   background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
 
@@ -206,10 +213,9 @@ a.stat:hover { background: var(--color-subtle); }
 .dialog-footer { padding: 14px 20px; border-top: 1px solid #000; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
 /* App shell */
-.shell { min-height: 100dvh; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
-.sidebar { position: sticky; top: 0; height: 100dvh; background: #fff; border-right: 1px solid #000; display: flex; flex-direction: column; padding: 0; gap: 0; }
-.brand { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 64px; padding: 0 18px; font-size: 1.45rem; color: #000;
-  text-decoration: none; letter-spacing: 0.02em; border-bottom: 1px solid #000; }
+.shell { min-height: 100dvh; }
+.brand { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 0 8px 0 0; font-size: 1.45rem; color: #000;
+  text-decoration: none; letter-spacing: 0.02em; }
 .brand-mark { display: none; }
 .brand small { font-size: 0.8rem; letter-spacing: 0; color: var(--color-muted); }
 .nav { display: grid; gap: 0; }
@@ -218,7 +224,17 @@ a.stat:hover { background: var(--color-subtle); }
 .nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 18px; color: #000; font-size: 1.02rem; text-decoration: none; border-bottom: 1px solid var(--color-hairline); }
 .nav-link:hover { background: var(--color-subtle); }
 .nav-link.active { background: var(--color-accent); color: #fff; border-bottom-color: var(--color-accent); }
-.topbar { position: sticky; top: 0; z-index: 20; height: 64px; background: #fff; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 12px; padding: 0 28px; }
+.topbar { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #000; display: grid; grid-template-columns: minmax(0,1fr); padding: 0 28px; }
+.topbar-main { min-height: 64px; display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* Very narrow phones: the name block and decorative avatar give way so the bell and Đăng xuất stay on screen. */
+@media (max-width: 420px) { .topbar-who, .topbar-avatar { display: none !important; } }
+@media (max-width: 360px) { .topbar-main { gap: 4px; } .topbar .brand { padding: 0; font-size: 1.05rem; } .topbar-user { gap: 2px !important; } }
+.quicklinks { display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; border-top: 1px solid var(--color-hairline); }
+.quicklink { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; color: #000; text-decoration: none; white-space: nowrap; }
+.quicklink:hover,.quicklink:focus-visible { background: var(--color-subtle); }
+.quicklink::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--color-accent); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-pop); }
+.quicklink.active { color: var(--color-accent); }
+.quicklink.active::after { transform: scaleX(1); }
 .main { min-width: 0; display: flex; flex-direction: column; }
 .page { width: 100%; max-width: 1260px; margin: 0 auto; padding: 32px 28px 56px; }
 .page-narrow { max-width: 880px; }
@@ -229,19 +245,18 @@ a.stat:hover { background: var(--color-subtle); }
 .breadcrumb > span + span::before { content: "/"; margin-right: 6px; color: var(--color-muted); }
 .breadcrumb a { color: var(--color-muted); text-decoration: none; }
 .breadcrumb a:hover { color: #000; text-decoration: underline; }
-.menu-toggle { display: none; }
-.drawer-backdrop { display: none; }
 @media (max-width: 1023px) {
-  .shell { grid-template-columns: minmax(0, 1fr); }
-  .sidebar { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 60; transform: translateX(-100%); transition: transform .15s ease; }
-  .sidebar[data-open="true"] { transform: none; }
-  .drawer-backdrop[data-open="true"] { display: block; position: fixed; inset: 0; z-index: 50; background: rgb(196 196 196 / 0.82); }
-  .menu-toggle { display: inline-flex; }
   .topbar { padding: 0 12px; }
   .page { padding: 22px 16px 44px; }
   h1 { font-size: 1.9rem; }
 }
-@media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+@media (max-width: 560px) {
+  .topbar-main { gap: 7px; }
+  .brand { font-size: 1.15rem; }
+  .brand small { display: none; }
+  .topbar-user { gap: 6px !important; }
+  .quicklink { padding: 9px 10px; }
+}
 
 /* Split panes (list + detail) */
 .split { display: grid; gap: 16px; grid-template-columns: minmax(280px, 390px) minmax(0, 1fr); align-items: stretch; }
@@ -312,3 +327,110 @@ a.stat:hover { background: var(--color-subtle); }
 /* The card already draws the outer rule */
 .card > .list-item:last-child, .card > div > .list-item:last-child, .card li:last-child > .list-item { border-bottom: 0; }
 .split > .card { scroll-margin-top: 80px; }
+
+/* Dock: phones only. Fixed to the bottom with the safe-area inset, square, 1px black top rule, no shadow. */
+:root { --dock-h: 58px; }
+.dock, .dock-backdrop, .dock-sheet { display: none; }
+@media (max-width: 767px) {
+  .quicklinks { display: none; }
+  .shell { padding-bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); }
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); height: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); background: #fff; border-top: 1px solid #000; }
+  .dock-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; min-height: 44px; padding: 4px 2px; background: #fff; position: relative; border: 0; color: #000; font: inherit; font-size: 0.7rem; line-height: 1.1; text-decoration: none; cursor: pointer; }
+  .dock-tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-tile:hover, .dock-tile:focus-visible { background: var(--color-subtle); }
+  .dock-tile[aria-current="page"], .dock-tile[data-active="true"] { color: var(--color-accent); }
+  .dock-tile::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--color-accent); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-pop); }
+  .dock-tile[aria-current="page"]::before, .dock-tile[data-active="true"]::before { transform: scaleX(1); }
+  .dock-backdrop { display: block; position: fixed; inset: 0; z-index: 65; background: rgb(196 196 196 / 0.82); border: 0; }
+  .dock-sheet { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; max-height: 70dvh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom, 0px); background: #fff; border-top: 1px solid #000; }
+  .dock-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #000; }
+  .dock-sheet-link { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 14px; color: #000; text-decoration: none; border-bottom: 1px solid var(--color-hairline); }
+  .dock-sheet-link:focus-visible, .dock-sheet-link:hover { background: var(--color-subtle); }
+  .dock-sheet-link[aria-current="page"] { color: #fff; background: var(--color-accent); }
+  /* Sticky bottom bars must sit above the dock, not under it. */
+  .main .grade-actions { bottom: calc(var(--dock-h) + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ===== Depth on interaction =====
+   Everything is FLAT AT REST. Hard-offset depth appears only on hover (fine pointer), keyboard focus, press and scroll-in; cards lift straight (no tilt).
+   Only transform / opacity / box-shadow animate; nothing changes layout size. Card list == LIFT_SELECTOR in src/lib/depth.ts. */
+:root {
+  --shadow-hard: 4px 4px 0 #000;
+  /* Hover/lift colours are electric blue, never black: a light blue offset shadow, an accent ring that keeps a FULL 1px border on a lifted card
+     (even when its neighbours share edges), a pale blue fill for secondary buttons and a lighter solid blue for filled ones. */
+  --color-hover: #7088ff;
+  --color-hover-soft: #e4e8ff;
+  --color-hover-solid: #3a52f0;
+  --shadow-hard-hover: 7px 7px 0 var(--color-hover);
+  --shadow-lift: inset 0 0 0 1px var(--color-accent), 7px 7px 0 var(--color-hover);
+  --shadow-btn: 3px 3px 0 var(--color-hover);
+  --ease-pop: cubic-bezier(.2,.8,.2,1);
+  --ease-bounce: cubic-bezier(.34,1.56,.64,1);
+  --color-rating: #f5b301;
+  --color-rating-edge: #b7860b;
+  --color-copied: #157a3a;
+  --color-copied-soft: #e6f4ea;
+  --color-copied-edge: #6fcf8f;
+}
+
+/* Cards */
+.public-post, .org-card, .set-row, .grid-stats > .card { position: relative; transition: transform .28s var(--ease-bounce), box-shadow .22s var(--ease-pop); }
+@media (hover: hover) and (pointer: fine) {
+  .public-post:hover, .org-card:hover, .set-row:hover, .grid-stats > .card:hover {
+    transform: translate(-3px, -3px); background: #fff; box-shadow: var(--shadow-lift); z-index: 3; }
+}
+.public-post:has(:focus-visible), .org-card:focus-visible, .set-row:has(:focus-visible), .grid-stats > .card:focus-visible {
+  transform: translate(-3px, -3px); background: #fff; box-shadow: var(--shadow-lift); z-index: 3; }
+.public-post:active, .org-card:active, .set-row:active, .grid-stats > .card:active { transform: translate(0, 0); box-shadow: inset 0 0 0 1px var(--color-accent); transition-duration: .08s; }
+
+/* Buttons: physical keys. Pressed = sunk flat, released = springs back. */
+.btn { transition: transform .2s var(--ease-bounce), box-shadow .18s var(--ease-pop), background-color .1s, color .1s, border-color .1s; }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled):not([aria-disabled="true"]) { transform: translate(-2px, -2px); box-shadow: var(--shadow-btn); }
+}
+.btn:focus-visible:not(:disabled) { transform: translate(-2px, -2px); box-shadow: var(--shadow-btn); outline-offset: 4px; }
+.btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translate(0, 0); box-shadow: 0 0 0 #000; transition-duration: .06s; }
+.btn-ghost:hover, .btn-ghost:focus-visible, .btn-ghost:active, .input-group > .btn:hover, .input-group > .btn:focus-visible, .input-group > .btn:active { transform: none; box-shadow: none; }
+.btn-icon.btn-ghost { transform: none; }
+
+/* Scroll-in: each card fades up once when it first enters the viewport (marked and released by depth.ts). */
+[data-reveal="pending"] { opacity: 0; translate: 0 8px; }
+[data-reveal="in"] { opacity: 1; translate: 0 0; transition: opacity .35s var(--ease-pop) var(--rd, 0ms), translate .35s var(--ease-pop) var(--rd, 0ms), transform .28s var(--ease-bounce), box-shadow .22s var(--ease-pop); }
+
+/* Dialogs and sheets */
+@keyframes dialog-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(28px); } }
+@keyframes fade-in { from { opacity: 0; } }
+.dialog { animation: dialog-in .2s var(--ease-pop); }
+.dialog-backdrop, .dock-backdrop, .cal-sheet-backdrop, .bk-sheet-backdrop, .org-sheet-backdrop, .pt-sheet-backdrop { animation: fade-in .18s ease-out; }
+@media (max-width: 1100px) { .cal-panel, .bk-panel, .org-panel, .pt-panel { animation: sheet-in .24s var(--ease-pop); } }
+@media (max-width: 767px) { .dock-sheet { animation: sheet-in .24s var(--ease-pop); } }
+
+/* State colours that carry meaning (kept under reduced motion) */
+.star { flex: 0 0 auto; }
+.star-on { fill: var(--color-rating); stroke: var(--color-rating-edge); }
+.star-off { fill: none; stroke: #8a8a8a; }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.pop { animation: pop .34s var(--ease-bounce); }
+.btn-save[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.btn-save[aria-pressed="true"]:hover:not(:disabled) { background: var(--color-hover-solid); border-color: var(--color-hover-solid); }
+.btn-save svg { transition: fill .15s; }
+.btn-save[aria-pressed="true"] svg { fill: currentColor; animation: pop .34s var(--ease-bounce); }
+.tag-copied { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-copied); background: var(--color-copied-soft); color: var(--color-copied); font-size: .78rem; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .public-post, .org-card, .set-row, .grid-stats > .card, .btn, .quicklink::after, .dock-tile::before { transition: none; }
+  .public-post:hover, .org-card:hover, .set-row:hover, .grid-stats > .card:hover, .btn:hover, .btn:focus-visible,
+  .public-post:has(:focus-visible), .set-row:has(:focus-visible), .org-card:focus-visible, .grid-stats > .card:focus-visible,
+  .public-post:active, .org-card:active, .set-row:active, .grid-stats > .card:active, .btn:active { transform: none; }
+  [data-reveal] { opacity: 1 !important; translate: none !important; transition: none !important; }
+  .dialog, .dialog-backdrop, .dock-backdrop, .cal-sheet-backdrop, .bk-sheet-backdrop, .org-sheet-backdrop, .pt-sheet-backdrop, .cal-panel, .bk-panel, .org-panel, .pt-panel, .dock-sheet, .pop, .btn-save svg { animation: none !important; }
+}
+
+/* Danger actions: hover is RED (fill/border, offset shadow), never the blue used elsewhere. Same specificity as the generic .btn hover rules, so it must stay below them. */
+:root { --shadow-btn-danger: 3px 3px 0 #f0627a; --shadow-lift-danger: inset 0 0 0 1px var(--color-danger-hover), 6px 6px 0 #f0627a; }
+@media (hover: hover) and (pointer: fine) {
+  .btn.btn-danger:hover:not(:disabled):not([aria-disabled="true"]), .btn.btn-danger-ghost:hover:not(:disabled):not([aria-disabled="true"]) { box-shadow: var(--shadow-btn-danger); }
+}
+.btn.btn-danger:focus-visible:not(:disabled), .btn.btn-danger-ghost:focus-visible:not(:disabled) { box-shadow: var(--shadow-btn-danger); outline-color: var(--color-danger); }
+.btn.btn-danger:active:not(:disabled), .btn.btn-danger-ghost:active:not(:disabled) { box-shadow: 0 0 0 #000; }

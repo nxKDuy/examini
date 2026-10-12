@@ -11,10 +11,14 @@ public interface QuestionBankClient {
         @RequestHeader("X-Service-Token") String token,@RequestHeader("X-Question-Owner-Id") UUID owner,
         @RequestParam boolean eligible,@RequestParam boolean includeAnswers);
     record Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
-                    Boolean eligible,String bankType,String publicationStatus) {
+                    Boolean eligible,String bankType,String publicationStatus,String explanation) {
+        public Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
+                        Boolean eligible,String bankType,String publicationStatus) {
+            this(id,questionVersion,status,questionType,content,options,expectedAnswer,eligible,bankType,publicationStatus,null);
+        }
         // Legacy/missing provider eligibility must never imply permission to publish.
         public Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer) {
-            this(id,questionVersion,status,questionType,content,options,expectedAnswer,null,null,null);
+            this(id,questionVersion,status,questionType,content,options,expectedAnswer,null,null,null,null);
         }
     }
 }

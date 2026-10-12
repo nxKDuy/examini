@@ -1,3 +1,4 @@
+import { parseUtc } from '../../lib/format'
 import type { Contribution, ContributionStatus, Lineage, PublicQuestion, PublicViewResponse, QuestionSet } from './bankApi'
 import type { Organization } from '../organizations/orgApi'
 
@@ -52,13 +53,63 @@ export const isPublicOwner = (p: Pick<PublicQuestion, 'sourceOwnerUserId'>, user
 export const canUnpublish = (p: Pick<PublicQuestion, 'sourceOwnerUserId' | 'publicationStatus'>, userId: string | undefined) => isPublicOwner(p, userId) && p.publicationStatus === 'PUBLISHED'
 /** Copying needs a Teacher and a live publication (the server answers 403 / 409 otherwise). */
 export const canForkPublic = (p: Pick<PublicQuestion, 'publicationStatus'>, teacher: boolean) => teacher && p.publicationStatus === 'PUBLISHED'
+export function copiedBadge(p: Pick<PublicQuestion, 'isCopied' | 'postType' | 'items' | 'itemCount'>): string | null {
+  if (!p.isCopied) return null
+  return p.postType === 'QUESTION_SET' && (p.items?.filter(item => item.isCopied).length ?? 0) < (p.itemCount ?? p.items?.length ?? 0)
+    ? 'Đã sao chép một phần' : 'Đã sao chép'
+}
+/** Card date: when the snapshot's CONTENT was last edited at the source; older rows fall back to the publish date (the backend does the same). */
+export function updatedDate(p: Pick<PublicQuestion, 'contentUpdatedAt' | 'publishedAt'>): string | null {
+  const d = parseUtc(p.contentUpdatedAt ?? p.publishedAt)
+  return d ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : null
+}
+/** The broadest taxonomy a card can state: subjects first, else the top-level category, else the snapshot's category name. `more` counts the ones not named. */
+export function broadTopic(p: Pick<PublicQuestion, 'subjects' | 'categories' | 'question'>): { text: string; more: number } | null {
+  const subjects = [...new Set((p.subjects ?? []).map(s => s.name.trim()).filter(Boolean))]
+  if (subjects.length) return { text: subjects[0], more: subjects.length - 1 }
+  const tops = [...new Set((p.categories ?? []).map(c => (c.path?.[0] ?? c.name).trim()).filter(Boolean))]
+  if (tops.length) return { text: tops[0], more: tops.length - 1 }
+  const own = p.question?.categoryName?.trim()
+  return own ? { text: own, more: 0 } : null
+}
+export interface Stat { key: 'views' | 'copies' | 'rating'; value: string; label: string; empty?: boolean }
+/** Compact real numbers only: a missing figure is "—" (never 0 invented), no rating is stated as such, the average stays raw out of 10. */
+export function postStats(p: Pick<PublicQuestion, 'viewsTotal' | 'copiesTotal' | 'averageRating' | 'ratingCount'>): Stat[] {
+  const count = (key: 'views' | 'copies', n: number | null | undefined, noun: string): Stat => (n == null ? { key, value: '—', label: `Chưa có số liệu ${noun}` } : { key, value: String(n), label: `${n} lượt ${noun}` })
+  const rating: Stat = p.ratingCount == null ? { key: 'rating', value: '—', label: 'Chưa có số liệu đánh giá', empty: true }
+    : p.ratingCount === 0 || p.averageRating == null ? { key: 'rating', value: 'Chưa có', label: 'Chưa có đánh giá', empty: true }
+    : { key: 'rating', value: `${Number(p.averageRating.toFixed(1))}/10 (${p.ratingCount})`, label: `${Number(p.averageRating.toFixed(1))}/10 từ ${p.ratingCount} đánh giá` }
+  return [count('views', p.viewsTotal, 'xem'), count('copies', p.copiesTotal, 'sao chép'), rating]
+}
+const squash = (t: string) => t.replace(/\s+/g, ' ').replace(/[\s….]+$/u, '').trim().toLowerCase()
+/**
+ * Card title + summary without repeating itself. A real title that merely equals the summary text hides the summary; a title that fell back
+ * to the question content shows only what follows it (the continuation), or nothing when the whole content already fits in the title.
+ */
+export function cardText(p: Pick<PublicQuestion, 'title' | 'description' | 'question'>): { title: string; summary: string | null } {
+  const content = p.question?.content ?? ''
+  const given = p.title?.trim() ?? ''
+  const title = given || excerpt(content, 76)
+  const source = (p.description?.trim() || content).trim()
+  const t = squash(title), src = squash(source)
+  if (!src || src === t) return { title, summary: null }
+  if (!given && src.startsWith(t)) {
+    const rest = source.slice(Math.min(source.length, title.replace(/…$/u, '').length)).replace(/^[\s,.;:–—-]+/u, '').trim()
+    return { title, summary: rest ? excerpt(rest, 140) : null }
+  }
+  return { title, summary: excerpt(source, 140) }
+}
 export const authorName = (p: Pick<PublicQuestion, 'sourceOwnerDisplayName'>) => p.sourceOwnerDisplayName?.trim() || 'Unknown user'
 
 export const MAX_SEARCH = 200
 /** Query params for discovery: blanks dropped, text capped at 200, owner filter only when set. */
-export function publicParams(f: { text: string; questionType: string; difficulty: string; author: string; page: number; mine?: boolean; publicationStatus?: 'PUBLISHED' | 'ARCHIVED'; subjectId?: string; categoryId?: string; postType?: string; ranking?: string }) {
+export function publicParams(f: { text: string; questionType: string; difficulty: string; author: string; page: number; mine?: boolean; saved?: boolean; publicationStatus?: 'PUBLISHED' | 'ARCHIVED'; subjectId?: string; categoryId?: string; postType?: string; ranking?: string }) {
   const text = f.text.trim().slice(0, MAX_SEARCH)
-  return { ...(text ? { text } : {}), ...(f.questionType ? { questionType: f.questionType } : {}), ...(f.difficulty ? { difficulty: f.difficulty } : {}), ...(f.author ? { sourceOwnerUserId: f.author } : {}), ...(f.subjectId ? { subjectId: f.subjectId } : {}), ...(f.categoryId ? { categoryId: f.categoryId } : {}), ...(f.postType ? { postType: f.postType } : {}), ...(f.ranking ? { ranking: f.ranking } : {}), ...(f.mine ? { mine: true, ...(f.publicationStatus ? { publicationStatus: f.publicationStatus } : {}) } : {}), page: f.page }
+  return { ...(text ? { text } : {}), ...(f.questionType ? { questionType: f.questionType } : {}), ...(f.difficulty ? { difficulty: f.difficulty } : {}), ...(f.author ? { sourceOwnerUserId: f.author } : {}), ...(f.subjectId ? { subjectId: f.subjectId } : {}), ...(f.categoryId ? { categoryId: f.categoryId } : {}), ...(f.postType ? { postType: f.postType } : {}), ...(f.ranking ? { ranking: f.ranking } : {}), ...(f.saved ? { saved: true } : {}), ...(f.mine && !f.saved ? { mine: true, ...(f.publicationStatus ? { publicationStatus: f.publicationStatus } : {}) } : {}), page: f.page }
+}
+
+export function applyBookmarkState<T extends PublicQuestion>(post: T, isSaved: boolean): T {
+  return { ...post, isSaved }
 }
 
 export const excerpt = (text: string, max = 140) => { const t = text.replace(/\s+/g, ' ').trim(); return t.length <= max ? t : `${t.slice(0, max - 1)}…` }
@@ -84,6 +135,8 @@ export function provenanceChain(l: Lineage | null): ChainLink[] {
 
 /** Publish failing with 503 means Auth could not confirm the author's display name: nothing was published. */
 export const isAuthorLookupFailure = (e: unknown) => (e as { response?: { status?: number } })?.response?.status === 503
+/** Save/Saved exist for Teacher and Student accounts only (backend answers 403 for other actors). Never inferred from TEACHER = ADMIN: the shared audience decides. */
+export const canBookmark = (audience: string) => audience === 'TEACHER' || audience === 'STUDENT'
 export const isStatus = (e: unknown, status: number) => (e as { response?: { status?: number } })?.response?.status === status
 
 /** Eligibility is the provider's decision, never a status approximation. */

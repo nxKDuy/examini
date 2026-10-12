@@ -7,6 +7,7 @@ export const isChoiceAnswer = (type: string) => type === 'MULTIPLE_CHOICE' || ty
 /** The server auto-scores it, so changing that score is an override that needs its own reason. Includes SHORT_ANSWER. */
 export const isAutoGraded = (type: string) => isChoiceAnswer(type) || type === 'SHORT_ANSWER'
 export const shortStudent = (id: string) => id.slice(0, 8)
+export const studentName = (submission: { studentId: string; studentDisplayName?: string | null }) => submission.studentDisplayName?.trim() || `Thí sinh ${shortStudent(submission.studentId)}`
 
 export interface ItemForm { score: string; feedback: string; overrideReason: string }
 export interface GradeForm { feedback: string; items: Record<string, ItemForm> }
@@ -116,7 +117,8 @@ export const isStaleRevision = (error: unknown) => {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Own answer text; an objective answer that is only an option id cannot be shown by name (Contract Request), so say so instead of guessing. */
-export function studentAnswerText(type: string, answer: string | undefined): { text: string; unresolved: boolean } | null {
+export function studentAnswerText(type: string, answer: string | undefined, answerDisplay?: string | null): { text: string; unresolved: boolean } | null {
+  if (answerDisplay !== undefined && answerDisplay !== null && answerDisplay.trim() !== '') return { text: answerDisplay, unresolved: false }
   if (answer === undefined || answer === null || answer.trim() === '') return null
   if (isChoiceAnswer(type) && UUID.test(answer.trim())) return { text: 'Đã chọn một phương án', unresolved: true }
   return { text: answer, unresolved: false }

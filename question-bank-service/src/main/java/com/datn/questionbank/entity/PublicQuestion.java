@@ -21,6 +21,7 @@ public class PublicQuestion {
     @Column(name="difficulty_level",nullable=false,updatable=false,length=10) @Enumerated(EnumType.STRING) private Question.DifficultyLevel difficultyLevel;
     @Column(name="verified_by",nullable=false,updatable=false) private UUID verifiedBy;
     @Column(name="verified_at",nullable=false,updatable=false) private LocalDateTime verifiedAt;
+    @Column(name="content_updated_at",nullable=false,updatable=false) private LocalDateTime contentUpdatedAt;
     @Enumerated(EnumType.STRING) @Column(nullable=false,length=20) @Setter private PublicationStatus status;
     @Column(name="archived_by") @Setter private UUID archivedBy;
     @Column(name="archived_at") @Setter private LocalDateTime archivedAt;

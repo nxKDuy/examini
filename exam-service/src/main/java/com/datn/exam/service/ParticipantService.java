@@ -123,6 +123,12 @@ public class ParticipantService {
         }).toList();
     }
 
+    /** Trusted best-effort display data for Exam-owned consumers; authorization stays with the caller route. */
+    public IdentityClient.Identity identity(UUID userId) {
+        if(userId==null)throw ExamCore.error(400,"User required");
+        return resolve(new IdentityClient.Selector(List.of(userId),null),false).stream().filter(i->userId.equals(i.userId())).findFirst().orElse(null);
+    }
+
     private List<IdentityClient.Identity> resolve(IdentityClient.Selector selector,boolean required) {
         if(identityToken.isBlank())throw ExamCore.error(503,"IDENTITY_PROVIDER_NOT_CONFIGURED");
         try{

@@ -78,10 +78,10 @@ open_path('/dashboard')
 logout()
 login('admin')
 expect_text('Quản trị hệ thống')
-expect_text('Duyệt câu hỏi')
+expect_text('Câu cá nhân không cần duyệt')  # personal questions need no review any more; reviewing happens per organization
 open_path('/users')
 expect_url('/dashboard')
-print('PASS Admin dashboard + review navigation; unsupported user management is not exposed')
+print('PASS Admin dashboard + current question navigation; unsupported user management is not exposed')
 logout()
 for persona in ['STUDENT', 'TEACHER']:
     open_path('/register')

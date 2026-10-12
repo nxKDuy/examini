@@ -254,7 +254,7 @@ public class ExamCore {
                 options.stream().anyMatch(o->o.id()==null || o.content()==null) || options.stream().map(Snapshot.Option::id).distinct().count()!=options.size()))
                 throw error(409,"Invalid objective grading key");
             if("SHORT_ANSWER".equals(q.questionType()) && (q.expectedAnswer()==null || q.expectedAnswer().isBlank()))throw error(409,"Missing short-answer key");
-            snapshots.add(new Snapshot(id,q.questionVersion(),q.questionType(),q.content(),options,points,q.expectedAnswer(),pos++));
+            snapshots.add(new Snapshot(id,q.questionVersion(),q.questionType(),q.content(),options,points,q.expectedAnswer(),q.explanation(),pos++));
         }
         BigDecimal total=snapshots.stream().map(Snapshot::points).reduce(BigDecimal.ZERO,BigDecimal::add);
         if(e.getPassingScore()!=null && (!Float.isFinite(e.getPassingScore()) || e.getPassingScore()<0 || e.getPassingScore()>total.floatValue()))throw error(400,"Invalid passing score");
