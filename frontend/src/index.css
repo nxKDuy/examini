@@ -89,13 +89,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; text-decoration: none; white-space: nowrap; transition: background-color .1s, color .1s, border-color .1s; }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
 .btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #000; border-color: #000; }
+.btn-primary:hover:not(:disabled) { background: var(--color-hover-solid); border-color: var(--color-hover-solid); }
 .btn-secondary { background: #fff; color: #000; }
-.btn-secondary:hover:not(:disabled) { background: #000; color: #fff; }
+.btn-secondary:hover:not(:disabled) { background: var(--color-hover-soft); border-color: var(--color-accent); color: #000; }
 .btn-ghost { background: transparent; border-color: transparent; color: #000; }
 .btn-ghost:hover:not(:disabled) { text-decoration: underline; }
 .btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
-.btn-danger:hover:not(:disabled) { background: #000; border-color: #000; }
+.btn-danger:hover:not(:disabled) { background: #a30f24; border-color: #a30f24; }
 .btn-danger-ghost { background: transparent; border-color: transparent; color: var(--color-danger); }
 .btn-danger-ghost:hover:not(:disabled) { text-decoration: underline; }
 .btn-sm { min-height: 32px; padding: 4px 10px; font-size: 0.9rem; }
@@ -356,9 +356,14 @@ a.stat:hover { background: var(--color-subtle); }
    Only transform / opacity / box-shadow animate; nothing changes layout size. Card list == LIFT_SELECTOR in src/lib/depth.ts. */
 :root {
   --shadow-hard: 4px 4px 0 #000;
-  --shadow-hard-hover: 7px 7px 0 #000;
-  --shadow-lift: inset 0 0 0 1px #000, 7px 7px 0 #000; /* the inset ring keeps a FULL 1px border on a lifted card even when its neighbours share edges */
-  --shadow-btn: 3px 3px 0 #000;
+  /* Hover/lift colours are electric blue, never black: a light blue offset shadow, an accent ring that keeps a FULL 1px border on a lifted card
+     (even when its neighbours share edges), a pale blue fill for secondary buttons and a lighter solid blue for filled ones. */
+  --color-hover: #7088ff;
+  --color-hover-soft: #e4e8ff;
+  --color-hover-solid: #3a52f0;
+  --shadow-hard-hover: 7px 7px 0 var(--color-hover);
+  --shadow-lift: inset 0 0 0 1px var(--color-accent), 7px 7px 0 var(--color-hover);
+  --shadow-btn: 3px 3px 0 var(--color-hover);
   --ease-pop: cubic-bezier(.2,.8,.2,1);
   --ease-bounce: cubic-bezier(.34,1.56,.64,1);
   --color-rating: #f5b301;
@@ -375,7 +380,7 @@ a.stat:hover { background: var(--color-subtle); }
 }
 .public-post:has(:focus-visible), .org-card:focus-visible, .set-row:has(:focus-visible), .grid-stats > .card:focus-visible {
   transform: translate(-3px, -3px); background: #fff; box-shadow: var(--shadow-lift); z-index: 3; }
-.public-post:active, .org-card:active, .set-row:active, .grid-stats > .card:active { transform: translate(0, 0); box-shadow: inset 0 0 0 1px #000; transition-duration: .08s; }
+.public-post:active, .org-card:active, .set-row:active, .grid-stats > .card:active { transform: translate(0, 0); box-shadow: inset 0 0 0 1px var(--color-accent); transition-duration: .08s; }
 
 /* Buttons: physical keys. Pressed = sunk flat, released = springs back. */
 .btn { transition: transform .2s var(--ease-bounce), box-shadow .18s var(--ease-pop), background-color .1s, color .1s, border-color .1s; }
@@ -407,7 +412,7 @@ a.stat:hover { background: var(--color-subtle); }
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.2); } 100% { transform: scale(1); } }
 .pop { animation: pop .34s var(--ease-bounce); }
 .btn-save[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
-.btn-save[aria-pressed="true"]:hover:not(:disabled) { background: #000; border-color: #000; }
+.btn-save[aria-pressed="true"]:hover:not(:disabled) { background: var(--color-hover-solid); border-color: var(--color-hover-solid); }
 .btn-save svg { transition: fill .15s; }
 .btn-save[aria-pressed="true"] svg { fill: currentColor; animation: pop .34s var(--ease-bounce); }
 .tag-copied { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-copied); background: var(--color-copied-soft); color: var(--color-copied); font-size: .78rem; white-space: nowrap; }
