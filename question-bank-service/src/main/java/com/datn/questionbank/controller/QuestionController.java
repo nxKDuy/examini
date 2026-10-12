@@ -3,6 +3,7 @@ package com.datn.questionbank.controller;
 import com.datn.questionbank.dto.QuestionDto.*;
 import com.datn.questionbank.entity.Question.*;
 import com.datn.questionbank.security.QuestionActor;
+import com.datn.questionbank.service.ExamEligibilityService;
 import com.datn.questionbank.service.QuestionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -20,6 +21,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class QuestionController {
     private final QuestionService service;
+    private final ExamEligibilityService eligibility;
 
     private QuestionActor actor(HttpServletRequest request) {
         Object actor = request.getAttribute(QuestionActor.class.getName());
@@ -37,6 +39,20 @@ public class QuestionController {
             HttpServletRequest request) {
         if (pageable.getPageSize() > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "size tối đa 100");
         return service.findAll(categoryId, difficulty, questionType, status, creationMethod, sourceType, text, scope, pageable, actor(request));
+    }
+    @GetMapping("/eligible")
+    public Page<QuestionProjection> eligible(@RequestParam(required=false) UUID bankId, @RequestParam(required=false) UUID categoryId,
+            @RequestParam(required=false) QuestionType questionType, @RequestParam(required=false) DifficultyLevel difficulty,
+            @RequestParam(required=false) String text, @PageableDefault(size=20) Pageable pageable, HttpServletRequest req) {
+        return eligibility.page(new EligibleFilter(bankId, categoryId, questionType, difficulty, text), pageable, actor(req));
+    }
+    @PostMapping("/eligible/ids")
+    public EligibleIdsResponse eligibleIds(@Valid @RequestBody EligibleFilter body, HttpServletRequest req) {
+        return eligibility.ids(body, actor(req));
+    }
+    @PostMapping("/eligible/random")
+    public EligibleRandomResponse eligibleRandom(@Valid @RequestBody EligibleRandomRequest body, HttpServletRequest req) {
+        return eligibility.pick(body, actor(req));
     }
     @GetMapping("/{id}")
     public QuestionProjection findById(@PathVariable UUID id, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) { return service.findById(id, includeAnswers, actor(req)); }

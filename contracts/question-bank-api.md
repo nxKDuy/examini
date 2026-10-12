@@ -115,6 +115,35 @@ gateway authorization requires coordinator approval; no route is invented here.
 - Question changes yield a new revision; they do not mutate an already captured
   exam snapshot. Student responses never expose the grading key.
 
+## CURRENT: Exam Builder selection (scope lock B, 2026-10-12)
+
+Provider: `QuestionController`, `MultiBankController`, `ExamEligibilityService`,
+`QuestionSetService.eligibleItems`. All routes use the same bank-aware eligible
+universe as `POST /questions/batch?eligible=true` (and `GET /questions/random`):
+Personal ACTIVE owned by the actor, System ACTIVE, items of PUBLISHED Public posts,
+and approved Organization publications **only when `bankId` is that Organization
+bank and the actor has BANK_USE** (online check, fails closed 503). Every returned
+id resolves through the eligible batch; consumers still re-check on save/publish.
+Filters are optional and AND-combined: `bankId`, `categoryId` (exact category,
+no subtree), `questionType`, `difficulty`, `text` (trimmed, literal
+case-insensitive substring, ≤200 chars; `%`/`_` are not wildcards). Unknown or
+unreadable `bankId` → 404.
+
+| Route | Caller | Request | Response |
+| --- | --- | --- | --- |
+| `GET /questions/eligible` | user JWT | query filters + `page`, `size` (≤100, default 20) | Spring Page of Safe question DTO (no `correct`, `expectedAnswer`, `explanation`, `sourceExcerpt`); `eligible=true`; order newest (`updatedAt`/publication time) then id. `id` is the resource id to put in the exam (Question id, Public item id or Organization publication id). |
+| `POST /questions/eligible/ids` | user JWT | JSON `{bankId?, categoryId?, questionType?, difficulty?, text?}` | `{ids: UUID[], total, truncated}`; at most **500** ids in browse order; `truncated=true` when `total>500` (UI must say only 500 were selected). |
+| `GET /question-sets/{id}/eligible-items` | Set owner (user JWT) | path | `{setId, setVersion, items[], skipped[]}`. `items[]`: `{position, questionId, setQuestionVersion, questionVersion, versionChanged, question(Safe DTO of the current ACTIVE version)}`. `skipped[]`: `{position, questionId, setQuestionVersion, status?, reason, message}` with `reason` ∈ `QUESTION_NOT_FOUND`, `NOT_ACCESSIBLE`, `NOT_ACTIVE` (status `DRAFT`/`ARCHIVED`). Positions are the Set's current-version order. Non-owner → 404. |
+| `POST /questions/eligible/random` | exam-service (`X-Service-Token` + `X-Question-Owner-Id` = teacher) **or** user JWT | `{bankId?, categoryId?, questionType?, difficulty?, count (1..200), excludeQuestionIds? (≤1000)}` | `{ids: UUID[], requested, available}`; random order, never contains an excluded id; `available` = matching eligible count after exclusion. Shortfall = `requested - ids.length` (= `max(0, requested-available)`); provider never backfills from other filters. |
+
+Blueprint usage (exam-service): call `/questions/eligible/random` once per row,
+passing every id already picked by earlier rows plus the request's
+`excludeQuestionIds` as `excludeQuestionIds`; this guarantees no duplicate
+across rows. Then freeze via `POST /questions/batch?eligible=true&includeAnswers=true`.
+The service token may call only `GET /questions/random`, `POST /questions/batch`
+(eligible) and `POST /questions/eligible/random`; other routes → 403.
+`GET /questions/random` is unchanged for compatibility (now backed by the same query).
+
 ## FUTURE
 
 Structured provenance, richer QuestionVersion history and QuestionReview audit
