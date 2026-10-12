@@ -53,6 +53,7 @@ class MultiBankPersistenceTest {
     @Autowired Environment environment;
     @Autowired Validator validator;
     @Autowired NamedParameterJdbcTemplate jdbc;
+    @Autowired BankRegistry registry;
     @MockBean OrganizationAuthorizationClient organizationAuthorization;
     @MockBean AuthIdentityClient identities;
 
@@ -165,6 +166,44 @@ class MultiBankPersistenceTest {
         assertEquals(1,copySync.setHistory(copied.id(),reviewer).size());
     }
 
+    @Test void examBuilderEligibleBrowseSelectAllRowsAndSetMembers() throws Exception {
+        var tag="EB"+UUID.randomUUID().toString().substring(0,8);var ids=new ArrayList<UUID>();
+        for(int i=0;i<5;i++)ids.add(active(tag+" q"+i).id());
+        questions.create(input(tag+" draft",QuestionScope.PERSONAL),owner);
+        var filter=new EligibleFilter(null,null,null,null,tag.toLowerCase());
+        var page=eligibility.page(filter,org.springframework.data.domain.PageRequest.of(0,2),owner);
+        assertEquals(5,page.getTotalElements());assertEquals(2,page.getContent().size());
+        assertTrue(page.getContent().stream().allMatch(QuestionProjection::eligible));
+        assertFalse(json.writeValueAsString(page.getContent()).contains("\"correct\""));
+        assertEquals(0,eligibility.page(filter,org.springframework.data.domain.PageRequest.of(0,2),reviewer).getTotalElements());
+        assertEquals(0,eligibility.page(new EligibleFilter(null,null,null,DifficultyLevel.HARD,tag),org.springframework.data.domain.PageRequest.of(0,20),owner).getTotalElements());
+        assertEquals(0,eligibility.ids(new EligibleFilter(null,null,null,null,tag+"%"),owner).total());
+        fails(400,()->eligibility.page(filter,org.springframework.data.domain.PageRequest.of(0,101),owner));
+        var all=eligibility.ids(filter,owner);
+        assertEquals(Set.copyOf(ids),Set.copyOf(all.ids()));assertEquals(5,all.total());assertFalse(all.truncated());
+
+        var bank=registry.defaultPersonal(owner.userId());
+        var row=eligibility.pick(new EligibleRandomRequest(bank,category,QuestionType.MULTIPLE_CHOICE,DifficultyLevel.EASY,3,ids.subList(0,2)),owner);
+        assertEquals(3,row.ids().size());assertEquals(3,row.available());assertEquals(3,row.requested());
+        assertTrue(row.ids().stream().noneMatch(ids.subList(0,2)::contains));assertTrue(ids.containsAll(row.ids()));
+        var shortfall=eligibility.pick(new EligibleRandomRequest(bank,category,null,DifficultyLevel.EASY,10,null),owner);
+        assertEquals(5,shortfall.ids().size());assertEquals(5,shortfall.available());assertEquals(10,shortfall.requested());
+        fails(400,()->eligibility.pick(new EligibleRandomRequest(bank,null,null,null,0,null),owner));
+        fails(404,()->eligibility.pick(new EligibleRandomRequest(bank,null,null,null,1,null),reviewer));
+
+        var set=sets.create(bank,new QuestionSetWrite("Builder set",null,List.of(new SetItemRequest(ids.get(0),1L),
+                new SetItemRequest(ids.get(1),1L),new SetItemRequest(ids.get(2),1L)),null),owner);
+        var v2=questions.update(ids.get(0),edit(tag+" q0 v2",1),owner);questions.activate(ids.get(0),v2.questionVersion(),owner);
+        questions.update(ids.get(1),edit(tag+" q1 draft",1),owner);
+        questions.archive(ids.get(2),1,owner);
+        var members=sets.eligibleItems(set.id(),owner);
+        assertEquals(1,members.items().size());var first=members.items().getFirst();
+        assertEquals(0,first.position());assertEquals(1,first.setQuestionVersion());assertEquals(2,first.questionVersion());assertTrue(first.versionChanged());
+        assertEquals(List.of(1,2),members.skipped().stream().map(SetSkippedItem::position).toList());
+        assertEquals(List.of(QuestionStatus.DRAFT,QuestionStatus.ARCHIVED),members.skipped().stream().map(SetSkippedItem::status).toList());
+        assertTrue(members.skipped().stream().allMatch(s->s.reason()==SetSkipReason.NOT_ACTIVE));
+        fails(404,()->sets.eligibleItems(set.id(),reviewer));
+    }
     @Test void personalOwnerActivatesUsesAndVersionsWithoutReview(){
         var q=active("Personal active");
         questionRepo.flush();

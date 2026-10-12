@@ -211,6 +211,17 @@ class QuestionPersistenceTest {
         http.perform(get("/questions/random").param("categoryId",category.toString()).param("difficulty","EASY").param("limit","200")
                 .header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+        http.perform(post("/questions/eligible/random").header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId())
+                .contentType("application/json").content("{\"categoryId\":\""+category+"\",\"difficulty\":\"EASY\",\"count\":5,\"excludeQuestionIds\":[]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.ids.length()").value(1)).andExpect(jsonPath("$.available").value(1)).andExpect(jsonPath("$.requested").value(5));
+        http.perform(post("/questions/eligible/random").header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId())
+                .contentType("application/json").content("{\"count\":201}")).andExpect(status().isBadRequest());
+        http.perform(get("/questions/eligible").header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId()))
+                .andExpect(status().isForbidden());
+        http.perform(get("/questions/eligible").param("text","Internal eligible").header("Authorization",jwt(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.content[0].options[0].correct").doesNotExist());
+        http.perform(post("/questions/eligible/ids").header("Authorization",jwt(owner)).contentType("application/json").content("{\"text\":\"Internal eligible\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.ids[0]").value(q.id().toString())).andExpect(jsonPath("$.truncated").value(false));
         http.perform(get("/questions/random").param("categoryId",category.toString()).param("difficulty","EASY").param("status","DRAFT")
                 .header("Authorization",jwt(owner))).andExpect(status().isBadRequest());
         service.update(q.id(),new UpdateRequest(null,"Edited after publication input",null,null,null,null,null,null,null,null,null,null,1L),owner);

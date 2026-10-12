@@ -46,6 +46,7 @@ public class MultiBankController {
     @PostMapping("/question-banks/{id}/question-sets") @ResponseStatus(HttpStatus.CREATED)
     public QuestionSetResponse createSet(@PathVariable UUID id,@Valid @RequestBody QuestionSetWrite b,HttpServletRequest r){return sets.create(id,b,actor(r));}
     @GetMapping("/question-sets/{id}") public QuestionSetResponse questionSet(@PathVariable UUID id,HttpServletRequest r){return sets.get(id,actor(r));}
+    @GetMapping("/question-sets/{id}/eligible-items") public SetEligibleItemsResponse questionSetEligibleItems(@PathVariable UUID id,HttpServletRequest r){return sets.eligibleItems(id,actor(r));}
     @GetMapping("/question-sets/{id}/versions/{version}") public QuestionSetResponse questionSetVersion(@PathVariable UUID id,@PathVariable long version,HttpServletRequest r){return sets.version(id,version,actor(r));}
     @PutMapping("/question-sets/{id}") public QuestionSetResponse updateSet(@PathVariable UUID id,@Valid @RequestBody QuestionSetWrite b,HttpServletRequest r){return sets.update(id,b,actor(r));}
     @DeleteMapping("/question-sets/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void archiveSet(@PathVariable UUID id,HttpServletRequest r){sets.archive(id,actor(r));}
