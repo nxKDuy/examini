@@ -170,7 +170,9 @@ anything else is dead-lettered without retry and does not consume its `eventId`.
 ## Header KPIs (`ExamSummary.kpi`, scope lock 2026-10-12)
 
 `participatedStudents` (null: no attempt-start event), `submittedStudents` (distinct Students with a valid
-submission), `registeredCount`, `completionRate` = submittedStudents / registeredCount (null without participant
-snapshot or when 0; denominator named in `completionRateDenominator`), `publishedAverageScore` (null: no Grading
+submission), `registeredCount`, `eligibleCount`, `completionRate` = min(1, submittedStudents / eligibleCount)
+(null without participant snapshot or when eligibleCount = 0; denominator named in `completionRateDenominator`; clamped
+because the count-only projection cannot remove revoked Students from the numerator; `submissionRate` is kept unclamped
+for compatibility), `publishedAverageScore` (null: no Grading
 released-score snapshot), `needsGradingCount` = valid NEEDS_REVIEW + PENDING attempts. Null is never 0; reasons are in
 `kpi.unavailable`. Contract Requests for MAIN: `ANALYTICS-SESSION-ATTEMPT-STARTED`, `ANALYTICS-GRADING-RELEASED-SCORE`.

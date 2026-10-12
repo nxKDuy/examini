@@ -45,7 +45,8 @@ public final class AnalyticsDto {
      * unavailable[kpiName]. Invalidated attempts are excluded everywhere.
      * participatedStudents: distinct Students who started an attempt (needs a Session attempt-start event).
      * submittedStudents: distinct Students with a valid submission (denominator for nothing; informational).
-     * completionRate = submittedStudents / registeredCount (needs registered snapshot); null otherwise.
+     * completionRate = min(1, submittedStudents / eligibleCount) (needs participant snapshot, eligibleCount > 0); null otherwise.
+     *   Clamped because the count-only projection cannot drop revoked Students from the numerator.
      * publishedAverageScore: mean of each Student's latest RELEASED score (needs Grading publication snapshot).
      * needsGradingCount: attempt-level NEEDS_REVIEW + PENDING valid results.
      */
@@ -53,6 +54,7 @@ public final class AnalyticsDto {
             Long participatedStudents,
             long submittedStudents,
             Integer registeredCount,
+            Integer eligibleCount,
             BigDecimal completionRate,
             String completionRateDenominator,
             BigDecimal publishedAverageScore,

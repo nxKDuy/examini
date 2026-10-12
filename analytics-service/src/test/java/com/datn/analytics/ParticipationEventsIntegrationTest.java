@@ -126,7 +126,8 @@ class ParticipationEventsIntegrationTest {
         assertNull(s.kpi().participatedStudents());
         assertNull(s.kpi().publishedAverageScore());
         assertEquals(1, s.kpi().submittedStudents());
-        assertEquals(0, new BigDecimal("0.2500").compareTo(s.kpi().completionRate())); // 1 / 4 registered
+        assertEquals(0, new BigDecimal("0.2500").compareTo(s.kpi().completionRate())); // 1 / 4 eligible
+        assertEquals(4, s.kpi().eligibleCount());
         assertEquals(0, s.kpi().needsGradingCount());
         assertEquals(2, s.kpi().unavailable().size());
         assertEquals(1, s.scoreDistribution().stream().mapToLong(b -> b.count()).sum());
@@ -136,6 +137,29 @@ class ParticipationEventsIntegrationTest {
         assertEquals(3, rows.size());
         assertEquals(Set.of(s2, s3), rows.stream().filter(r -> r.invalidated()).map(r -> r.sessionId())
                 .collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test void completionRateUsesEligibleDenominatorAndIsClamped() {
+        // 4 registered, 2 revoked: the denominator is the 2 still-eligible Students, not 4.
+        deliver(participant(UUID.randomUUID(), exam, "REVOKED", 1, 4, 2, 2));
+        graded(UUID.randomUUID(), UUID.randomUUID(), "8");
+        var k = queries.summary(exam).kpi();
+        assertEquals(4, k.registeredCount());
+        assertEquals(2, k.eligibleCount());
+        assertEquals(0, new BigDecimal("0.5000").compareTo(k.completionRate()));
+        assertTrue(k.completionRateDenominator().startsWith("eligibleCount"));
+        assertFalse(k.unavailable().containsKey("completionRate"));
+        // A revoked Student's earlier submission can push submitters above eligible: KPI clamps, legacy rate does not.
+        graded(UUID.randomUUID(), UUID.randomUUID(), "6");
+        graded(UUID.randomUUID(), UUID.randomUUID(), "4");
+        var s = queries.summary(exam);
+        assertEquals(0, new BigDecimal("1.0000").compareTo(s.kpi().completionRate()));
+        assertEquals(0, new BigDecimal("1.5000").compareTo(s.submissionRate()));
+        // Nobody eligible: null with a reason, never 0.
+        deliver(participant(UUID.randomUUID(), exam, "REVOKED", 2, 4, 0, 4));
+        k = queries.summary(exam).kpi();
+        assertNull(k.completionRate());
+        assertTrue(k.unavailable().containsKey("completionRate"));
     }
 
     @Test void studentSummariesAndResultFiltersCountValidAttemptsPrecisely() {

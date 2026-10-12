@@ -66,10 +66,11 @@ public class ExamAnalyticsQueries {
             var unavailable = new java.util.LinkedHashMap<String, String>();
             unavailable.put("participatedStudents", "Chưa có event bắt đầu attempt từ Session (Contract Request ANALYTICS-SESSION-ATTEMPT-STARTED)");
             unavailable.put("publishedAverageScore", "Chưa có snapshot điểm đã công bố từ Grading (Contract Request ANALYTICS-GRADING-RELEASED-SCORE)");
-            BigDecimal completion = registered == null || registered == 0 ? null
-                    : BigDecimal.valueOf(candidates).divide(BigDecimal.valueOf(registered), 4, java.math.RoundingMode.HALF_UP);
-            if (completion == null) unavailable.put("completionRate", "Chưa có snapshot participant hoặc registeredCount = 0");
-            var kpi = new Kpi(null, candidates, registered, completion, "registeredCount (Student đã đăng ký, gồm đã thu hồi)",
+            // The projection carries counts only, so a revoked Student's submission still counts in the
+            // numerator; clamp to 1 instead of guessing which submitters are still eligible.
+            BigDecimal completion = rate == null ? null : rate.min(BigDecimal.ONE.setScale(4));
+            if (completion == null) unavailable.put("completionRate", "Chưa có snapshot participant hoặc eligibleCount = 0");
+            var kpi = new Kpi(null, candidates, registered, eligible, completion, "eligibleCount (Student đủ điều kiện, không gồm đã thu hồi)",
                     null, needsReview + pending, unavailable);
             return new ExamSummary(examId, candidates, submissions, graded,
                     rs.getLong("needs_review"), rs.getLong("pending"), rs.getBigDecimal("max_possible"),
