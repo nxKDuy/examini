@@ -37,17 +37,38 @@ public final class AnalyticsDto {
             long invalidatedCount,
             BigDecimal submissionRate,
             BigDecimal gradingCompletionRate,
-            Kpi kpi
+            Kpi kpi,
+            PublishedStats published
+    ) {}
+
+    /**
+     * Released scores (grading.result.published v1), student-level: one row per Student = that Student's
+     * most recently released valid attempt (latest releasedAt; each session at its highest resultRevision).
+     * Attempts invalidated by exam.attempt.invalidated or flagged invalidated at release are excluded.
+     * Percent = totalScore * 100 / maxScore (results with maxScore = 0 are left out of percent figures).
+     * Score fields are null and distribution is all zero when students = 0.
+     */
+    public record PublishedStats(
+            long students,
+            BigDecimal averageScore,
+            BigDecimal highScore,
+            BigDecimal lowScore,
+            BigDecimal averagePercent,
+            BigDecimal highPercent,
+            BigDecimal lowPercent,
+            List<ScoreBucket> distribution
     ) {}
 
     /**
      * Header KPIs. A null value is "source data not available", never 0; the reason is in
      * unavailable[kpiName]. Invalidated attempts are excluded everywhere.
-     * participatedStudents: distinct Students who started an attempt (needs a Session attempt-start event).
+     * participatedStudents: distinct Students with a started, non-invalidated attempt (exam.attempt.started);
+     *   null until at least one start for the exam has been projected (cannot tell "nobody" from "not replayed yet").
      * submittedStudents: distinct Students with a valid submission (denominator for nothing; informational).
      * completionRate = min(1, submittedStudents / eligibleCount) (needs participant snapshot, eligibleCount > 0); null otherwise.
      *   Clamped because the count-only projection cannot drop revoked Students from the numerator.
-     * publishedAverageScore: mean of each Student's latest RELEASED score (needs Grading publication snapshot).
+     * publishedAverageScore: PERCENT 0-100, mean over Students of the latest released valid attempt's percent
+     *   (= published.averagePercent); null while no valid released result exists.
      * needsGradingCount: attempt-level NEEDS_REVIEW + PENDING valid results.
      */
     public record Kpi(

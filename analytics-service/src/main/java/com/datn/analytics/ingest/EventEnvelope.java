@@ -12,9 +12,18 @@ public record EventEnvelope(UUID eventId, String eventType, Instant occurredAt, 
     public static final int VERSION = 1;
     public static final String PARTICIPANT_CHANGED = "exam.participant.changed";
     public static final String ATTEMPT_INVALIDATED = "exam.attempt.invalidated";
-    public static final Set<String> HANDLED = Set.of(PARTICIPANT_CHANGED, ATTEMPT_INVALIDATED);
+    public static final String ATTEMPT_STARTED = "exam.attempt.started";
+    /** Handled on examini.events, where the routing key equals eventType. */
+    public static final Set<String> HANDLED = Set.of(PARTICIPANT_CHANGED, ATTEMPT_INVALIDATED, ATTEMPT_STARTED);
+    /** On examini.grading.events; routing key is eventType + ".v1". */
+    public static final String RESULT_PUBLISHED = "grading.result.published";
 
     public static EventEnvelope parse(ObjectMapper json, byte[] body, String routingKey) {
+        return parse(json, body, routingKey, HANDLED, "");
+    }
+
+    /** @param routingSuffix appended to eventType to form the expected routing key (e.g. ".v1"). */
+    public static EventEnvelope parse(ObjectMapper json, byte[] body, String routingKey, Set<String> handled, String routingSuffix) {
         JsonNode root;
         try {
             root = json.readTree(body);
@@ -24,8 +33,8 @@ public record EventEnvelope(UUID eventId, String eventType, Instant occurredAt, 
         if (root == null || !root.isObject()) throw new ResultProjector.InvalidEventException("Envelope must be an object");
         UUID eventId = uuid(root, "eventId");
         String type = text(root, "eventType");
-        if (!HANDLED.contains(type)) throw new ResultProjector.InvalidEventException("Unsupported eventType " + type);
-        if (routingKey != null && !routingKey.isEmpty() && !routingKey.equals(type))
+        if (!handled.contains(type)) throw new ResultProjector.InvalidEventException("Unsupported eventType " + type);
+        if (routingKey != null && !routingKey.isEmpty() && !routingKey.equals(type + routingSuffix))
             throw new ResultProjector.InvalidEventException("Routing key does not match eventType");
         int version = integer(root, "eventVersion");
         if (version != VERSION) throw new ResultProjector.InvalidEventException("Unsupported eventVersion " + version);
