@@ -31,7 +31,8 @@ public class IntegrityService {
     // Network loss is audit-only; SESSION_RESUME and recovery signals are evidence without budget cost.
     private static final Set<EventType> BUDGET_EVENTS=Set.of(EventType.TAB_SWITCH,EventType.WINDOW_BLUR,
             EventType.EXIT_FULLSCREEN,EventType.PAGE_RELOAD);
-    private static final Set<EventType> LEAVE_EVENTS=Set.of(EventType.TAB_SWITCH,EventType.WINDOW_BLUR);
+    // One leave transition (tab hidden, window blur and the fullscreen exit it causes) is one unit; PAGE_RELOAD stays separate.
+    private static final Set<EventType> LEAVE_EVENTS=Set.of(EventType.TAB_SWITCH,EventType.WINDOW_BLUR,EventType.EXIT_FULLSCREEN);
     @jakarta.annotation.PostConstruct void validateConfiguration() {
         if(perMinute<1 || maxEvents<1 || coalesceMs<0)throw new IllegalStateException("Integrity limits must be positive");
     }

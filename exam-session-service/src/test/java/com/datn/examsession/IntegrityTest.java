@@ -168,6 +168,14 @@ class IntegrityTest {
         assertEquals(NotCountedReason.STALE,stale.notCountedReason());assertEquals(1,stale.warningCount());
         assertEquals(4,events.countBySessionId(session));assertEquals(ExamSession.Status.IN_PROGRESS,sessions.findById(session).orElseThrow().getStatus());
     }
+    @Test void fullscreenExitJoinsTheLeaveUnitButReloadCountsSeparately() {
+        var exit=integrity.ingest(session,user,"STUDENT",event(EventType.EXIT_FULLSCREEN));assertTrue(exit.counted());
+        var tab=integrity.ingest(session,user,"STUDENT",event(EventType.TAB_SWITCH));
+        assertEquals(NotCountedReason.COALESCED,tab.notCountedReason());assertEquals(exit.event().id(),events.findById(tab.event().id()).orElseThrow().getCoalescedInto());
+        assertEquals(NotCountedReason.COALESCED,integrity.ingest(session,user,"STUDENT",event(EventType.WINDOW_BLUR)).notCountedReason());
+        var reload=integrity.ingest(session,user,"STUDENT",event(EventType.PAGE_RELOAD)); // inside the window, still its own unit
+        assertTrue(reload.counted());assertEquals(2,reload.warningCount());
+    }
     static void sleepPastCoalesceWindow(){try{Thread.sleep(400);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
     @Test void clientTimeCannotMergeANewLeaveIntoAnEarlierCountedUnit() {
         Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
@@ -189,6 +197,7 @@ class IntegrityTest {
         assertEquals(2,integrity.ingest(session,user,"STUDENT",at(EventType.WINDOW_BLUR,t0.plusSeconds(10))).warningCount()); // a separate leave
         var warning=integrity.ingest(session,user,"STUDENT",at(EventType.PAGE_RELOAD,t0.plusSeconds(20)));
         assertTrue(warning.warningRecommended());assertEquals(3,warning.warningCount());assertFalse(warning.autoSubmitted());
+        sleepPastCoalesceWindow(); // fullscreen exit right after a leave would join that unit
         var trigger=at(EventType.EXIT_FULLSCREEN,t0.plusSeconds(30));var submitted=integrity.ingest(session,user,"STUDENT",trigger);
         assertTrue(submitted.autoSubmitted());assertEquals(4,submitted.warningCount());assertEquals(ExamSession.Status.AUTO_SUBMITTED,sessions.findById(session).orElseThrow().getStatus());
         assertEquals("saved",core.getSessionDetails(session).answers().getFirst().answerContent());assertTrue(submissions.existsById(session));
