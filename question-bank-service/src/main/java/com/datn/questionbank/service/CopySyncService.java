@@ -84,8 +84,9 @@ public class CopySyncService {
         var cursor=setCursor(id,origin);
         var source=setSource(origin);
         var local=localSetSnapshot(id,set.getCurrentVersion());
+        var localOrder=localOrder(local);var referenceOrder=referenceOrder(cursor.reference(),local);
         if(source==null)return new SetPreview(id,set.getCurrentVersion(),cursor.sourceVersion(),cursor.revision(),null,Availability.UNAVAILABLE,
-                List.of(),List.of(),false,false,false);
+                List.of(),List.of(),false,false,false,referenceOrder,List.of(),localOrder);
         var base=cursor.reference();var latest=source.snapshot();
         var metadata=new ArrayList<FieldChange>();for(var field:List.of(QuestionField.TITLE,QuestionField.DESCRIPTION)){
             var key=field.name().toLowerCase(Locale.ROOT);var b=base.path(key);var l=local.path(key);var n=latest.path(key);
@@ -101,9 +102,10 @@ public class CopySyncService {
             changes.add(new SetItemChange(sourceId,l==null?null:uuid(l.path("localId")),kind,
                     pos(b),pos(l),pos(n),b==null?null:b.path("version").asLong(),n==null?null:n.path("version").asLong(),edited,conflict));
         }
-        boolean sourceOrder=reordered(order(base),order(latest));boolean localOrder=reordered(order(base),orderFromLocal(local));
+        boolean sourceReordered=reordered(order(base),order(latest));boolean localReordered=reordered(order(base),orderFromLocal(local));
         return new SetPreview(id,set.getCurrentVersion(),cursor.sourceVersion(),cursor.revision(),source.version(),Availability.AVAILABLE,
-                metadata,changes,sourceOrder,localOrder,sourceOrder&&localOrder&&!order(latest).equals(orderFromLocal(local)));
+                metadata,changes,sourceReordered,localReordered,sourceReordered&&localReordered&&!order(latest).equals(orderFromLocal(local)),
+                referenceOrder,sourceOrder(latest,local),localOrder);
     }
 
     @Transactional public SetPreview applySet(UUID id,SetApplyRequest request,QuestionActor actor) {
@@ -256,6 +258,20 @@ public class CopySyncService {
         var result=new ArrayList<>(local);result.sort(Comparator.comparingInt(node->{return node.hasNonNull("sourceId")?index.getOrDefault(uuid(node.path("sourceId")),Integer.MAX_VALUE):Integer.MAX_VALUE;}));return result;}
     private String writeSetSnapshot(ObjectNode local){var out=json.createObjectNode();out.set("title",local.path("title"));out.set("description",local.path("description"));var array=json.createArrayNode();
         for(var node:local.path("items"))array.add(node.path("question"));out.set("items",array);return string(out);}
+    private Map<UUID,UUID> localIdsBySource(JsonNode local){var map=new HashMap<UUID,UUID>();
+        for(var item:local.path("items"))if(item.hasNonNull("sourceId"))map.put(uuid(item.path("sourceId")),uuid(item.path("localId")));return map;}
+    private List<OrderEntry> localOrder(JsonNode local){var result=new ArrayList<OrderEntry>();
+        for(var item:local.path("items"))result.add(new OrderEntry(item.path("position").asInt(),item.hasNonNull("sourceId")?uuid(item.path("sourceId")):null,
+                uuid(item.path("localId")),item.path("question").path("content").asText(null)));return result;}
+    private List<OrderEntry> sourceOrder(JsonNode latest,JsonNode local){var copies=localIdsBySource(local);var result=new ArrayList<OrderEntry>();
+        for(var item:latest.path("items")){var sourceId=uuid(item.path("sourceId"));
+            result.add(new OrderEntry(item.path("position").asInt(),sourceId,copies.get(sourceId),item.path("question").path("CONTENT").asText(null)));}
+        result.sort(Comparator.comparingInt(OrderEntry::position));return result;}
+    /** Order the copy was last synced against; content is null for a reference id whose item was later removed. */
+    private List<OrderEntry> referenceOrder(JsonNode reference,JsonNode local){var copies=localIdsBySource(local);var items=itemsBySource(reference);var result=new ArrayList<OrderEntry>();
+        int position=0;for(var id:order(reference)){var item=items.get(id);
+            result.add(new OrderEntry(position++,id,copies.get(id),item==null?null:item.path("question").path("CONTENT").asText(null)));}
+        return result;}
     private int pos(JsonNode node){return node==null?-1:node.path("position").asInt();}
     private UUID uuid(JsonNode node){return UUID.fromString(node.asText());}
     private ObjectNode object(String data){try{return (ObjectNode)json.readTree(data);}catch(Exception e){throw new IllegalStateException("Invalid sync snapshot",e);}}
@@ -264,8 +280,11 @@ public class CopySyncService {
             new MapSqlParameterSource().addValue("kind",type).addValue("id",id).addValue("local",local).addValue("source",source).addValue("actions",actions).addValue("actor",actor.userId()));}
     public List<SyncEvent> questionHistory(UUID id,QuestionActor actor){ownedQuestion(id,actor,false);return history("QUESTION",id);}
     public List<SyncEvent> setHistory(UUID id,QuestionActor actor){ownedSet(id,actor,false);return history("QUESTION_SET",id);}
-    private List<SyncEvent> history(String kind,UUID id){return jdbc.query("SELECT id,local_version,source_version,actions,actor_user_id,created_at FROM copy_sync_events WHERE resource_kind=:kind AND resource_id=:id ORDER BY created_at DESC,id DESC",
-            new MapSqlParameterSource().addValue("kind",kind).addValue("id",id),(r,n)->new SyncEvent(r.getObject(1,UUID.class),kind,r.getLong(2),r.getLong(3),r.getString(4),r.getObject(5,UUID.class),r.getTimestamp(6).toLocalDateTime()));}
+    private List<SyncEvent> history(String kind,UUID id){return jdbc.query("SELECT e.id,e.local_version,e.source_version,e.actions,e.actor_user_id,e.created_at,c.corrected_value,c.reason,c.created_at"
+            +" FROM copy_sync_events e LEFT JOIN copy_sync_event_corrections c ON c.event_id=e.id AND c.field='LOCAL_VERSION'"
+            +" WHERE e.resource_kind=:kind AND e.resource_id=:id ORDER BY e.created_at DESC,e.id DESC",
+            new MapSqlParameterSource().addValue("kind",kind).addValue("id",id),(r,n)->new SyncEvent(r.getObject(1,UUID.class),kind,r.getLong(2),r.getLong(3),r.getString(4),r.getObject(5,UUID.class),r.getTimestamp(6).toLocalDateTime(),
+                    r.getObject(7,Long.class),r.getString(8),r.getTimestamp(9)==null?null:r.getTimestamp(9).toLocalDateTime()));}
     private ResponseStatusException missing(){return new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy bản sao hoặc nguồn");}
     private ResponseStatusException bad(String m){return new ResponseStatusException(HttpStatus.BAD_REQUEST,m);}
     private ResponseStatusException conflict(String m){return new ResponseStatusException(HttpStatus.CONFLICT,m);}

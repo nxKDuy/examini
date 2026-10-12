@@ -22,15 +22,19 @@ public final class CopySyncDto {
             Availability availability,Question.QuestionStatus localStatus,List<FieldChange> changes) {}
     public record QuestionApplyRequest(@NotNull Long expectedLocalVersion,@NotNull Long expectedReferenceSourceVersion,@NotNull Long expectedCursorRevision,@NotNull Long expectedSourceVersion,
             @NotNull Map<QuestionField,Choice> decisions) {}
+    /** localVersion stays as originally recorded; a correction row never rewrites it (V13). */
     public record SyncEvent(UUID id,String resourceKind,long localVersion,long sourceVersion,String actions,
-            UUID actorUserId,LocalDateTime createdAt) {}
+            UUID actorUserId,LocalDateTime createdAt,Long correctedLocalVersion,String correctionReason,LocalDateTime correctedAt) {}
 
     public record SetItemChange(UUID sourceQuestionId,UUID localQuestionId,String kind,Integer referencePosition,
             Integer localPosition,Integer latestPosition,Long referenceVersion,Long latestVersion,
             boolean localChanged,boolean conflict) {}
     public record SetPreview(UUID questionSetId,long localVersion,long referenceSourceVersion,long cursorRevision,Long latestSourceVersion,
             Availability availability,List<FieldChange> metadataChanges,List<SetItemChange> itemChanges,
-            boolean sourceReordered,boolean localReordered,boolean reorderConflict) {}
+            boolean sourceReordered,boolean localReordered,boolean reorderConflict,
+            List<OrderEntry> referenceOrder,List<OrderEntry> sourceOrder,List<OrderEntry> localOrder) {}
+    /** One row of a full ordering; sourceQuestionId null = local-only item, localQuestionId null = no local copy; content is the non-secret stem. */
+    public record OrderEntry(int position,UUID sourceQuestionId,UUID localQuestionId,String content) {}
     public record SetApplyRequest(@NotNull Long expectedLocalVersion,@NotNull Long expectedReferenceSourceVersion,@NotNull Long expectedCursorRevision,@NotNull Long expectedSourceVersion,
             @NotNull Map<String,Choice> decisions) {}
 }
