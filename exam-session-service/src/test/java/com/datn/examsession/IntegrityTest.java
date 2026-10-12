@@ -63,8 +63,10 @@ class IntegrityTest {
         for(String field:List.of("clipboard","password","jwt","pageContent","fingerprint"))mvc.perform(post("/sessions/"+session+"/integrity/events").header("Authorization",token(user,"STUDENT")).contentType("application/json").content("{\"clientEventId\":\""+UUID.randomUUID()+"\",\"type\":\"COPY\",\"metadata\":{\""+field+"\":\"private\"}}")).andExpect(status().isBadRequest());
         postEvent(user,"STUDENT",new Ingest(UUID.randomUUID(),EventType.COPY,null,new Metadata(1L,null,null,null,null)),400);
         postEvent(user,"STUDENT",new Ingest(UUID.randomUUID(),EventType.NETWORK_RECONNECT,null,new Metadata(-1L,null,null,null,NetworkState.ONLINE)),400);
-        core.submitExam(session,user);postEvent(user,"STUDENT",event(EventType.PASTE),409);
-        postEvent(user,"STUDENT",input,200);assertEquals(1,events.countBySessionId(session));
+        core.submitExam(session,user);
+        var late=integrity.ingest(session,user,"STUDENT",event(EventType.TAB_SWITCH)); // recorded for audit, never counted
+        assertFalse(late.counted());assertEquals(NotCountedReason.STALE,late.notCountedReason());assertEquals(1,late.warningCount());assertFalse(late.autoSubmitted());
+        postEvent(user,"STUDENT",input,200);assertEquals(2,events.countBySessionId(session));
     }
     @Test void reloadAndResumeUseServerReceiptAndFrozenMonitoringPolicy() {
         Instant clientTime=Instant.now().minusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
@@ -122,7 +124,9 @@ class IntegrityTest {
         mvc.perform(get("/sessions/"+session+"/integrity/policy").header("Authorization",token(other,"STUDENT"))).andExpect(status().isForbidden());
         var disabled=core.startExam(exam,other).sessionId();assertThrows(ResponseStatusException.class,()->integrity.ingest(disabled,other,"STUDENT",event(EventType.COPY)));
         db.update("update exam_sessions set expires_at=? where id=?",java.sql.Timestamp.from(Instant.now().minusSeconds(1)),session);
-        postEvent(user,"STUDENT",event(EventType.COPY),409);core.autoSubmitExam(session);assertEquals(ExamSession.Status.AUTO_SUBMITTED,sessions.findById(session).orElseThrow().getStatus());
+        var expired=integrity.ingest(session,user,"STUDENT",event(EventType.EXIT_FULLSCREEN));
+        assertEquals(NotCountedReason.STALE,expired.notCountedReason());assertEquals(0,expired.warningCount());
+        core.autoSubmitExam(session);assertEquals(ExamSession.Status.AUTO_SUBMITTED,sessions.findById(session).orElseThrow().getStatus());
     }
     @Test void boundedInputAndClientCannotSupplyTrustedIdentity()throws Exception {
         for(String extra:List.of("userId","examId","source","severity","receivedAt")) {
@@ -149,13 +153,31 @@ class IntegrityTest {
             index++;
         }
     }
+    @Test void leaveTransitionCoalescesNetworkIsAuditOnlyAndStaleIsNeverCounted() {
+        Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
+        var leave=integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0));
+        assertTrue(leave.counted());assertNull(leave.notCountedReason());assertEquals(1,leave.warningCount());
+        // Window blur of the same leave transition (within 1.5s) is one budget unit.
+        var blur=integrity.ingest(session,user,"STUDENT",at(EventType.WINDOW_BLUR,t0.plusMillis(400)));
+        assertFalse(blur.counted());assertEquals(NotCountedReason.COALESCED,blur.notCountedReason());assertEquals(1,blur.warningCount());
+        assertEquals(leave.event().id(),events.findById(blur.event().id()).orElseThrow().getCoalescedInto());
+        var offline=integrity.ingest(session,user,"STUDENT",at(EventType.NETWORK_DISCONNECT,t0.plusSeconds(5)));
+        assertFalse(offline.counted());assertEquals(NotCountedReason.NOT_BUDGET_SIGNAL,offline.notCountedReason());assertEquals(1,offline.warningCount());
+        var stale=integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0.minusSeconds(30)));
+        assertEquals(NotCountedReason.STALE,stale.notCountedReason());assertEquals(1,stale.warningCount());
+        assertEquals(4,events.countBySessionId(session));assertEquals(ExamSession.Status.IN_PROGRESS,sessions.findById(session).orElseThrow().getStatus());
+    }
+    Ingest at(EventType type,Instant when){return new Ingest(UUID.randomUUID(),type,when,null);}
     @Test void budgetWarnsAtLimitThenAutoSubmitsOnceWithSystemAudit() {
         core.saveAnswer(session,user,qid,"saved");
-        assertFalse(integrity.ingest(session,user,"STUDENT",event(EventType.TAB_SWITCH)).warningRecommended());
-        assertFalse(integrity.ingest(session,user,"STUDENT",event(EventType.WINDOW_BLUR)).warningRecommended());
-        var warning=integrity.ingest(session,user,"STUDENT",event(EventType.PAGE_RELOAD));
+        Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
+        assertEquals(1,integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0)).warningCount());
+        assertEquals(2,integrity.ingest(session,user,"STUDENT",at(EventType.WINDOW_BLUR,t0.plusSeconds(10))).warningCount()); // a separate leave
+        var warning=integrity.ingest(session,user,"STUDENT",at(EventType.PAGE_RELOAD,t0.plusSeconds(20)));
         assertTrue(warning.warningRecommended());assertEquals(3,warning.warningCount());assertFalse(warning.autoSubmitted());
-        var trigger=event(EventType.NETWORK_DISCONNECT);var submitted=integrity.ingest(session,user,"STUDENT",trigger);
+        var trigger=at(EventType.EXIT_FULLSCREEN,t0.plusSeconds(30));var submitted=integrity.ingest(session,user,"STUDENT",trigger);
         assertTrue(submitted.autoSubmitted());assertEquals(4,submitted.warningCount());assertEquals(ExamSession.Status.AUTO_SUBMITTED,sessions.findById(session).orElseThrow().getStatus());
         assertEquals("saved",core.getSessionDetails(session).answers().getFirst().answerContent());assertTrue(submissions.existsById(session));
         assertTrue(integrity.ingest(session,user,"STUDENT",trigger).duplicate());assertEquals(4,events.countBySessionId(session));
@@ -176,7 +198,7 @@ class IntegrityTest {
     }
     @Test void sessionTotalCeilingProtectsCore() {
         var s=sessions.findById(session).orElseThrow();
-        for(int i=0;i<10;i++)events.saveAndFlush(new IntegrityEvent(s,event(EventType.COPY),Instant.now().minusSeconds(120)));
+        for(int i=0;i<10;i++)events.saveAndFlush(new IntegrityEvent(s,event(EventType.COPY),Instant.now().minusSeconds(120),Instant.now().minusSeconds(120),NotCountedReason.NOT_BUDGET_SIGNAL,null));
         var failure=assertThrows(ResponseStatusException.class,()->integrity.ingest(session,user,"STUDENT",event(EventType.COPY)));
         assertEquals(429,failure.getStatusCode().value());core.submitExam(session,user);
         assertEquals(ExamSession.Status.SUBMITTED,sessions.findById(session).orElseThrow().getStatus());
@@ -184,8 +206,8 @@ class IntegrityTest {
     @Test void migrationIdentityDedupAndImmutabilityConstraints() {
         var input=event(EventType.COPY);var stored=integrity.ingest(session,user,"STUDENT",input).event();
         assertThrows(Exception.class,()->db.update("update integrity_events set severity='MEDIUM' where id=?",stored.id()));
-        assertThrows(Exception.class,()->db.update("insert into integrity_events select ?,client_event_id,exam_id,session_id,user_id,type,occurred_at,received_at,severity,metadata,source from integrity_events where id=?",UUID.randomUUID(),stored.id()));
-        assertThrows(Exception.class,()->db.update("insert into integrity_events select ?,?,exam_id,session_id,?,type,occurred_at,received_at,severity,metadata,source from integrity_events where id=?",UUID.randomUUID(),UUID.randomUUID(),other,stored.id()));
+        assertThrows(Exception.class,()->db.update("insert into integrity_events select ?,client_event_id,exam_id,session_id,user_id,type,occurred_at,received_at,severity,metadata,source,counted,not_counted_reason,coalesced_into,effective_at from integrity_events where id=?",UUID.randomUUID(),stored.id()));
+        assertThrows(Exception.class,()->db.update("insert into integrity_events select ?,?,exam_id,session_id,?,type,occurred_at,received_at,severity,metadata,source,counted,not_counted_reason,coalesced_into,effective_at from integrity_events where id=?",UUID.randomUUID(),UUID.randomUUID(),other,stored.id()));
         assertEquals(1,events.countBySessionId(session));
     }
 }

@@ -4,8 +4,11 @@ Provider details: `exam-session-service/PHASE2_BROWSER_INTEGRITY.md` (event type
 
 ## Scope lock (user-approved)
 - Each Exam sets its own threshold: `IntegrityPolicy.warningEventLimit` (1..100, default 5). It is edited only on a DRAFT exam (`PUT /exams/{id}/integrity/policy`) and frozen at Publish.
-- Events that count: TAB_SWITCH, WINDOW_BLUR, EXIT_FULLSCREEN, PAGE_RELOAD, NETWORK_DISCONNECT. SESSION_RESUME is recorded but not counted.
-- `POST /sessions/{id}/integrity/events` (session owner only) → `Receipt{event,duplicate,warningCount,warningLimit,warningRecommended,warning,autoSubmitted}`.
+- Budget signals (scope A, 2026-10-12): TAB_SWITCH, WINDOW_BLUR, EXIT_FULLSCREEN, PAGE_RELOAD. NETWORK_DISCONNECT/RECONNECT, SESSION_RESUME, FULLSCREEN_ENTER, WINDOW_FOCUS, COPY, PASTE are recorded for audit and never counted.
+- One leave transition = one unit: a TAB_SWITCH or WINDOW_BLUR within ±1.5s (`exam.integrity.leave-coalesce-ms`, per session) of an already counted TAB_SWITCH/WINDOW_BLUR is stored as COALESCED (linked to that unit) and not counted. Event time = client `occurredAt` when it lies between session start and server receipt, otherwise server `receivedAt`, so offline-buffered signals keep their own time.
+- Stale signals are recorded but never counted: `occurredAt` before the session start, or received after the session is no longer IN_PROGRESS / past `expiresAt`. These now return 200 with `counted=false, notCountedReason=STALE` (previously 409), so buffered events can be flushed after reconnect or submit. Policy-disabled types still return 409; dedup by `clientEventId` and 429 rate limits are unchanged.
+- `POST /sessions/{id}/integrity/events` (session owner only) → `Receipt{event,duplicate,warningCount,warningLimit,warningRecommended,warning,autoSubmitted,counted,notCountedReason}`.
+  - Additive fields: `counted` (this signal consumed one unit) and `notCountedReason` ∈ `NOT_BUDGET_SIGNAL | COALESCED | STALE` (null when counted). `warningCount` is the number of counted units in this session. Show the acknowledgment overlay with `warningCount/warningLimit` only when `counted=true`; a duplicate receipt echoes the stored `counted`.
   - When `warningCount == limit`, `warningRecommended=true`; show a warning that these signals are evidence, not proof of cheating.
   - When `warningCount > limit`, only this Session is AUTO_SUBMITTED (SYSTEM audit). The client stops the attempt and shows the submitted result state.
   - 429 means rate limited: retry with backoff. Never block answering or submitting.
