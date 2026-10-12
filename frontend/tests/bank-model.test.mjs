@@ -322,3 +322,18 @@ test('Save/Saved exist only for Teacher and Student audiences: ADMIN (global adm
   assert.equal(m.canBookmark('TEACHER'), true); assert.equal(m.canBookmark('STUDENT'), true)
   assert.equal(m.canBookmark('ADMIN'), false); assert.equal(m.canBookmark(''), false); assert.equal(m.canBookmark('teacher'), false)
 })
+
+test('card helpers: update date prefers the content edit time, topic is the broadest taxonomy, stats are real numbers with honest gaps', () => {
+  assert.match(m.updatedDate({ contentUpdatedAt: '2026-10-05T08:00:00', publishedAt: '2026-09-20T00:00:00' }), /05\/10\/2026/)
+  assert.match(m.updatedDate({ publishedAt: '2026-09-20T00:00:00' }), /20\/09\/2026/); assert.equal(m.updatedDate({}), null)
+  const q = { categoryName: 'Toán' }
+  assert.deepEqual(m.broadTopic({ subjects: [{ id: 'a', name: 'Toán' }, { id: 'b', name: 'Lý' }, { id: 'c', name: 'Toán' }], categories: [], question: q }), { text: 'Toán', more: 1 })
+  assert.deepEqual(m.broadTopic({ subjects: [], categories: [{ id: 'x', name: 'Thơ hiện đại', path: ['Văn học', 'Thơ hiện đại'] }, { id: 'y', name: 'Truyện', path: ['Văn học', 'Truyện'] }], question: q }), { text: 'Văn học', more: 0 })
+  assert.deepEqual(m.broadTopic({ subjects: [], categories: [], question: q }), { text: 'Toán', more: 0 }); assert.equal(m.broadTopic({ subjects: [], categories: [], question: {} }), null)
+  const label = s => Object.fromEntries(s.map(x => [x.key, x.label]))
+  assert.deepEqual(label(m.postStats({ viewsTotal: 12, copiesTotal: 4, averageRating: 8.46, ratingCount: 2 })), { views: '12 lượt xem', copies: '4 lượt sao chép', rating: '8.5/10 từ 2 đánh giá' })
+  assert.equal(m.postStats({ viewsTotal: 12, copiesTotal: 4, averageRating: 8.5, ratingCount: 2 }).find(x => x.key === 'rating').value, '8.5/10 (2)')
+  assert.equal(m.postStats({ viewsTotal: 0, copiesTotal: 0, averageRating: null, ratingCount: 0 }).find(x => x.key === 'rating').label, 'Chưa có đánh giá')
+  const missing = m.postStats({}); assert.deepEqual(missing.map(x => x.value), ['—', '—', '—']); assert.match(missing[0].label, /Chưa có số liệu xem/) // unknown is never shown as 0
+  assert.equal(m.postStats({ viewsTotal: 0, copiesTotal: 0, ratingCount: 0 })[0].value, '0') // a real zero stays 0
+})

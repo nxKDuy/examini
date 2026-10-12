@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpenCheck, Search, Layers3, FileQuestion, SlidersHorizontal, ArrowLeft, Bookmark } from 'lucide-react'
+import { BookOpenCheck, Search, Layers3, FileQuestion, SlidersHorizontal, ArrowLeft, Bookmark, Eye, Copy, Star, Plus } from 'lucide-react'
 import './banks.css'
 import { bankApi, type PublicQuestion } from './bankApi'
 import BankPanel, { QuestionView } from './BankPanel'
-import { MAX_SEARCH, canBookmark, applyPublicViewStats, authorName, canForkPublic, canUnpublish, copiedBadge, excerpt, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
+import PublishToPublicDialog from './PublishToPublicDialog'
+import { MAX_SEARCH, broadTopic, canBookmark, postStats, updatedDate, applyPublicViewStats, authorName, canForkPublic, canUnpublish, copiedBadge, excerpt, isStatus, personalForkQueryKeys, publicDetailQueryKey, publicParams, publicationBadge } from './bankModel'
 import { audienceOf } from '../../components/layout/navigation'
 import { useAuthStore, hasPersona } from '../../store/authStore'
 import { Dialog } from '../../components/Dialog'
@@ -41,6 +42,7 @@ export default function PublicBankPage() {
   const list = useQuery({ queryKey: ['banks', 'public', user?.id ?? 'anonymous', params], queryFn: () => bankApi.publicList(params), placeholderData: prev => prev, enabled: !postId })
   const qc = useQueryClient()
   const [bookmarkError, setBookmarkError] = useState('')
+  const [publishing, setPublishing] = useState(false), [publishFlash, setPublishFlash] = useState<string | null>(null)
   const bookmark = useMutation({
     mutationFn: ({ id, saved }: { id: string; saved: boolean }) => saved ? bankApi.bookmark(id) : bankApi.unbookmark(id),
     onMutate: ({ id, saved }) => optimisticallySetBookmark(qc, id, user?.id, saved),
@@ -72,7 +74,8 @@ export default function PublicBankPage() {
   }
 
   return <div className="stack public-bank">
-    <PageHeader title="Ngân hàng công khai" description={teacher ? 'Khám phá bài đăng câu hỏi và bộ câu hỏi. Xem snapshot an toàn hoặc sao chép về kho cá nhân.' : 'Khám phá và xem các snapshot câu hỏi công khai. Học sinh có thể đánh giá, không thể sao chép.'} />
+    <PageHeader title="Ngân hàng công khai" description={teacher ? 'Khám phá bài đăng câu hỏi và bộ câu hỏi. Xem snapshot an toàn hoặc sao chép về kho cá nhân.' : 'Khám phá và xem các snapshot câu hỏi công khai. Học sinh có thể đánh giá, không thể sao chép.'}  actions={teacher && <button type="button" className="btn btn-primary btn-icon" aria-label="Đăng bài lên Ngân hàng công khai" title="Đăng bài lên Ngân hàng công khai" aria-haspopup="dialog" onClick={() => { setPublishFlash(null); setPublishing(true) }}><Plus size={20} aria-hidden /></button>} />
+    {publishFlash && <Notice tone="success" live>{publishFlash}</Notice>}
     <section className="card public-filter-card" aria-label="Bộ lọc bài đăng">
       <form onSubmit={submit} className="public-toolbar">
         <div className="public-primary-filters">
@@ -121,6 +124,7 @@ export default function PublicBankPage() {
           onOpen={() => navigate('/public-bank/' + post.id + location.search, { state: { fromPublicBank: true } })}
           onAuthor={() => changeParams({ author: post.sourceOwnerUserId, authorName: authorName(post), mine: undefined, publication: undefined })} />)}</section>}
     {list.data && <Pagination label="Phân trang bài đăng công khai" page={page} totalPages={list.data.totalPages} onChange={p => changeParams({ page: p ? String(p) : undefined }, false)} />}
+    {publishing && <PublishToPublicDialog onClose={() => setPublishing(false)} onPublished={message => { setPublishing(false); setPublishFlash(message); void qc.invalidateQueries({ queryKey: ['banks'] }) }} />}
   </div>
 }
 
@@ -139,20 +143,25 @@ function TaxonomyFilter({ id, label, value, suggestions, loading, error, placeho
     </div>}
   </div>
 }
+const STAT_ICON = { views: Eye, copies: Copy, rating: Star } as const
+
+/** One post = one card (a set stays ONE card). The whole card opens the detail page through the title; buttons and the author link stay independently clickable. */
 function PublicCard({ post, onOpen, onAuthor, onBookmark, bookmarkBusy, canSave }: { post: PublicQuestion; onOpen: () => void; onAuthor: () => void; onBookmark: () => void; bookmarkBusy: boolean; canSave: boolean }) {
   const bundle = post.postType === 'QUESTION_SET'
-  const copied = copiedBadge(post)
+  const copied = copiedBadge(post), topic = broadTopic(post), updated = updatedDate(post)
+  const title = post.title?.trim() || excerpt(post.question.content, 76)
+  const Kind = bundle ? Layers3 : FileQuestion
   return <article className="public-post" data-archived={post.publicationStatus === 'ARCHIVED'}>
-    <button type="button" className="public-post-cover" onClick={onOpen} aria-label={`Mở ${post.title || (bundle ? 'bộ câu hỏi' : 'câu hỏi')}`}><span className="public-cover-icon">{bundle ? <Layers3 size={28}/> : <FileQuestion size={28}/>}</span><span>{post.subjects?.map(s => s.name).join(' · ') || post.question.categoryName || 'Ngân hàng câu hỏi'}</span></button>
-    <div className="public-post-body">
-      <div className="row" style={{justifyContent:'space-between'}}><Badge tone="info">{bundle ? `Bộ · ${post.itemCount ?? post.items?.length ?? 0} câu` : 'Một câu'}</Badge>{copied && <Badge tone="success">{copied}</Badge>}{post.publicationStatus === 'ARCHIVED' && <Badge tone="muted">Đã gỡ công khai</Badge>}</div>
-      <button type="button" className="public-post-title" onClick={onOpen}>{post.title?.trim() || excerpt(post.question.content, 76)}</button>
-      <p className="public-post-snippet">{excerpt(post.description || post.question.content, 120)}</p>
-      <div className="public-post-tags">{post.subjects?.slice(0,2).map(s => <span key={s.id}>{s.name}</span>)}{post.categories?.slice(0,2).map(c => <span key={c.id}>{c.name}</span>)}<span>{QUESTION_TYPE_LABEL[post.question.questionType] ?? post.question.questionType}</span><span>{DIFFICULTY_LABEL[post.question.difficultyLevel] ?? post.question.difficultyLevel}</span></div>
-      <div className="public-post-meta"><button type="button" className="bk-row-btn" onClick={onAuthor}>{authorName(post)}</button><span>v{post.postVersion ?? post.sourceQuestionVersion} · Đăng {formatDateTime(post.publishedAt, '-')}</span><span>Cập nhật nội dung {formatDateTime(post.contentUpdatedAt, '-')}</span></div>
-      <div className="public-post-stats"><span>{post.viewsTotal == null ? 'Chưa có số liệu xem' : `${post.viewsTotal} lượt xem`}</span><span>{post.copiesTotal == null ? 'Chưa có số liệu sao chép' : `${post.copiesTotal} lượt sao chép`}</span><span>{post.ratingCount == null ? 'Chưa có số liệu đánh giá' : post.ratingCount ? `${post.averageRating ?? '—'}/10 · ${post.ratingCount} đánh giá` : 'Chưa có đánh giá'}</span></div>
-      <div className="row"><button type="button" className="btn btn-secondary btn-sm" onClick={onOpen}>Xem chi tiết</button>{canSave && post.publicationStatus === 'PUBLISHED' && <button type="button" className="btn btn-secondary btn-sm" aria-pressed={!!post.isSaved} aria-label={post.isSaved ? 'Bỏ lưu bài đăng' : 'Lưu bài đăng'} disabled={bookmarkBusy} onClick={onBookmark}><Bookmark size={15} aria-hidden/>{bookmarkBusy ? 'Đang lưu…' : post.isSaved ? 'Đã lưu' : 'Lưu bài đăng'}</button>}</div>
+    <div className="public-post-top">
+      <span className="public-post-kind"><Kind size={15} aria-hidden />{bundle ? `Bộ · ${post.itemCount ?? post.items?.length ?? 0} câu` : 'Một câu'}</span>
+      {post.publicationStatus === 'ARCHIVED' ? <span className="public-post-flag" data-tone="muted">Đã gỡ công khai</span> : copied && <span className="public-post-flag">{copied}</span>}
     </div>
+    <h3 className="public-post-heading"><button type="button" className="public-post-title" onClick={onOpen} aria-label={`Mở chi tiết: ${title}`}><span>{title}</span></button></h3>
+    <p className="public-post-snippet">{excerpt(post.description || post.question.content, 140)}</p>
+    <p className="public-post-topic">{topic ? <>{topic.text}{topic.more > 0 && <span className="muted"> +{topic.more}</span>}</> : <span className="muted">Chưa phân loại</span>}</p>
+    <div className="public-post-meta"><button type="button" className="bk-row-btn" onClick={onAuthor} aria-label={`Lọc theo tác giả ${authorName(post)}`}>{authorName(post)}</button><span>{updated ? `Cập nhật ${updated}` : ''}</span></div>
+    <div className="public-post-stats" role="group" aria-label="Số liệu bài đăng">{postStats(post).map(st => { const Icon = STAT_ICON[st.key]; return <span key={st.key} role="img" aria-label={st.label} title={st.label}><Icon size={14} aria-hidden />{st.value}</span> })}</div>
+    <div className="public-post-actions"><button type="button" className="btn btn-secondary btn-sm" onClick={onOpen}>Xem chi tiết</button>{canSave && post.publicationStatus === 'PUBLISHED' && <button type="button" className="btn btn-secondary btn-sm" aria-pressed={!!post.isSaved} aria-label={post.isSaved ? 'Bỏ lưu bài đăng' : 'Lưu bài đăng'} disabled={bookmarkBusy} onClick={onBookmark}><Bookmark size={15} aria-hidden />{bookmarkBusy ? 'Đang lưu…' : post.isSaved ? 'Đã lưu' : 'Lưu'}</button>}</div>
   </article>
 }
 

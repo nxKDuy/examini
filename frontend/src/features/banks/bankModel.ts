@@ -1,3 +1,4 @@
+import { parseUtc } from '../../lib/format'
 import type { Contribution, ContributionStatus, Lineage, PublicQuestion, PublicViewResponse, QuestionSet } from './bankApi'
 import type { Organization } from '../organizations/orgApi'
 
@@ -56,6 +57,29 @@ export function copiedBadge(p: Pick<PublicQuestion, 'isCopied' | 'postType' | 'i
   if (!p.isCopied) return null
   return p.postType === 'QUESTION_SET' && (p.items?.filter(item => item.isCopied).length ?? 0) < (p.itemCount ?? p.items?.length ?? 0)
     ? 'Đã sao chép một phần' : 'Đã sao chép'
+}
+/** Card date: when the snapshot's CONTENT was last edited at the source; older rows fall back to the publish date (the backend does the same). */
+export function updatedDate(p: Pick<PublicQuestion, 'contentUpdatedAt' | 'publishedAt'>): string | null {
+  const d = parseUtc(p.contentUpdatedAt ?? p.publishedAt)
+  return d ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : null
+}
+/** The broadest taxonomy a card can state: subjects first, else the top-level category, else the snapshot's category name. `more` counts the ones not named. */
+export function broadTopic(p: Pick<PublicQuestion, 'subjects' | 'categories' | 'question'>): { text: string; more: number } | null {
+  const subjects = [...new Set((p.subjects ?? []).map(s => s.name.trim()).filter(Boolean))]
+  if (subjects.length) return { text: subjects[0], more: subjects.length - 1 }
+  const tops = [...new Set((p.categories ?? []).map(c => (c.path?.[0] ?? c.name).trim()).filter(Boolean))]
+  if (tops.length) return { text: tops[0], more: tops.length - 1 }
+  const own = p.question?.categoryName?.trim()
+  return own ? { text: own, more: 0 } : null
+}
+export interface Stat { key: 'views' | 'copies' | 'rating'; value: string; label: string }
+/** Compact real numbers only: a missing figure is "—" (never 0 invented), no rating is stated as such, the average stays raw out of 10. */
+export function postStats(p: Pick<PublicQuestion, 'viewsTotal' | 'copiesTotal' | 'averageRating' | 'ratingCount'>): Stat[] {
+  const count = (key: 'views' | 'copies', n: number | null | undefined, noun: string): Stat => (n == null ? { key, value: '—', label: `Chưa có số liệu ${noun}` } : { key, value: String(n), label: `${n} lượt ${noun}` })
+  const rating: Stat = p.ratingCount == null ? { key: 'rating', value: '—', label: 'Chưa có số liệu đánh giá' }
+    : p.ratingCount === 0 || p.averageRating == null ? { key: 'rating', value: 'Chưa có', label: 'Chưa có đánh giá' }
+    : { key: 'rating', value: `${Number(p.averageRating.toFixed(1))}/10 (${p.ratingCount})`, label: `${Number(p.averageRating.toFixed(1))}/10 từ ${p.ratingCount} đánh giá` }
+  return [count('views', p.viewsTotal, 'xem'), count('copies', p.copiesTotal, 'sao chép'), rating]
 }
 export const authorName = (p: Pick<PublicQuestion, 'sourceOwnerDisplayName'>) => p.sourceOwnerDisplayName?.trim() || 'Unknown user'
 

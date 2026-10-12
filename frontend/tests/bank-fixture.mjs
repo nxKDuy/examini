@@ -4,6 +4,12 @@ const base = { categoryId: 'cat', categoryName: 'Toán', questionType: 'MULTIPLE
 let personal = { ...base, id: 'q-personal', bankId: 'b-personal', bankType: 'PERSONAL', content: 'Câu cá nhân fixture', status: 'DRAFT' }
 const secondPersonal = { ...base, id: 'q-second', bankId: 'b-personal', bankType: 'PERSONAL', content: 'Câu thứ hai fixture', status: 'ACTIVE', questionVersion: 2 }
 let publication = { id: 'pub1', bankId: 'b-public', sourceQuestionId: personal.id, sourceQuestionVersion: 3, sourceOwnerUserId: 'teacher', sourceOwnerDisplayName: 'Cô Lan', publicationStatus: 'PUBLISHED', publishedAt: '2026-10-01T00:00:00', postType: 'SINGLE_QUESTION', title: 'Câu công khai fixture', postVersion: 3, itemCount: 1, subjects: [{ id: 's-math', name: 'Toán' }], categories: [{ id: 'cat', name: 'Đại số', subjectId: 's-math', subjectName: 'Toán', path: ['Đại số'] }], copiesTotal: 4, viewsTotal: 12, averageRating: 8.5, ratingCount: 2, myRating: null, question: { ...base, id: 'q-personal', content: 'Câu công khai fixture' } }
+// Extra posts for card-layout checks (default discovery list only): a long-titled SET with partial copies, and a short single post.
+const setItems = [1, 2, 3].map(n => ({ id: `si${n}`, position: n - 1, sourceQuestionId: `q-s${n}`, sourceQuestionVersion: 1, isCopied: n === 1, question: { ...base, id: `q-s${n}`, content: `Câu ${n} của bộ`, questionVersion: 1 } }))
+const extraPosts = [
+  { id: 'pub-set', bankId: 'b-public', sourceQuestionId: 'q-s1', sourceQuestionVersion: 1, sourceOwnerUserId: 'other', sourceOwnerDisplayName: 'Thầy Minh', publicationStatus: 'PUBLISHED', publishedAt: '2026-09-20T00:00:00', contentUpdatedAt: '2026-10-05T08:00:00', postType: 'QUESTION_SET', title: 'Bộ ôn tập chương Đại số và Hình học nâng cao cho học kỳ I dành cho nhóm lớp chuyên', description: 'Tổng hợp các dạng bài thường gặp, có phân loại theo mức độ và gợi ý thời lượng làm bài cho từng nhóm câu để giáo viên dễ dùng lại trong đề kiểm tra.', postVersion: 2, itemCount: 12, items: setItems, subjects: [{ id: 's-math', name: 'Toán' }, { id: 's-phy', name: 'Vật lý' }], categories: [], copiesTotal: 7, viewsTotal: 40, averageRating: null, ratingCount: 0, isCopied: true, question: { ...base, id: 'q-s1', content: 'Câu 1 của bộ' } },
+  { id: 'pub-short', bankId: 'b-public', sourceQuestionId: 'q-h', sourceQuestionVersion: 1, sourceOwnerUserId: 'other', sourceOwnerDisplayName: 'Thầy Minh', publicationStatus: 'PUBLISHED', publishedAt: '2026-09-01T00:00:00', postType: 'SINGLE_QUESTION', title: 'Hà Nội', postVersion: 1, itemCount: 1, subjects: [], categories: [{ id: 'c-lit', name: 'Thơ hiện đại', subjectId: 's-lit', subjectName: 'Ngữ văn', path: ['Văn học', 'Thơ hiện đại'] }], copiesTotal: 0, viewsTotal: 0, averageRating: null, ratingCount: 0, question: { ...base, id: 'q-h', content: 'Thủ đô của Việt Nam?' } },
+]
 const orgQuestion = { id: 'orgq1', bankId: 'b-org', sourceQuestionId: personal.id, sourceQuestionVersion: 3, sourceOwnerUserId: 'teacher', publicationStatus: 'APPROVED', approvedAt: '2026-10-01T00:00:00', question: { ...base, content: 'Câu tổ chức fixture' } }
 const contributions = ['teacher', 'other'].map((owner, i) => ({ id: `c${i}`, bankId: 'b-org', sourceQuestionId: personal.id, sourceQuestionVersion: 3, sourceOwnerUserId: owner, status: 'PENDING_REVIEW', submittedAt: '2026-10-01T00:00:00', question: { ...base, content: `Đóng góp ${owner}` } }))
 const banks = [{ id: 'b-personal', type: 'PERSONAL', name: 'Kho của tôi', ownerUserId: 'teacher', defaultBank: true, status: 'ACTIVE' }, { id: 'b-public', type: 'PUBLIC', name: 'Công khai', status: 'ACTIVE' }, { id: 'b-org', type: 'ORGANIZATION', name: 'Khoa CNTT', organizationId: 'o1', status: 'ACTIVE' }]
@@ -57,8 +63,10 @@ export function bankFixture(url, method, body, identity) {
     const status = url.searchParams.get('publicationStatus')
     if (status === 'ARCHIVED' && !mine) return [403, { status: 403 }]
     const visible = (mine ? identity === publication.sourceOwnerUserId : publication.publicationStatus === 'PUBLISHED') && (!status || status === publication.publicationStatus) && (!saved || bookmarks.has(`${identity}:pub1`))
-    return [200, page(visible ? [{ ...publication, isSaved: bookmarks.has(`${identity}:pub1`) }] : [])]
+    const plain = !mine && !saved && !status && !['sourceOwnerUserId', 'subjectId', 'categoryId', 'text', 'questionType', 'difficulty', 'postType'].some(k => url.searchParams.get(k))
+    return [200, page(visible ? [{ ...publication, isSaved: bookmarks.has(`${identity}:pub1`) }, ...(plain ? extraPosts : [])] : [])]
   }
+  if (/^\/public-questions\/pub-(set|short)$/.test(path)) return [200, extraPosts.find(p => path.endsWith(p.id))]
   if (path === '/public-questions/pub1') {
     if (method === 'DELETE') { publication = { ...publication, publicationStatus: 'ARCHIVED' }; return [204, null] }
     return [200, { ...publication, isSaved: bookmarks.has(`${identity}:pub1`) }]
