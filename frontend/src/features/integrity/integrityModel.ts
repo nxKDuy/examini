@@ -74,3 +74,64 @@ export const AUDIT_LABEL: Record<string, string> = {
 
 /** An attempt ended by integrity (budget or whole-exam lock) — the case where staff may grant a new attempt. */
 export const integrityEnded = (audit: IntegrityAudit[]) => audit.some(a => a.action in AUDIT_LABEL)
+
+export interface LeaveSignal { type: 'TAB_SWITCH' | 'WINDOW_BLUR'; metadata: SignalMetadata }
+/** Hidden tab and window blur within this window are one leave transition (contract A). */
+export const LEAVE_WINDOW_MS = 1500
+
+/**
+ * Turns blur/hidden/return browser events into at most ONE leave signal per transition.
+ * Pure (time is passed in) so it is testable; the hook wires it to real events and timers.
+ */
+export class LeaveTracker {
+  private active = false
+  private start = 0
+  private reported: LeaveSignal['type'] | null = null
+  /** The transition was already recorded as EXIT_FULLSCREEN: no second budget unit, no extra acknowledgment. */
+  private covered = false
+  private exitAt = -Infinity
+  private readonly tab: boolean
+  private readonly blur: boolean
+  constructor(tab: boolean, blur: boolean) { this.tab = tab; this.blur = blur }
+
+  private nearExit(at: number) { return Math.abs(at - this.exitAt) <= LEAVE_WINDOW_MS }
+
+  /** Fullscreen was left (recorded separately as EXIT_FULLSCREEN). A tab/blur in the same window is the same transition. */
+  onFullscreenExit(now: number) {
+    this.exitAt = now
+    if (this.active && !this.reported) this.covered = true
+  }
+
+  /** Window lost focus. Returns true when a timer should call onTimeout() after LEAVE_WINDOW_MS. */
+  onBlur(now: number) {
+    if (!(this.tab || this.blur) || this.active) return false
+    this.active = true; this.start = now; this.covered = this.nearExit(now)
+    return this.blur && !this.covered
+  }
+
+  onHidden(now: number): LeaveSignal | null {
+    if (!(this.tab || this.blur) || this.reported || this.covered) return null
+    if (!this.active) { this.active = true; this.start = now }
+    if (this.nearExit(now)) { this.covered = true; return null }
+    this.reported = this.tab ? 'TAB_SWITCH' : 'WINDOW_BLUR'
+    return { type: this.reported, metadata: { visibilityState: 'HIDDEN' } }
+  }
+
+  /** Blur lasted the whole window without the tab hiding: it is a window focus loss. */
+  onTimeout(): LeaveSignal | null {
+    if (!this.active || this.reported || this.covered || !this.blur) return null
+    this.reported = 'WINDOW_BLUR'
+    return { type: 'WINDOW_BLUR', metadata: { visibilityState: 'VISIBLE' } }
+  }
+
+  /** Page is visible and focused again. `ack` asks the Student to acknowledge one recorded leave. */
+  onReturn(now: number): { signal: LeaveSignal | null; ack: boolean; focusDurationMs: number | null } {
+    if (!this.active) return { signal: null, ack: false, focusDurationMs: null }
+    const durationMs = Math.min(86_400_000, Math.max(0, now - this.start))
+    let signal: LeaveSignal | null = null
+    if (!this.reported && !this.covered && this.blur) { this.reported = 'WINDOW_BLUR'; signal = { type: 'WINDOW_BLUR', metadata: { visibilityState: 'VISIBLE', durationMs } } }
+    const result = { signal, ack: this.reported !== null, focusDurationMs: this.blur && (this.reported || this.covered) ? durationMs : null }
+    this.active = false; this.reported = null; this.covered = false
+    return result
+  }
+}

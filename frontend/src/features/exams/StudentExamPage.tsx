@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
+import BlockingOverlay from '../integrity/BlockingOverlay'
+import { exitFullscreen } from '../../lib/fullscreen'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
 import { useIntegrityMonitor } from '../integrity/useIntegrityMonitor'
 import { signalState, type StudentSignalState } from '../integrity/integrityModel'
-import { ConfirmDialog, Dialog } from '../../components/Dialog'
+import { ConfirmDialog } from '../../components/Dialog'
 import { ErrorState, Notice, Spinner } from '../../components/ui'
 import { errorInfo, errorText } from '../../lib/errors'
 import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '../../lib/format'
@@ -33,7 +35,8 @@ export default function StudentExamPage() {
   const [showPalette, setShowPalette] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const [signals, setSignals] = useState<StudentSignalState | null>(null)
-  const [lastWarning, setLastWarning] = useState(false)
+  const [fsRefused, setFsRefused] = useState(false)
+  const wasFullscreen = useRef(false)
   const [autoSubmitted, setAutoSubmitted] = useState(false)
   const autoSubmittedRef = useRef(false)
 
@@ -97,9 +100,22 @@ export default function StudentExamPage() {
   const integrity = useIntegrityMonitor(id, !!session && !autoSubmitted, r => {
     const next = signalState(r)
     setSignals(next)
-    if (next.stage === 'submitted') { autoSubmittedRef.current = true; setAutoSubmitted(true); setConfirming(false); setLastWarning(false); return }
-    if (r.warningRecommended) { setLastWarning(true); setAnnouncement(`Đã ghi nhận ${next.count}/${next.limit} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.`) }
+    if (next.stage === 'submitted') { autoSubmittedRef.current = true; setAutoSubmitted(true); setConfirming(false); return }
+    if (r.warningRecommended) setAnnouncement(`Đã ghi nhận ${next.count}/${next.limit} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.`)
   })
+  if (integrity.fullscreen) wasFullscreen.current = true
+  // Leaving the attempt (result, auto-submit, navigation) gives the screen back.
+  useEffect(() => { if (autoSubmitted) exitFullscreen() }, [autoSubmitted])
+  // Real unmount only: StrictMode's dev remount must not drop the fullscreen granted by Start.
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false; window.setTimeout(() => { if (!mountedRef.current) exitFullscreen() }, 0) }
+  }, [])
+  async function backToFullscreen() {
+    setFsRefused(false)
+    if (!(await integrity.enterFullscreen())) setFsRefused(true)
+  }
 
   const remaining = session ? Math.max(0, Math.ceil((Date.parse(session.expiresAt) - (now + offset.current)) / 1000)) : 0
   const expired = !!session && remaining <= 0
@@ -221,7 +237,11 @@ export default function StudentExamPage() {
   const errors = states.filter(s => s === 'error').length
   const busy = states.some(s => s === 'saving' || s === 'pending')
   const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
-  const locked = expired || submitting
+  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack
+  const locked = expired || submitting || blocked
+  const lastLine = signals?.stage === 'last' ? <p><strong>Thêm một tín hiệu nữa, bài sẽ được tự động nộp.</strong></p> : null
+  const countLine = signals ? <p>Đã ghi nhận <strong>{signals.count}/{signals.limit}</strong> tín hiệu rời khỏi bài.</p> : null
+  const neutral = <p className="small muted">Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Đồng hồ vẫn chạy theo máy chủ; hết giờ bài được tự động nộp như bình thường.</p>
 
   return (
     <div className="take-shell">
@@ -238,14 +258,13 @@ export default function StudentExamPage() {
         <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}><Send size={16} aria-hidden /> Nộp bài</button>
       </header>
 
+      {/* Questions render only while not blocked (fullscreen active, leave acknowledged): contract A. */}
+      {!blocked && <>
       <div className="take-body">
         <main className="stack">
           {expired && <Notice tone="warning" live title="Đã hết giờ">Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.</Notice>}
-          {!online && <Notice tone="warning" live title="Mất kết nối mạng">Câu trả lời mới chưa được gửi lên máy chủ. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở cho đến khi có mạng.</Notice>}
+          {!online && <Notice tone="warning" live title="Mất kết nối">Câu trả lời sẽ được lưu khi có mạng lại. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở.</Notice>}
           {actionError && <Notice tone="danger" live>{actionError}</Notice>}
-          {integrity.policy?.requireFullscreen && !integrity.fullscreen && <Notice tone="warning" title="Kỳ thi yêu cầu toàn màn hình"
-            action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void integrity.enterFullscreen()}><Maximize size={14} aria-hidden /> Vào toàn màn hình</button>}>
-            Thoát toàn màn hình được ghi nhận là một tín hiệu.</Notice>}
           {signals && signals.stage !== 'none' && (signals.stage === 'last' || integrity.policy?.warningPolicy === 'WARN_ONLY') && (
             <Notice tone="warning" live>Đã ghi nhận <strong>{signals.count}/{signals.limit}</strong> tín hiệu rời khỏi bài.{' '}
               {signals.stage === 'last' ? 'Thêm một tín hiệu nữa, bài sẽ được tự động nộp.' : `Vượt quá ${signals.limit} tín hiệu, bài sẽ được tự động nộp.`}</Notice>)}
@@ -288,16 +307,30 @@ export default function StudentExamPage() {
           </div>
         </aside>
       </div>
+      </>}
 
-      {lastWarning && (
-        <Dialog title="Bạn đã chạm ngưỡng tín hiệu" onClose={() => setLastWarning(false)}
-          footer={<button type="button" className="btn btn-primary" data-autofocus onClick={() => setLastWarning(false)}>Tiếp tục làm bài</button>}>
-          <div className="stack-sm">
-            <p>Hệ thống đã ghi nhận <strong>{signals?.count}/{signals?.limit}</strong> tín hiệu rời khỏi bài (chuyển tab, rời cửa sổ, thoát toàn màn hình, tải lại trang hoặc mất mạng).</p>
-            <p><strong>Thêm một tín hiệu nữa, bài sẽ được tự động nộp.</strong></p>
-            <p className="small muted">Đây là tín hiệu ghi nhận, không phải kết luận gian lận.</p>
-          </div>
-        </Dialog>
+      {integrity.needsFullscreen && !integrity.supported && (
+        <BlockingOverlay title="Trình duyệt không hỗ trợ toàn màn hình" remaining={remaining}
+          actions={<button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`)}>Về phòng chờ</button>}>
+          <p>Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy mở bài bằng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari).</p>
+          {neutral}
+        </BlockingOverlay>
+      )}
+      {integrity.needsFullscreen && integrity.supported && (
+        <BlockingOverlay title={wasFullscreen.current ? 'Bạn đã thoát toàn màn hình' : 'Bật toàn màn hình để làm bài'} remaining={remaining}
+          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={() => void backToFullscreen()}><Maximize size={16} aria-hidden /> Quay lại toàn màn hình</button>}>
+          <p>Kỳ thi yêu cầu làm bài ở chế độ toàn màn hình. Câu hỏi được ẩn và không sửa được câu trả lời cho đến khi bạn quay lại.</p>
+          {wasFullscreen.current && countLine}{lastLine}
+          {fsRefused && <Notice tone="danger" live>Trình duyệt chưa bật được toàn màn hình. Bấm “Quay lại toàn màn hình” để thử lại.</Notice>}
+          {neutral}
+        </BlockingOverlay>
+      )}
+      {!integrity.needsFullscreen && integrity.ack && (
+        <BlockingOverlay title="Bạn vừa rời khỏi trang làm bài" remaining={remaining}
+          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.acknowledge}>Tôi đã hiểu</button>}>
+          {countLine ?? <p>Đang ghi nhận tín hiệu…</p>}{lastLine}
+          {neutral}
+        </BlockingOverlay>
       )}
       {confirming && (
         <ConfirmDialog title="Nộp bài?" confirmLabel="Nộp bài" busy={submitting} cancelLabel="Tiếp tục làm bài"
