@@ -74,7 +74,6 @@
 .public-filter-author { align-self:center; }
 .public-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr)); gap:0; border-top:1px solid #000; border-left:1px solid #000; }
 .public-post { border:0; border-right:1px solid #000; border-bottom:1px solid #000; }
-.public-post:focus-within { box-shadow:inset 0 0 0 2px var(--color-accent); }
 .public-detail-route { width:100%; }
 .public-detail-page { display:grid; gap:16px; width:min(100%,920px); margin:0 auto; padding:20px; border:1px solid #000; background:#fff; }
 .public-detail-header { display:flex; align-items:flex-start; gap:16px; padding-bottom:14px; border-bottom:1px solid #000; }
@@ -104,7 +103,6 @@
 /* Public post card: one post = one card; equal height per row; title/summary/meta lines are fixed so buttons line up on the bottom edge. */
 .public-post { position:relative; display:flex; flex-direction:column; gap:8px; min-width:0; padding:14px; background:#fff; }
 .public-post:hover { background:#fff; }
-.public-post:focus-within { box-shadow:inset 0 0 0 2px var(--color-accent); }
 .public-post-top { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:22px; font-size:.8rem; }
 .public-post-kind { display:inline-flex; align-items:center; gap:6px; color:var(--color-muted); white-space:nowrap; }
 .public-post-flag { padding:1px 6px; border:1px solid var(--color-copied); background:var(--color-copied-soft); color:var(--color-copied); font-size:.75rem; white-space:nowrap; }
@@ -131,3 +129,5 @@
 .publish-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #000; background:#fff; }
 .publish-row-main { display:grid; gap:2px; min-width:0; }
 .publish-row-main strong { font-weight:400; overflow-wrap:anywhere; }
+
+.public-post:has(:focus-visible) { outline:2px solid var(--color-accent); outline-offset:-2px; }
