@@ -61,6 +61,68 @@ test('grant is offered only for attempts ended by integrity', () => {
 })
 
 test('budget signals match the contract; wording never says gian lận except to deny it', () => {
-  assert.deepEqual([...m.BUDGET_SIGNALS].sort(), ['EXIT_FULLSCREEN', 'NETWORK_DISCONNECT', 'PAGE_RELOAD', 'TAB_SWITCH', 'WINDOW_BLUR'])
+  assert.deepEqual([...m.BUDGET_SIGNALS].sort(), ['EXIT_FULLSCREEN', 'PAGE_RELOAD', 'TAB_SWITCH', 'WINDOW_BLUR'])
   assert.ok(Object.values(m.SIGNAL_LABEL).every(l => !/gian lận/i.test(l)))
+})
+
+test('one leave transition (blur then hidden) is one TAB_SWITCH and one acknowledgment', () => {
+  const t = new m.LeaveTracker(true, true)
+  assert.equal(t.onBlur(0), true)
+  assert.deepEqual(t.onHidden(200), { type: 'TAB_SWITCH', metadata: { visibilityState: 'HIDDEN' } })
+  assert.equal(t.onTimeout(), null, 'blur timer after hidden adds nothing')
+  assert.equal(t.onHidden(300), null)
+  const r = t.onReturn(5000)
+  assert.equal(r.signal, null)
+  assert.equal(r.ack, true)
+  assert.equal(r.focusDurationMs, 5000)
+  assert.equal(t.onReturn(5100).ack, false, 'second return event is a no-op')
+})
+
+test('blur without hiding counts once as WINDOW_BLUR, even when it ends before the window', () => {
+  const a = new m.LeaveTracker(true, true)
+  a.onBlur(0)
+  assert.equal(a.onTimeout().type, 'WINDOW_BLUR')
+  assert.equal(a.onHidden(2000), null)
+  assert.equal(a.onReturn(3000).ack, true)
+  const b = new m.LeaveTracker(true, true)
+  b.onBlur(0)
+  const r = b.onReturn(400)
+  assert.equal(r.signal.type, 'WINDOW_BLUR')
+  assert.equal(r.signal.metadata.durationMs, 400)
+  assert.equal(r.ack, true)
+})
+
+test('tab-only monitoring ignores a short window blur; nothing monitored records nothing', () => {
+  const t = new m.LeaveTracker(true, false)
+  assert.equal(t.onBlur(0), false)
+  assert.equal(t.onTimeout(), null)
+  assert.equal(t.onReturn(800).ack, false)
+  const off = new m.LeaveTracker(false, false)
+  assert.equal(off.onHidden(0), null)
+  assert.equal(off.onReturn(10).ack, false)
+})
+
+test('leaving the tab while fullscreen is one transition: EXIT_FULLSCREEN covers the tab switch', () => {
+  const t = new m.LeaveTracker(true, true)
+  t.onFullscreenExit(0)
+  assert.equal(t.onBlur(100), false, 'no blur timer: already recorded')
+  assert.equal(t.onHidden(150), null)
+  assert.equal(t.onTimeout(), null)
+  const r = t.onReturn(4000)
+  assert.equal(r.signal, null)
+  assert.equal(r.ack, false, 'the fullscreen overlay handles it')
+  // An old Esc exit does not swallow a later, separate tab switch.
+  t.onFullscreenExit(10_000)
+  assert.equal(t.onHidden(20_000).type, 'TAB_SWITCH')
+  // Exit right after the tab hid (reverse order) still marks the transition covered for the blur path.
+  const u = new m.LeaveTracker(false, true)
+  u.onBlur(0); u.onFullscreenExit(50)
+  assert.equal(u.onTimeout(), null)
+})
+
+test('acknowledgment follows Receipt.counted; older receipts without the field count', () => {
+  assert.equal(m.leaveCounted({ counted: true }), true)
+  assert.equal(m.leaveCounted({ counted: false }), false)
+  assert.equal(m.leaveCounted({}), true)
+  assert.equal(m.counts({ ...m.DISABLED_POLICY, monitorNetwork: true }), false, 'network alone has no budget')
 })

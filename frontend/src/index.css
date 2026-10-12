@@ -434,3 +434,8 @@ a.stat:hover { background: var(--color-subtle); }
 }
 .btn.btn-danger:focus-visible:not(:disabled), .btn.btn-danger-ghost:focus-visible:not(:disabled) { box-shadow: var(--shadow-btn-danger); outline-color: var(--color-danger); }
 .btn.btn-danger:active:not(:disabled), .btn.btn-danger-ghost:active:not(:disabled) { box-shadow: 0 0 0 #000; }
+
+/* Integrity blocking layer (contract A): opaque so questions are not visible while blocked; flat at rest. */
+.take-block { position: fixed; inset: 0; z-index: 120; background: #fff; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.take-block-card { width: min(560px, 100%); border: 1px solid #000; padding: 24px; background: #fff; box-shadow: inset 6px 0 0 var(--color-accent); padding-left: 30px; }
+.take-block-card .timer { align-self: flex-start; }

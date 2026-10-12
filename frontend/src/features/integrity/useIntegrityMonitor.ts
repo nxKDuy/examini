@@ -1,41 +1,68 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { integrityApi, type IntegrityPolicy, type Receipt, type SignalInput, type SignalMetadata, type SignalType } from './integrityApi'
-import { monitored, retryDelay } from './integrityModel'
+import { LEAVE_WINDOW_MS, LeaveTracker, leaveCounted, monitored, retryDelay } from './integrityModel'
 import { errorStatus } from '../../lib/errors'
+import { FULLSCREEN_EVENTS, fullscreenSupported, isFullscreen, requestFullscreen } from '../../lib/fullscreen'
 
 const SEEN_KEY = (sessionId: string) => `examini.integrity.seen.${sessionId}`
 // Navigation evidence is sent once per document load, even if the effect re-runs (StrictMode, token refresh).
 const navReported = new Set<string>()
 
 /**
- * Reports browser signals for the frozen attempt policy. Reporting runs beside answering:
- * failures and 429 retry in the background and never block saving or submitting.
+ * Reports browser signals for the frozen attempt policy and exposes the blocking states of contract A
+ * (fullscreen required, leave acknowledgment). Reporting runs beside answering: failures retry in the
+ * background, offline events wait for the connection and never block saving or submitting.
  */
 export function useIntegrityMonitor(sessionId: string | undefined, active: boolean, onReceipt: (r: Receipt) => void) {
   const policy = useQuery({ queryKey: ['integrity-policy', sessionId], queryFn: () => integrityApi.sessionPolicy(sessionId!), enabled: !!sessionId, retry: 1, staleTime: Infinity })
-  const [fullscreen, setFullscreen] = useState(() => typeof document !== 'undefined' && !!document.fullscreenElement)
+  const [fullscreen, setFullscreen] = useState(isFullscreen)
+  const [ack, setAck] = useState(false)
   const receiptRef = useRef(onReceipt)
   receiptRef.current = onReceipt
+  // Events that could not reach the server (offline / network error). Same clientEventId on resend: the server dedupes.
+  const offlineQueue = useRef<SignalInput[]>([])
+  // Verdict for the latest leave signal: the overlay asks for acknowledgment only when the server counted it.
+  const leaveVerdict = useRef<{ id: string; counted?: boolean } | null>(null)
   const p: IntegrityPolicy | undefined = policy.data
   const on = !!sessionId && active && monitored(p)
+
+  // Fullscreen state is tracked from mount, not only once the policy has loaded, so an early exit is never missed.
+  useEffect(() => {
+    const sync = () => setFullscreen(isFullscreen())
+    sync()
+    FULLSCREEN_EVENTS.forEach(e => document.addEventListener(e, sync))
+    return () => FULLSCREEN_EVENTS.forEach(e => document.removeEventListener(e, sync))
+  }, [])
 
   useEffect(() => {
     if (!on || !p || !sessionId) return
     let stopped = false
     const timers = new Set<number>()
+    const later = (ms: number, fn: () => void) => { const t = window.setTimeout(() => { timers.delete(t); if (!stopped) fn() }, ms); timers.add(t); return t }
     const send = (input: SignalInput, attempt = 0) => {
       if (stopped) return
-      integrityApi.report(sessionId, input).then(r => { if (!stopped) receiptRef.current(r) }, e => {
-        // Same clientEventId and payload on retry: the server dedupes exact retries.
-        const wait = retryDelay(errorStatus(e), attempt)
-        if (wait === null || stopped) return
-        const t = window.setTimeout(() => { timers.delete(t); send(input, attempt + 1) }, wait)
-        timers.add(t)
+      if (!navigator.onLine) { offlineQueue.current.push(input); return }
+      integrityApi.report(sessionId, input).then(r => {
+        if (leaveVerdict.current?.id === input.clientEventId) {
+          leaveVerdict.current.counted = leaveCounted(r)
+          if (!leaveVerdict.current.counted) setAck(false)
+        }
+        if (!stopped) receiptRef.current(r)
+      }, e => {
+        const status = errorStatus(e)
+        if (status === 0) { offlineQueue.current.push(input); return }
+        const wait = retryDelay(status, attempt)
+        if (wait !== null) later(wait, () => send(input, attempt + 1))
       })
     }
-    const report = (type: SignalType, metadata?: SignalMetadata) =>
-      send({ clientEventId: crypto.randomUUID(), type, occurredAt: new Date().toISOString(), metadata: metadata ?? null })
+    const report = (type: SignalType, metadata?: SignalMetadata) => {
+      const input: SignalInput = { clientEventId: crypto.randomUUID(), type, occurredAt: new Date().toISOString(), metadata: metadata ?? null }
+      send(input)
+      return input.clientEventId
+    }
+    const flush = () => offlineQueue.current.splice(0).forEach(i => send(i))
+    flush()
 
     // Navigation evidence once per page load: reload of this attempt, or reopening it later.
     if (!navReported.has(sessionId)) {
@@ -47,61 +74,74 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
       else if (seen) report('SESSION_RESUME')
     }
 
-    let hiddenAt = 0, blurAt = 0, offlineAt = 0
+    const leave = new LeaveTracker(p.monitorTabSwitch, p.monitorWindowBlur)
+    let leaveTimer = 0, offlineAt = 0
+    const emit = (s: ReturnType<LeaveTracker['onTimeout']>) => { if (s) leaveVerdict.current = { id: report(s.type, s.metadata) } }
+    const back = () => {
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) return
+      window.clearTimeout(leaveTimer)
+      const r = leave.onReturn(Date.now())
+      emit(r.signal)
+      if (r.focusDurationMs !== null) report('WINDOW_FOCUS', { visibilityState: 'VISIBLE', durationMs: r.focusDurationMs })
+      if (r.ack && leaveVerdict.current?.counted !== false) setAck(true)
+    }
     const onVisibility = () => {
-      if (!p.monitorTabSwitch) return
-      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); report('TAB_SWITCH', { visibilityState: 'HIDDEN' }) }
-      else hiddenAt = 0
+      if (document.visibilityState === 'hidden') { window.clearTimeout(leaveTimer); emit(leave.onHidden(Date.now())) }
+      else back()
     }
-    const onBlur = () => {
-      if (!p.monitorWindowBlur) return
-      // A tab switch also blurs the window; count that once, as TAB_SWITCH.
-      window.setTimeout(() => {
-        if (stopped || document.visibilityState === 'hidden' || hiddenAt) return
-        blurAt = Date.now(); report('WINDOW_BLUR', { visibilityState: 'VISIBLE' })
-      }, 150)
-    }
-    const onFocus = () => {
-      if (!p.monitorWindowBlur || !blurAt) return
-      report('WINDOW_FOCUS', { visibilityState: 'VISIBLE', durationMs: Math.min(86_400_000, Date.now() - blurAt) }); blurAt = 0
-    }
+    const onBlur = () => { if (leave.onBlur(Date.now())) leaveTimer = later(LEAVE_WINDOW_MS, () => emit(leave.onTimeout())) }
     const onFullscreen = () => {
-      const now = !!document.fullscreenElement
-      setFullscreen(now)
+      const now = isFullscreen()
+      if (!now) leave.onFullscreenExit(Date.now())
       if (!p.requireFullscreen) return
       report(now ? 'FULLSCREEN_ENTER' : 'EXIT_FULLSCREEN', now ? { fromFullscreen: false, toFullscreen: true } : { fromFullscreen: true, toFullscreen: false })
     }
     const onCopy = () => { if (p.monitorCopy) report('COPY') }
     const onPaste = () => { if (p.monitorPaste) report('PASTE') }
-    const onOffline = () => { if (p.monitorNetwork) offlineAt = Date.now() }
+    const onOffline = () => { if (p.monitorNetwork && !offlineAt) offlineAt = Date.now() }
     const onOnline = () => {
-      if (!p.monitorNetwork || !offlineAt) return
-      // Disconnect is reported on reconnect, while the attempt is still in progress.
-      const durationMs = Math.min(86_400_000, Date.now() - offlineAt); offlineAt = 0
-      report('NETWORK_DISCONNECT', { networkState: 'OFFLINE', durationMs })
-      report('NETWORK_RECONNECT', { networkState: 'ONLINE', durationMs })
+      if (p.monitorNetwork && offlineAt) {
+        // Audit only (not a violation); disconnect is reported on reconnect while the attempt is still in progress.
+        const durationMs = Math.min(86_400_000, Date.now() - offlineAt); offlineAt = 0
+        report('NETWORK_DISCONNECT', { networkState: 'OFFLINE', durationMs })
+        report('NETWORK_RECONNECT', { networkState: 'ONLINE', durationMs })
+      }
+      flush()
     }
+    if (!navigator.onLine) onOffline()
     document.addEventListener('visibilitychange', onVisibility)
-    document.addEventListener('fullscreenchange', onFullscreen)
+    FULLSCREEN_EVENTS.forEach(e => document.addEventListener(e, onFullscreen))
     document.addEventListener('copy', onCopy)
     document.addEventListener('paste', onPaste)
     window.addEventListener('blur', onBlur)
-    window.addEventListener('focus', onFocus)
+    window.addEventListener('focus', back)
     window.addEventListener('offline', onOffline)
     window.addEventListener('online', onOnline)
     return () => {
       stopped = true
       timers.forEach(t => window.clearTimeout(t))
       document.removeEventListener('visibilitychange', onVisibility)
-      document.removeEventListener('fullscreenchange', onFullscreen)
+      FULLSCREEN_EVENTS.forEach(e => document.removeEventListener(e, onFullscreen))
       document.removeEventListener('copy', onCopy)
       document.removeEventListener('paste', onPaste)
       window.removeEventListener('blur', onBlur)
-      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('focus', back)
       window.removeEventListener('offline', onOffline)
       window.removeEventListener('online', onOnline)
     }
   }, [on, p, sessionId])
 
-  return { policy: on ? p! : null, fullscreen, enterFullscreen: () => document.documentElement.requestFullscreen?.().catch(() => undefined) }
+  const enterFullscreen = useCallback(async () => { const ok = await requestFullscreen(); setFullscreen(isFullscreen()); return ok }, [])
+  const current = on ? p! : null
+  return {
+    policy: current,
+    /** Policy still loading: the question UI waits so a fullscreen-required attempt never flashes its questions. */
+    loading: !!sessionId && policy.isLoading,
+    supported: fullscreenSupported(),
+    fullscreen,
+    needsFullscreen: !!current?.requireFullscreen && !fullscreen,
+    ack: on && ack,
+    acknowledge: () => setAck(false),
+    enterFullscreen,
+  }
 }

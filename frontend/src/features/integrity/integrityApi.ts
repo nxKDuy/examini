@@ -14,7 +14,12 @@ export interface SignalEvent {
   id: string; clientEventId: string; examId: string; sessionId: string; userId: string; type: SignalType
   occurredAt?: string | null; receivedAt: string; severity: 'LOW' | 'MEDIUM'; metadata?: SignalMetadata | null; source: string
 }
-export interface Receipt { event: SignalEvent; duplicate: boolean; warningCount: number; warningLimit: number; warningRecommended: boolean; warning: string | null; autoSubmitted: boolean }
+export type NotCountedReason = 'NOT_BUDGET_SIGNAL' | 'COALESCED' | 'STALE'
+/** `counted`/`notCountedReason` come with contract A; an older server omits them and every budget signal counts. */
+export interface Receipt {
+  event: SignalEvent; duplicate: boolean; warningCount: number; warningLimit: number; warningRecommended: boolean; warning: string | null; autoSubmitted: boolean
+  counted?: boolean; notCountedReason?: NotCountedReason | null
+}
 export interface Summary { examId: string; sessionId: string; totalEvents: number; counts: Record<SignalType, number> }
 export interface IntegrityAudit {
   id: string; examId: string; sessionId: string; actorUserId: string | null; actorType: string; action: string

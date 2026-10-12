@@ -12,6 +12,8 @@ import { useBoundaryRefetch, useNow, useViewerZone } from '../calendar/useCalend
 import { useAuthStore } from '../../store/authStore'
 import StudentAttempts, { RevokedNotice } from '../participants/StudentAttempts'
 import { monitored, policySummary } from '../integrity/integrityModel'
+import { integrityApi } from '../integrity/integrityApi'
+import { exitFullscreen, fullscreenSupported, requestFullscreen } from '../../lib/fullscreen'
 import { useParticipation } from '../participants/useParticipation'
 import { ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { errorStatus, errorText } from '../../lib/errors'
@@ -27,6 +29,9 @@ export default function ExamLobbyPage() {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
   const lobby = useQuery({ queryKey: ['lobby', id], queryFn: () => examApi.lobby(id!), retry: false })
+  // The frozen policy decides whether Start must enter fullscreen first (contract A).
+  const integrityPolicy = useQuery({ queryKey: ['integrity-exam-policy', id], queryFn: () => integrityApi.examPolicy(id!), retry: false, enabled: lobby.isSuccess })
+  const [fsProblem, setFsProblem] = useState<'denied' | null>(null)
   // The backend decides who may join / start / resume and why not; this page only shows it.
   const avail = useQuery({
     queryKey: ['availability', id], queryFn: async () => { const a = await calendarApi.availability(id!); return { a, clockOffset: Date.parse(a.serverNow) - Date.now() } },
@@ -63,8 +68,17 @@ export default function ExamLobbyPage() {
   const finishedId = a.latestSessionId && a.latestSessionStatus && a.latestSessionStatus !== 'IN_PROGRESS' ? a.latestSessionId : null
   const why = !a.canStart && !a.canResume ? reasonText(a.reasonCode) : null
 
+  const needsFullscreen = !!(integrityPolicy.data ?? lobby.data?.integrityPolicy)?.requireFullscreen
+  const fsUnsupported = needsFullscreen && !fullscreenSupported()
+
   async function start() {
-    setStarting(true); setError('')
+    setError(''); setFsProblem(null)
+    if (needsFullscreen) {
+      if (fsUnsupported) return
+      // Requested synchronously in the click (user gesture); the attempt starts only once fullscreen is active.
+      if (!(await requestFullscreen())) { setFsProblem('denied'); return }
+    }
+    setStarting(true)
     try {
       await examApi.preflight(id!)
       // Start resumes an existing IN_PROGRESS attempt server-side instead of creating a duplicate.
@@ -72,6 +86,7 @@ export default function ExamLobbyPage() {
       if (user) rememberAttempt(user.id, id!, session.sessionId)
       navigate(`/exam/take/${session.sessionId}`)
     } catch (e) {
+      if (needsFullscreen) exitFullscreen()
       setError(errorText(e))
       void avail.refetch()
     } finally {
@@ -96,7 +111,7 @@ export default function ExamLobbyPage() {
       )}
 
       {resumeId && (
-        <Notice tone="info" title="Bạn có lượt làm bài đang dở" action={<Link to={`/exam/take/${resumeId}`} className="btn btn-primary"><PlayCircle size={16} aria-hidden /> Tiếp tục làm bài</Link>}>
+        <Notice tone="info" title="Bạn có lượt làm bài đang dở" action={<Link to={`/exam/take/${resumeId}`} className="btn btn-primary" onClick={() => { if (needsFullscreen && !fsUnsupported) void requestFullscreen() }}><PlayCircle size={16} aria-hidden /> Tiếp tục làm bài</Link>}>
           {countdown ?? 'Thời gian vẫn tiếp tục chạy trên máy chủ.'}
         </Notice>
       )}
@@ -147,9 +162,14 @@ export default function ExamLobbyPage() {
         <section className="card card-body stack">
           {why ? <Notice tone="info" title="Chưa bắt đầu được">{why}</Notice> : <p className="small">Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.</p>}
           {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.</span></label>}
+          {needsFullscreen && !fsUnsupported && a.canStart && <p className="small">Kỳ thi yêu cầu toàn màn hình: bấm Bắt đầu sẽ bật toàn màn hình rồi mới tạo lượt làm bài.</p>}
+          {fsUnsupported && <Notice tone="warning" title="Trình duyệt không hỗ trợ toàn màn hình">Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy dùng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari). Lượt làm bài chưa được tạo.</Notice>}
+          {fsProblem && <Notice tone="danger" live title="Chưa bật được toàn màn hình"
+            action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void start()}>Thử lại</button>}>
+            Trình duyệt đã từ chối hoặc chặn chế độ toàn màn hình. Lượt làm bài chưa được tạo; bấm Thử lại và cho phép toàn màn hình.</Notice>}
           {error && <Notice tone="danger" live>{error}</Notice>}
           <div className="row">
-            <button type="button" className="btn btn-primary btn-lg" disabled={!a.canStart || !ready || starting} aria-busy={starting} onClick={() => void start()}>
+            <button type="button" className="btn btn-primary btn-lg" disabled={!a.canStart || !ready || starting || fsUnsupported} aria-busy={starting} onClick={() => void start()}>
               <PlayCircle size={18} aria-hidden /> {starting ? 'Đang kiểm tra điều kiện…' : finishedId ? 'Bắt đầu lượt mới' : 'Bắt đầu làm bài'}
             </button>
             {!a.canStart && <button type="button" className="btn btn-ghost" onClick={() => void avail.refetch()}><RotateCcw size={16} aria-hidden /> Kiểm tra lại</button>}
