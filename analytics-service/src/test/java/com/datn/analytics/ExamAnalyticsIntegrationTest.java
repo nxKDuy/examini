@@ -389,8 +389,10 @@ class ExamAnalyticsIntegrationTest {
                     .andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(2)));
             http.perform(get("/analytics/exams/{id}/results", exam).header("Authorization", jwt(allowed, "TEACHER")))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].candidateId").value(student.toString()));
+            http.perform(get("/analytics/exams/{id}/students", exam).header("Authorization", jwt(allowed, "TEACHER")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].candidateId").value(student.toString()));
         }
-        for (String path : List.of("summary", "questions", "results")) {
+        for (String path : List.of("summary", "questions", "results", "students")) {
             http.perform(get("/analytics/exams/{id}/" + path, exam).header("Authorization", jwt(proctor, "TEACHER")))
                     .andExpect(status().isForbidden());
             http.perform(get("/analytics/exams/{id}/" + path, exam).header("Authorization", jwt(unrelated, "TEACHER")))
@@ -416,6 +418,8 @@ class ExamAnalyticsIntegrationTest {
         http.perform(get("/analytics/exams/{id}/summary", exam).header("Authorization", refreshToken))
                 .andExpect(status().isUnauthorized());
         http.perform(get("/analytics/exams/{id}/results", exam).param("status", "BOGUS")
+                .header("Authorization", jwt(owner, "TEACHER"))).andExpect(status().isBadRequest());
+        http.perform(get("/analytics/exams/{id}/results", exam).param("candidateId", "bad-id")
                 .header("Authorization", jwt(owner, "TEACHER"))).andExpect(status().isBadRequest());
 
         UUID missing = UUID.randomUUID();
