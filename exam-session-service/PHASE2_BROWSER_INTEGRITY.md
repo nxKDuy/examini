@@ -203,3 +203,9 @@ quyền hạn chế, cleanup chỉ tài nguyên đã tự tạo. Cần Docker im
 rabbitmq:3.13-alpine, python:3.12-alpine, maven:3.9-eclipse-temurin-21 và JAR đã build.
 Provider fixture là test contract, không phải claim đã dùng Question Bank runtime
 production. HTTP test dùng HTTP thật giữa các JVM/Feign, local databases và MQ.
+
+## Budget accounting (scope A, 2026-10-12)
+
+Authoritative rules: `contracts/browser-integrity.md`. Each row stores `counted`,
+`not_counted_reason` (NOT_BUDGET_SIGNAL | COALESCED | STALE), `coalesced_into` and
+`effective_at` (migration V4; existing rows: network signals become NOT_BUDGET_SIGNAL).

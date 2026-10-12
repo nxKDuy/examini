@@ -25,7 +25,16 @@ public class IntegrityEvent {
     @Enumerated(EnumType.STRING) @Column(nullable=false,updatable=false,length=16) private Severity severity;
     @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition="jsonb",updatable=false) private Metadata metadata;
     @Column(nullable=false,updatable=false,length=16) private String source;
-    public IntegrityEvent(ExamSession session, com.datn.examsession.dto.IntegrityDto.Ingest input, Instant now) {
+    @Column(nullable=false,updatable=false) private boolean counted;
+    @Enumerated(EnumType.STRING) @Column(name="not_counted_reason",updatable=false,length=24) private NotCountedReason notCountedReason;
+    @Column(name="coalesced_into",updatable=false) private UUID coalescedInto;
+    @Column(name="effective_at",nullable=false,updatable=false) private Instant effectiveAt;
+    public IntegrityEvent(ExamSession session, com.datn.examsession.dto.IntegrityDto.Ingest input, Instant now,
+                          Instant effectiveAt, NotCountedReason notCounted, UUID coalescedInto) {
+        this(session,input,now);this.effectiveAt=effectiveAt;this.counted=notCounted==null;
+        this.notCountedReason=notCounted;this.coalescedInto=coalescedInto;
+    }
+    private IntegrityEvent(ExamSession session, com.datn.examsession.dto.IntegrityDto.Ingest input, Instant now) {
         id=UUID.randomUUID();clientEventId=input.clientEventId();examId=session.getExamId();
         sessionId=session.getId();userId=session.getUserId();type=input.type();
         occurredAt=input.occurredAt();receivedAt=now;metadata=input.metadata();source="BROWSER";

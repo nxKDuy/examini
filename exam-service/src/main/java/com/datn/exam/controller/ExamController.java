@@ -17,12 +17,13 @@ public class ExamController {
     private final ExamService service; private final ExamCore core;
     private final ExamRepository exams; private final ExamAuditRepository audits;
     private final ScheduleService schedules; private final StartAdmissionService admissions;
-    private final ExamEventPublisher events; private final ParticipantService participantService; private final ExamParticipantRepository participantRows;
+    private final ExamEventPublisher events; private final ParticipantService participantService; private final BlueprintService blueprints; private final ExamParticipantRepository participantRows;
     @Value("${notification.internal-token:}") private String notificationToken="";
     private void teacher(String role) { if(!"TEACHER".equals(role))throw ExamCore.error(403,"Teacher required"); }
     @GetMapping public Page<ExamDto.Response> list(@RequestAttribute UUID actor,Pageable page){return service.getExamsByCreator(actor,page);}
     @PostMapping("/manual") public ExamDto.Response create(@RequestAttribute UUID actor,@RequestAttribute String actorRole,@Valid @RequestBody ExamDto.ManualCreateRequest req){teacher(actorRole);return service.createManual(req,actor);}
     @PostMapping("/auto") public ExamDto.Response auto(@RequestAttribute UUID actor,@RequestAttribute String actorRole,@Valid @RequestBody ExamDto.AutoGenerateRequest req){teacher(actorRole);return service.autoGenerate(req,actor);}
+    @PostMapping("/blueprint/preview") public com.datn.exam.dto.BlueprintDto.Preview blueprintPreview(@RequestAttribute UUID actor,@RequestAttribute String actorRole,@Valid @RequestBody com.datn.exam.dto.BlueprintDto.PreviewRequest req){teacher(actorRole);return blueprints.preview(req,actor);}
     @GetMapping("/{id}") public ExamDto.Response detail(@PathVariable UUID id,@RequestAttribute UUID actor){var e=core.load(id);core.require(e,actor,false);return ExamDto.Response.from(e);}
     @PutMapping("/{id}") public ExamDto.Response update(@PathVariable UUID id,@RequestAttribute UUID actor,@Valid @RequestBody ExamDto.ManualCreateRequest req){
         var e=core.load(id);core.require(e,actor,true);core.draft(e);
@@ -35,6 +36,7 @@ public class ExamController {
         e.setTitle(req.title());e.setDescription(req.description());e.setDurationMinutes(req.durationMinutes());e.setStartTime(req.startTime());e.setEndTime(req.endTime());e.setStartAt(newStart);e.setEndAt(newEnd);e.setPassingScore(req.passingScore());e.setShuffleQuestions(req.shuffleQuestions());e.setShuffleOptions(req.shuffleOptions());
         e.getPoints().clear();var ids=new ArrayList<UUID>();
         for(var q:req.questions()){if(q.weight()<=0 || !Double.isFinite(q.weight()) || e.getPoints().put(q.questionId(),java.math.BigDecimal.valueOf(q.weight()))!=null)throw ExamCore.error(400,"Invalid points/composition");ids.add(q.questionId());}
+        var added=new LinkedHashSet<UUID>(ids);added.removeAll(e.getQuestionIds());blueprints.requireSelectable(added,actor);
         e.setQuestionIds(ids);core.audit(e,actor,"EXAM_UPDATED",null);
         if(scheduleChanged){e.setScheduleRevision(e.getScheduleRevision()+1);core.audit(e,actor,"EXAM_SCHEDULE_CHANGED","{\"oldStartAt\":"+(oldStart==null?"null":"\""+oldStart+"\"")+",\"oldEndAt\":"+(oldEnd==null?"null":"\""+oldEnd+"\"")+",\"newStartAt\":"+(newStart==null?"null":"\""+newStart+"\"")+",\"newEndAt\":"+(newEnd==null?"null":"\""+newEnd+"\"")+",\"revision\":"+e.getScheduleRevision()+"}");events.scheduleChanged(e,ScheduleService.changeType(oldStart,oldEnd,newStart,newEnd),actor);}
         return ExamDto.Response.from(e);

@@ -12,7 +12,8 @@ public interface IntegrityEventRepository extends JpaRepository<IntegrityEvent,U
     Optional<IntegrityEvent> findBySessionIdAndClientEventId(UUID sessionId,UUID clientEventId);
     long countBySessionId(UUID sessionId);
     long countBySessionIdAndReceivedAtAfter(UUID sessionId,Instant since);
-    long countBySessionIdAndTypeIn(UUID sessionId,Collection<EventType> types);
+    long countBySessionIdAndCountedTrue(UUID sessionId);
+    Optional<IntegrityEvent> findFirstBySessionIdAndCountedTrueAndTypeInAndEffectiveAtBetweenOrderByEffectiveAtAsc(UUID sessionId,Collection<EventType> types,Instant from,Instant to);
     @Query("select e from IntegrityEvent e where e.examId=:exam and (:session is null or e.sessionId=:session) and (:type is null or e.type=:type)")
     Page<IntegrityEvent> search(UUID exam,UUID session,EventType type,Pageable page);
     interface TypeCount { EventType getType(); long getTotal(); }

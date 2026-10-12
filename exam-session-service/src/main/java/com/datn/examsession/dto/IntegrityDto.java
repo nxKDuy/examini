@@ -13,6 +13,8 @@ public final class IntegrityDto {
         NETWORK_DISCONNECT, NETWORK_RECONNECT, FULLSCREEN_ENTER, WINDOW_FOCUS,
         PAGE_RELOAD, SESSION_RESUME }
     public enum Severity { LOW, MEDIUM }
+    /** Why an accepted signal did not consume one warning-budget unit. */
+    public enum NotCountedReason { NOT_BUDGET_SIGNAL, COALESCED, STALE }
     public enum VisibilityState { HIDDEN, VISIBLE }
     public enum NetworkState { OFFLINE, ONLINE }
     public record Metadata(Long durationMs, VisibilityState visibilityState, Boolean fromFullscreen,
@@ -32,7 +34,8 @@ public final class IntegrityDto {
                         EventType type, Instant occurredAt, Instant receivedAt, Severity severity,
                         Metadata metadata, String source) {}
     public record Receipt(Event event, boolean duplicate, long warningCount, int warningLimit,
-                          boolean warningRecommended, String warning, boolean autoSubmitted) {}
+                          boolean warningRecommended, String warning, boolean autoSubmitted,
+                          boolean counted, NotCountedReason notCountedReason) {}
     public record Summary(UUID examId, UUID sessionId, long totalEvents, Map<EventType,Long> counts) {}
     public record Audit(UUID id,UUID examId,UUID sessionId,UUID actorUserId,String actorType,String action,
                         UUID triggerEventId,Long eventCount,Instant occurredAt,String metadata) {}

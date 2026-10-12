@@ -29,6 +29,7 @@ public class ExamService {
     private final com.datn.exam.repository.ExamParticipantRepository participantRows;
     private final com.datn.exam.repository.AttemptGrantRepository attemptGrants;
     private final ExamEventPublisher events;
+    private final BlueprintService blueprints;
     @org.springframework.beans.factory.annotation.Value("${question-bank.internal-token:}") private String questionToken="";
 
     public Page<ExamDto.Response> getExamsByCreator(UUID createdBy, Pageable pageable) {
@@ -87,6 +88,7 @@ public class ExamService {
             if(q.weight()<=0 || !Double.isFinite(q.weight()) || e.getPoints().put(q.questionId(),java.math.BigDecimal.valueOf(q.weight()))!=null)
                 throw ExamCore.error(400,"Positive points and unique questions required");
         }
+        blueprints.requireSelectable(new java.util.LinkedHashSet<>(questionIds),createdBy);
         repo.saveAndFlush(e);
         core.audit(e,createdBy,"EXAM_CREATED",null);
         if(e.getScheduleRevision()>0)events.scheduleChanged(e,"SCHEDULED",createdBy);

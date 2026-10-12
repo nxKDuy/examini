@@ -27,10 +27,13 @@ public class IntegrityService {
     @Value("${exam.internal-token:}") private String token;
     @Value("${exam.integrity.events-per-minute:120}") private int perMinute;
     @Value("${exam.integrity.max-events-per-session:10000}") private int maxEvents;
+    @Value("${exam.integrity.leave-coalesce-ms:1500}") private long coalesceMs;
+    // Network loss is audit-only; SESSION_RESUME and recovery signals are evidence without budget cost.
     private static final Set<EventType> BUDGET_EVENTS=Set.of(EventType.TAB_SWITCH,EventType.WINDOW_BLUR,
-            EventType.EXIT_FULLSCREEN,EventType.PAGE_RELOAD,EventType.NETWORK_DISCONNECT);
+            EventType.EXIT_FULLSCREEN,EventType.PAGE_RELOAD);
+    private static final Set<EventType> LEAVE_EVENTS=Set.of(EventType.TAB_SWITCH,EventType.WINDOW_BLUR);
     @jakarta.annotation.PostConstruct void validateConfiguration() {
-        if(perMinute<1 || maxEvents<1)throw new IllegalStateException("Integrity limits must be positive");
+        if(perMinute<1 || maxEvents<1 || coalesceMs<0)throw new IllegalStateException("Integrity limits must be positive");
     }
     private static ResponseStatusException error(int status,String message) {
         return new ResponseStatusException(HttpStatus.valueOf(status),message);
@@ -63,22 +66,33 @@ public class IntegrityService {
             var e=existing.get();
             if(e.getType()!=input.type() || !Objects.equals(e.getOccurredAt(),input.occurredAt()) || !Objects.equals(e.getMetadata(),input.metadata()))
                 throw error(409,"clientEventId already used for different evidence");
-            long warningCount=events.countBySessionIdAndTypeIn(sessionId,BUDGET_EVENTS);
+            long warningCount=events.countBySessionIdAndCountedTrue(sessionId);
             return receipt(e,s.getIntegrityPolicy(),true,warningCount,s.getStatus()==ExamSession.Status.AUTO_SUBMITTED);
         }
         Instant now=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        if(s.getStatus()!=ExamSession.Status.IN_PROGRESS || !now.isBefore(s.getExpiresAt()))
-            throw error(409,"Session ended; no new integrity evidence accepted");
+        boolean active=s.getStatus()==ExamSession.Status.IN_PROGRESS && now.isBefore(s.getExpiresAt());
         if(!enabled(s.getIntegrityPolicy(),input.type()))throw error(409,"Signal disabled by frozen integrity policy");
-        // Client time is untrusted evidence only; no timing, severity or authorization depends on it.
+        // Client time is untrusted evidence only.
         if(input.occurredAt()!=null && (input.occurredAt().isBefore(now.minusSeconds(604800)) || input.occurredAt().isAfter(now.plusSeconds(604800))))
             throw error(400,"Client evidence time outside supported seven-day range");
         if(events.countBySessionId(sessionId)>=maxEvents || events.countBySessionIdAndReceivedAtAfter(sessionId,now.minusSeconds(60))>=perMinute)
             throw error(429,"Integrity event limit reached; core exam actions remain available");
-        var e=events.saveAndFlush(new IntegrityEvent(s,input,now));
-        long warningCount=events.countBySessionIdAndTypeIn(sessionId,BUDGET_EVENTS);
+        Instant started=s.getStartTime()==null?null:s.getStartTime().toInstant(java.time.ZoneOffset.UTC);
+        // Budget timing uses only the server receipt time; client occurredAt is stored as evidence and can
+        // only mark a signal STALE (before Start), never merge a new leave into an earlier counted unit.
+        Instant effective=now;
+        NotCountedReason reason=null;UUID into=null;
+        if(!BUDGET_EVENTS.contains(input.type()))reason=NotCountedReason.NOT_BUDGET_SIGNAL;
+        else if(!active || input.occurredAt()!=null && started!=null && input.occurredAt().isBefore(started))reason=NotCountedReason.STALE;
+        else if(LEAVE_EVENTS.contains(input.type())) {
+            var unit=events.findFirstBySessionIdAndCountedTrueAndTypeInAndEffectiveAtBetweenOrderByEffectiveAtAsc(
+                    sessionId,LEAVE_EVENTS,effective.minusMillis(coalesceMs),effective.plusMillis(coalesceMs));
+            if(unit.isPresent()){reason=NotCountedReason.COALESCED;into=unit.get().getId();}
+        }
+        var e=events.saveAndFlush(new IntegrityEvent(s,input,now,effective,reason,into));
+        long warningCount=events.countBySessionIdAndCountedTrue(sessionId);
         int warningLimit=s.getIntegrityPolicy().warningEventLimit();
-        boolean autoSubmitted=BUDGET_EVENTS.contains(input.type()) && warningCount>warningLimit &&
+        boolean autoSubmitted=e.isCounted() && warningCount>warningLimit &&
                 sessionService.autoSubmitForIntegrity(s,e.getId(),warningCount);
         return receipt(e,s.getIntegrityPolicy(),false,warningCount,autoSubmitted);
     }
@@ -116,9 +130,10 @@ public class IntegrityService {
             throw error(400,"Metadata contradicts signal type");
     }
     private static Receipt receipt(IntegrityEvent e,IntegrityPolicy policy,boolean duplicate,long warningCount,boolean autoSubmitted) {
-        int limit=policy.warningEventLimit();boolean warn=!duplicate && BUDGET_EVENTS.contains(e.getType()) && warningCount==limit && !autoSubmitted;
+        int limit=policy.warningEventLimit();boolean warn=!duplicate && e.isCounted() && warningCount==limit && !autoSubmitted;
         return new Receipt(e.dto(),duplicate,warningCount,limit,warn,
-                warn?"You have reached the browser integrity warning limit; signals are evidence and are not individual proof of cheating.":null,autoSubmitted);
+                warn?"You have reached the browser integrity warning limit; signals are evidence and are not individual proof of cheating.":null,autoSubmitted,
+                e.isCounted(),e.getNotCountedReason());
     }
     private static Pageable page(int page,int size) {
         if(page<0 || size<1 || size>100)throw error(400,"page must be nonnegative; size must be 1..100");

@@ -10,6 +10,11 @@ public interface QuestionBankClient {
     @PostMapping("/batch") List<Question> eligible(@RequestBody List<UUID> ids,
         @RequestHeader("X-Service-Token") String token,@RequestHeader("X-Question-Owner-Id") UUID owner,
         @RequestParam boolean eligible,@RequestParam boolean includeAnswers);
+    /** Provider blueprint row pick (contracts/question-bank-api.md): random eligible ids, never an excluded id, no backfill. */
+    @PostMapping("/eligible/random") EligibleRandom eligibleRandom(@RequestBody EligibleRandomRequest request,
+        @RequestHeader("X-Service-Token") String token,@RequestHeader("X-Question-Owner-Id") UUID owner);
+    record EligibleRandomRequest(UUID bankId,UUID categoryId,String questionType,String difficulty,int count,List<UUID> excludeQuestionIds){}
+    record EligibleRandom(List<UUID> ids,int requested,long available){}
     record Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
                     Boolean eligible,String bankType,String publicationStatus,String explanation) {
         public Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
