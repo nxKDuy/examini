@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/session_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","spring.rabbitmq.listener.simple.auto-startup=false","exam.integrity.events-per-minute=4","exam.integrity.max-events-per-session=10"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/session_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","spring.rabbitmq.listener.simple.auto-startup=false","exam.integrity.events-per-minute=4","exam.integrity.max-events-per-session=10","exam.integrity.leave-coalesce-ms=300"})
 @AutoConfigureMockMvc
 class IntegrityTest {
     @Autowired SessionService core; @Autowired IntegrityService integrity;
@@ -168,12 +168,24 @@ class IntegrityTest {
         assertEquals(NotCountedReason.STALE,stale.notCountedReason());assertEquals(1,stale.warningCount());
         assertEquals(4,events.countBySessionId(session));assertEquals(ExamSession.Status.IN_PROGRESS,sessions.findById(session).orElseThrow().getStatus());
     }
+    static void sleepPastCoalesceWindow(){try{Thread.sleep(400);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+    @Test void clientTimeCannotMergeANewLeaveIntoAnEarlierCountedUnit() {
+        Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
+        var first=integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0));assertTrue(first.counted());
+        sleepPastCoalesceWindow();
+        // A new leave claims the old unit's client time; receipt time decides, so it is still counted.
+        var forged=integrity.ingest(session,user,"STUDENT",at(EventType.WINDOW_BLUR,t0.plusMillis(100)));
+        assertTrue(forged.counted());assertNull(forged.notCountedReason());assertEquals(2,forged.warningCount());
+        assertEquals(t0.plusMillis(100),forged.event().occurredAt()); // client time kept as evidence only
+    }
     Ingest at(EventType type,Instant when){return new Ingest(UUID.randomUUID(),type,when,null);}
     @Test void budgetWarnsAtLimitThenAutoSubmitsOnceWithSystemAudit() {
         core.saveAnswer(session,user,qid,"saved");
         Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
         assertEquals(1,integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0)).warningCount());
+        sleepPastCoalesceWindow();
         assertEquals(2,integrity.ingest(session,user,"STUDENT",at(EventType.WINDOW_BLUR,t0.plusSeconds(10))).warningCount()); // a separate leave
         var warning=integrity.ingest(session,user,"STUDENT",at(EventType.PAGE_RELOAD,t0.plusSeconds(20)));
         assertTrue(warning.warningRecommended());assertEquals(3,warning.warningCount());assertFalse(warning.autoSubmitted());

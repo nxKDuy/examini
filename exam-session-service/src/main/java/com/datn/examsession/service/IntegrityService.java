@@ -72,15 +72,15 @@ public class IntegrityService {
         Instant now=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         boolean active=s.getStatus()==ExamSession.Status.IN_PROGRESS && now.isBefore(s.getExpiresAt());
         if(!enabled(s.getIntegrityPolicy(),input.type()))throw error(409,"Signal disabled by frozen integrity policy");
-        // Client time is untrusted evidence only; it never moves a signal into the budget, it can only keep one out.
+        // Client time is untrusted evidence only.
         if(input.occurredAt()!=null && (input.occurredAt().isBefore(now.minusSeconds(604800)) || input.occurredAt().isAfter(now.plusSeconds(604800))))
             throw error(400,"Client evidence time outside supported seven-day range");
         if(events.countBySessionId(sessionId)>=maxEvents || events.countBySessionIdAndReceivedAtAfter(sessionId,now.minusSeconds(60))>=perMinute)
             throw error(429,"Integrity event limit reached; core exam actions remain available");
         Instant started=s.getStartTime()==null?null:s.getStartTime().toInstant(java.time.ZoneOffset.UTC);
-        // Buffered offline signals keep their own time when it is plausible (between Start and receipt).
-        Instant effective=input.occurredAt()!=null && (started==null || !input.occurredAt().isBefore(started)) && !input.occurredAt().isAfter(now)
-                ? input.occurredAt() : now;
+        // Budget timing uses only the server receipt time; client occurredAt is stored as evidence and can
+        // only mark a signal STALE (before Start), never merge a new leave into an earlier counted unit.
+        Instant effective=now;
         NotCountedReason reason=null;UUID into=null;
         if(!BUDGET_EVENTS.contains(input.type()))reason=NotCountedReason.NOT_BUDGET_SIGNAL;
         else if(!active || input.occurredAt()!=null && started!=null && input.occurredAt().isBefore(started))reason=NotCountedReason.STALE;
