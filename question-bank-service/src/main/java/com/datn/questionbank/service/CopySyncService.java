@@ -73,8 +73,9 @@ public class CopySyncService {
             next.set(key,after.deepCopy());
         }
         // A taken value is saved as a normal DRAFT Question revision; source/publication stays immutable.
-        if(!chosen.isEmpty())core.applyCopySync(id,q.getQuestionVersion(),chosen,actor);
-        upsertQuestionCursor(id,next,source.version());event("QUESTION",id,q.getQuestionVersion()+(!chosen.isEmpty()?1:0),source.version(),request.decisions().toString(),actor);
+        // History records the local version produced by this apply (the new DRAFT when a source value was taken).
+        long localVersion=chosen.isEmpty()?request.expectedLocalVersion():core.applyCopySync(id,request.expectedLocalVersion(),chosen,actor).questionVersion();
+        upsertQuestionCursor(id,next,source.version());event("QUESTION",id,localVersion,source.version(),request.decisions().toString(),actor);
         return question(id,actor);
     }
 
@@ -179,8 +180,11 @@ public class CopySyncService {
     private QuestionResponse read(String value){try{return json.readValue(value,QuestionResponse.class);}catch(Exception e){throw new IllegalStateException("Invalid Question snapshot",e);}}
     private ObjectNode fields(QuestionResponse q){var out=json.createObjectNode();out.put("CATEGORY",q.categoryId().toString());out.put("CONTENT",q.content());
         out.put("QUESTION_TYPE",q.questionType().name());out.put("DIFFICULTY",q.difficultyLevel().name());var opts=json.createArrayNode();
-        for(var o:q.options())opts.add(json.createObjectNode().put("content",o.content()).put("correct",Boolean.TRUE.equals(o.correct())).put("displayOrder",o.displayOrder()));
-        out.set("OPTIONS",opts);out.put("EXPECTED_ANSWER",q.expectedAnswer());out.put("EXPLANATION",q.explanation());return out;}
+        for(var o:q.options().stream().sorted(Comparator.comparingInt(o->o.displayOrder())).toList())
+            opts.add(json.createObjectNode().put("content",o.content()).put("correct",Boolean.TRUE.equals(o.correct())).put("displayOrder",o.displayOrder()));
+        out.set("OPTIONS",opts);out.put("EXPECTED_ANSWER",q.expectedAnswer());out.put("EXPLANATION",q.explanation());
+        // Canonical JSON round-trip: persisted cursors read back as IntNode, so Short/Long nodes must not make equal values differ.
+        return object(string(out));}
     private boolean secret(QuestionField f){return f==QuestionField.OPTIONS||f==QuestionField.EXPECTED_ANSWER||f==QuestionField.EXPLANATION;}
     private record QuestionSource(long version,ObjectNode fields){}
     private QuestionSource questionSource(QuestionLineage l,QuestionActor actor){
