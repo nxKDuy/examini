@@ -79,7 +79,9 @@ public class ExamDto {
             int maxConcurrentSessions,
             int attemptLimit,
             Long studentCount,
-            Float avgScore
+            Float avgScore,
+            IntegrityPolicy integrityPolicy,
+            boolean integrityLocked
     ) {
         /** Factory method từ entity (không có stats) */
         public static Response from(Exam e) {
@@ -94,7 +96,7 @@ public class ExamDto {
                     e.getCreatedAt(), e.getQuestionIds(),
                     e.getQuestionIds().stream().map(id->new QuestionWeightDto(id,e.getPoints().getOrDefault(id,java.math.BigDecimal.ONE).doubleValue())).toList(),
                     e.getOwnerUserId(),e.getAccessMode().name(),e.getMaxParticipants(),e.getMaxConcurrentSessions(),e.getAttemptLimit(),
-                    null, null
+                    null, null, e.getIntegrityPolicy(),e.isIntegrityLocked()
             );
         }
     }

@@ -50,6 +50,10 @@ public class ExamController {
     @PostMapping("/{id}/members/accept") public void accept(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestAttribute String actorRole){core.accept(id,actor,actorRole);}
     @GetMapping("/invitations") public List<ExamDto.Response> invitations(@RequestAttribute UUID actor){return exams.findAll().stream().filter(e->e.getInvitations().containsKey(actor)).map(ExamDto.Response::from).toList();}
     @GetMapping("/{id}/members") public Map<UUID,Exam.MemberRole> members(@PathVariable UUID id,@RequestAttribute UUID actor){var e=core.load(id);core.require(e,actor,false);return e.getMembers();}
+    @GetMapping("/{id}/integrity/policy") public IntegrityPolicy integrityPolicy(@PathVariable UUID id,@RequestAttribute UUID actor){var e=core.load(id);if(!participantRows.existsByExamIdAndUserId(id,actor))core.require(e,actor,false);return e.getIntegrityPolicy();}
+    @PutMapping("/{id}/integrity/policy") public IntegrityPolicy integrityPolicy(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody IntegrityPolicy policy){core.integrityPolicy(id,actor,policy);return core.load(id).getIntegrityPolicy();}
+    @PutMapping("/{id}/integrity/lock") public ExamCore.IntegrityControl integrityLock(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody(required=false) LifecycleAction request){return core.integrityControl(id,actor,true,request==null?null:request.reason());}
+    @PutMapping("/{id}/integrity/unlock") public ExamCore.IntegrityControl integrityUnlock(@PathVariable UUID id,@RequestAttribute UUID actor){return core.integrityControl(id,actor,false,null);}
     @PutMapping("/{id}/policy") public void policy(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody ExamCore.Policy p){core.policy(id,actor,p);}
     @GetMapping("/{id}/schedule") public ScheduleDto.Response schedule(@PathVariable UUID id,@RequestAttribute UUID actor){return schedules.get(id,actor);}
     @PutMapping("/{id}/schedule") public ScheduleDto.Response schedule(@PathVariable UUID id,@RequestAttribute UUID actor,@Valid @RequestBody ScheduleDto.Update request){return schedules.update(id,actor,request);}

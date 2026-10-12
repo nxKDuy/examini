@@ -189,6 +189,7 @@ public class ScheduleService {
         if(revoked)return "PARTICIPATION_REVOKED";
         if(e.getStatus()==Exam.Status.DRAFT)return "EXAM_NOT_PUBLISHED";
         if(e.getStatus()==Exam.Status.CLOSED || e.getStatus()==Exam.Status.COMPLETED)return "EXAM_CLOSED";
+        if(e.isIntegrityLocked())return "EXAM_INTEGRITY_LOCKED";
         if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))return "BEFORE_START_AT";
         if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))return "AFTER_END_AT";
         if(e.getStatus()!=Exam.Status.OPEN)return "EXAM_NOT_OPEN";

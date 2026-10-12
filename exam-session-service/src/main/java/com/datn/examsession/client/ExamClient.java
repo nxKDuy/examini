@@ -15,7 +15,9 @@ public interface ExamClient {
     @GetMapping("/{id}/internal/attempt-limit") Integer attemptLimit(@PathVariable UUID id,@RequestParam UUID user,@RequestHeader("X-Service-Token")String token);
     @GetMapping("/{id}/internal/safe") List<Question> safe(@PathVariable UUID id,@RequestHeader("X-Service-Token")String token);
     @GetMapping("/{id}/internal/permission") String permission(@PathVariable UUID id,@RequestParam UUID actor,@RequestParam boolean manage,@RequestHeader("X-Service-Token")String token);
-    record ExamDto(UUID id,String title,int durationMinutes,int maxConcurrentSessions,int attemptLimit,LocalDateTime endTime,boolean shuffleQuestions,boolean shuffleOptions){}
+    record ExamDto(UUID id,String title,int durationMinutes,int maxConcurrentSessions,int attemptLimit,LocalDateTime endTime,boolean shuffleQuestions,boolean shuffleOptions,com.datn.examsession.dto.IntegrityPolicy integrityPolicy){
+        public ExamDto(UUID id,String title,int durationMinutes,int maxConcurrentSessions,int attemptLimit,LocalDateTime endTime,boolean shuffleQuestions,boolean shuffleOptions){this(id,title,durationMinutes,maxConcurrentSessions,attemptLimit,endTime,shuffleQuestions,shuffleOptions,com.datn.examsession.dto.IntegrityPolicy.disabled());}
+    }
     record Question(UUID questionId,long questionVersion,String questionType,String content,List<Option> options,BigDecimal points,int position){}
     record Option(UUID id,String content,int displayOrder){}
     record StartReservation(UUID examId,UUID admissionId,long scheduleRevision){}

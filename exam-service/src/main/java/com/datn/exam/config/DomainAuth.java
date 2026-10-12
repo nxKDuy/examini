@@ -53,7 +53,7 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
                 req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
             }
             String path=mapped;
-            boolean studentPath=path.equals("/exams/public") || path.equals("/exams/my") || path.endsWith("/lobby") || path.endsWith("/preflight") || path.endsWith("/join") || path.startsWith("/exams/code/");
+            boolean studentPath=("GET".equals(req.getMethod()) && path.equals("/exams/{id}/integrity/policy")) || path.equals("/exams/public") || path.equals("/exams/my") || path.endsWith("/lobby") || path.endsWith("/preflight") || path.endsWith("/join") || path.startsWith("/exams/code/");
             if(!studentPath && "STUDENT".equals(role))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Teacher role required");
             req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}

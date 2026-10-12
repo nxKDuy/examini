@@ -64,6 +64,9 @@ public class ExamSession {
     @Column(name="exam_title",nullable=false) private String examTitle;
     @Column(name="schedule_revision",nullable=false) @Builder.Default private long scheduleRevision=0;
     @Column(name="start_admission_id") private UUID startAdmissionId;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name="integrity_policy",columnDefinition="jsonb",nullable=false,updatable=false)
+    @Builder.Default private com.datn.examsession.dto.IntegrityPolicy integrityPolicy = com.datn.examsession.dto.IntegrityPolicy.disabled();
     public enum Status {
         IN_PROGRESS, SUBMITTED, AUTO_SUBMITTED, CANCELLED
     }

@@ -23,7 +23,10 @@ public class SessionController {
     @PostMapping("/{id}/invalidate") public SessionService.StaffAttemptDto invalidate(@PathVariable UUID id,@RequestAttribute UUID actor,@RequestBody InvalidateRequest req){return service.invalidate(id,actor,req==null?null:req.reason());}
     @GetMapping("/exam/{id}/internal/attempt-summary") public List<SessionService.AttemptSummary> attemptSummary(@PathVariable UUID id,@RequestParam List<UUID> userIds){return service.attemptSummary(id,userIds);}
     @GetMapping("/exam/{id}/internal/attempts") public List<SessionService.AttemptDto> internalAttempts(@PathVariable UUID id,@RequestParam UUID user){return service.myAttempts(id,user);}
+    @PostMapping("/exam/{id}/internal/integrity-lock") public SessionService.IntegrityLockResult integrityLock(@PathVariable UUID id,@RequestParam UUID actor,@RequestBody(required=false) IntegrityLockRequest req){return service.lockIntegrityExam(id,actor,req==null?null:req.reason());}
+    @PostMapping("/exam/{id}/internal/integrity-unlock") public SessionService.IntegrityLockResult integrityUnlock(@PathVariable UUID id,@RequestParam UUID actor){return service.unlockIntegrityExam(id,actor);}
     public record InvalidateRequest(String reason){}
+    public record IntegrityLockRequest(String reason){}
     public record Eligibility(long attempts,boolean resumable){}
     public record Answer(String content){}
 }

@@ -81,6 +81,26 @@ public class ExamCore {
            p.maxConcurrentSessions()<1 || p.maxConcurrentSessions()>platformLimit || p.maxConcurrentSessions()>p.maxParticipants())
             throw error(400,"Invalid policy/capacity; platform limit "+platformLimit);
     }
+    public void integrityPolicy(UUID id, UUID actor, com.datn.exam.dto.IntegrityPolicy policy) {
+        Exam e=load(id);require(e,actor,true);draft(e);
+        if(policy==null || policy.warningPolicy()==null || policy.warningEventLimit()==null ||
+           policy.warningEventLimit()<com.datn.exam.dto.IntegrityPolicy.MIN_WARNING_EVENT_LIMIT ||
+           policy.warningEventLimit()>com.datn.exam.dto.IntegrityPolicy.MAX_WARNING_EVENT_LIMIT)
+            throw error(400,"warningEventLimit must be 1..100");
+        e.setIntegrityPolicy(policy);
+        audit(e,actor,"INTEGRITY_POLICY_UPDATED",policy.toString());
+    }
+    public IntegrityControl integrityControl(UUID id,UUID actor,boolean locked,String reason) {
+        Exam e=load(id);String role=role(e,actor);
+        if(!Set.of("OWNER","MANAGER","PROCTOR").contains(role))throw error(403,"Exam integrity control permission denied");
+        if(internalToken.isBlank())throw error(503,"Session integration not configured");
+        var result=locked?sessions.integrityLock(id,actor,new com.datn.exam.client.SessionClient.IntegrityLockRequest(reason),internalToken):sessions.integrityUnlock(id,actor,internalToken);
+        boolean changed=e.isIntegrityLocked()!=locked;e.setIntegrityLocked(locked);
+        if(changed)audit(e,actor,locked?"EXAM_INTEGRITY_LOCKED":"EXAM_INTEGRITY_UNLOCKED",
+                "role="+role+" activeSessionsSubmitted="+result.activeSessionsSubmitted()+(reason==null?"":" reason="+reason));
+        return new IntegrityControl(id,locked,!changed,result.activeSessionsSubmitted(),result.changedAt());
+    }
+    public record IntegrityControl(UUID examId,boolean locked,boolean unchanged,int activeSessionsSubmitted,Instant changedAt){}
     public void assign(UUID id, UUID actor, UUID user, boolean remove) {
         Exam e=load(id);require(e,actor,true);
         if(user==null) throw error(400,"User required");
@@ -177,6 +197,7 @@ public class ExamCore {
     }
     public Exam authorizeStart(UUID id, UUID user) {
         Exam e=load(id);startWindow(e);
+        if(e.isIntegrityLocked())throw error(409,"EXAM_INTEGRITY_LOCKED");
         var row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
         if(row==null) throw error(403,"Join required before Start");
         if(!row.isActive()) throw error(403,"PARTICIPATION_REVOKED");
