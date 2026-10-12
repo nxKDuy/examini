@@ -18,6 +18,7 @@ import { ruleLabel, RULE_HELP, windowText, toMs } from '../calendar/calendarMode
 import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
 import ScheduleDialog from '../calendar/ScheduleDialog'
 import LifecycleDialog, { type LifecycleKind } from '../calendar/LifecycleDialog'
+import ExamAnalyticsPanel from './ExamAnalyticsPanel'
 import { useNow, useViewerZone } from '../calendar/useCalendar'
 import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { UPSTREAM_GENERIC, errorInfo, errorText } from '../../lib/errors'
@@ -26,7 +27,7 @@ import { ACCESS_MODE_LABEL, EXAM_TYPE_LABEL, MEMBER_ROLE_LABEL, QUESTION_TYPE_LA
 const LIFECYCLE = ['DRAFT', 'PUBLISHED', 'OPEN', 'CLOSED'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type Transition = 'publish' | 'open' | 'delete'
-type Tab = 'overview' | 'schedule' | 'participation' | 'collaborators' | 'attempts' | 'audit'
+type Tab = 'overview' | 'schedule' | 'participation' | 'collaborators' | 'attempts' | 'analytics' | 'audit'
 
 export default function ExamDetailPage() {
   const { id } = useParams()
@@ -41,6 +42,7 @@ export default function ExamDetailPage() {
 
 function Detail({ exam, role, members }: { exam: Exam; role?: string; members: Record<string, MemberRole> }) {
   const qc = useQueryClient()
+  const actorId = useAuthStore(s => s.user?.id ?? '')
   const navigate = useNavigate()
   const location = useLocation()
   const flash = location.state as { notice?: string; tone?: 'success' | 'warning' } | null
@@ -88,7 +90,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   })
 
   const current = LIFECYCLE.indexOf(exam.status as typeof LIFECYCLE[number])
-  const tabs: [Tab, string][] = [['overview', 'Tổng quan'], ['schedule', 'Lịch'], ['participation', 'Tham gia'], ['collaborators', 'Cộng tác'], ['attempts', 'Lượt làm bài'], ['audit', 'Nhật ký']]
+  const tabs: [Tab, string][] = [['overview', 'Tổng quan'], ['schedule', 'Lịch'], ['participation', 'Tham gia'], ['collaborators', 'Cộng tác'], ['attempts', 'Lượt làm bài'], ...(manage ? [['analytics', 'Phân tích'] as [Tab, string]] : []), ['audit', 'Nhật ký']]
 
   return (
     <div className="stack-lg">
@@ -141,6 +143,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         {tab === 'participation' && <Participation exam={exam} manage={manage} />}
         {tab === 'collaborators' && <Collaborators exam={exam} owner={role === 'OWNER'} members={members} />}
         {tab === 'attempts' && <Attempts exam={exam} />}
+        {tab === 'analytics' && manage && <ExamAnalyticsPanel examId={exam.id} actorId={actorId} />}
         {tab === 'audit' && <Audit exam={exam} />}
       </div>
 

@@ -1,0 +1,21 @@
+.analytics-panel { min-width: 0; }
+.analytics-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); border-top: 1px solid #000; border-left: 1px solid #000; }
+.analytics-metric { min-width: 0; padding: 14px; border-right: 1px solid #000; border-bottom: 1px solid #000; display: grid; gap: 6px; align-content: start; }
+.analytics-metric strong { font-size: 1.6rem; font-weight: 400; }
+.analytics-kpis-sm .analytics-metric strong { font-size: 1.2rem; }
+.analytics-metric .analytics-na { font-size: 1rem; color: #555; }
+.analytics-metric small { line-height: 1.35; }
+.analytics-sub { margin: 24px 0 10px; font-size: 1.05rem; }
+.analytics-nodata { margin: 0; padding: 12px 14px; border: 1px solid #000; font-size: .9rem; line-height: 1.5; }
+.analytics-table { min-width: 880px; }
+.analytics-invalidated td { background: #f4f1e8; }
+.analytics-drill > td { background: #fafafa; padding: 8px 12px; }
+.analytics-result-filters, .analytics-pagination { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+.analytics-result-filters .input { width: min(260px, 100%); }
+.analytics-pagination { justify-content: flex-end; margin: 14px 0 0; }
+@media (max-width: 640px) {
+  .analytics-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analytics-metric { padding: 10px; }
+  .analytics-metric strong { font-size: 1.25rem; }
+  .analytics-result-filters { flex-wrap: wrap; }
+}
