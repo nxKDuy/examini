@@ -6,6 +6,13 @@ export interface ExamSummary {
   maxPossibleScore: number | null; averageScore: number | null; minScore: number | null; maxScore: number | null
   averagePercent: number | null; scoreDistribution: ScoreBucket[]; registeredCount: number | null; eligibleCount: number | null
   invalidatedCount: number; submissionRate: number | null; gradingCompletionRate: number | null
+  kpi?: SummaryKpi
+}
+/** Header KPI block; a null value means the source data is missing (reason in `unavailable`), never 0. */
+export interface SummaryKpi {
+  participatedStudents: number | null; submittedStudents: number; registeredCount: number | null; eligibleCount: number | null
+  completionRate: number | null; completionRateDenominator: string | null; publishedAverageScore: number | null
+  needsGradingCount: number; unavailable: Record<string, string>
 }
 export interface QuestionStats {
   questionId: string; questionVersion: number; questionType: string; position: number; pointValue: number

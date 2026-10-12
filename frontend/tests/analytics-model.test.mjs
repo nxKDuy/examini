@@ -8,7 +8,7 @@ registerHooks({
   resolve(specifier, context, next) {
     if (specifier.startsWith('.') && context.parentURL?.includes('/src/')) {
       const url = new URL(specifier, context.parentURL)
-      for (const ext of ['.ts', '.tsx']) if (existsSync(new URL(url.href + ext))) return { url: url.href, shortCircuit: true }
+      for (const ext of ['.ts', '.tsx']) if (existsSync(new URL(url.href + ext))) return { url: url.href + ext, shortCircuit: true }
     }
     return next(specifier, context)
   },
@@ -30,11 +30,21 @@ const sum = { examId: 'e', candidates: 3, submissions: 4, graded: 2, needsReview
 test('headline KPIs keep the locked order and never invent null values', () => {
   const k = m.headlineKpis(sum)
   assert.deepEqual(k.map(x => x.key), ['students', 'completion', 'published', 'review'])
-  assert.equal(k[1].value, null)
-  assert.ok(k[1].reason)
-  assert.equal(k[2].value, null)
-  assert.equal(k[0].value, '3')
-  assert.equal(k[3].detail, '+ 1 chờ xử lý')
+  assert.ok(k.every(x => x.value === null && x.reason), 'missing kpi block never shows 0')
+})
+
+test('headline KPIs read summary.kpi with server null reasons', () => {
+  const kpi = { participatedStudents: null, submittedStudents: 3, registeredCount: 5, eligibleCount: 4, completionRate: 0.75,
+    completionRateDenominator: 'eligibleCount', publishedAverageScore: null, needsGradingCount: 0,
+    unavailable: { participatedStudents: 'no start event', publishedAverageScore: 'no release snapshot' } }
+  const k = m.headlineKpis({ ...sum, kpi })
+  assert.equal(k[0].value, null)
+  assert.equal(k[0].reason, 'no start event')
+  assert.equal(k[1].value, '75.0%')
+  assert.equal(k[1].detail, '3 đã nộp hợp lệ / 4 đủ điều kiện')
+  assert.equal(k[2].reason, 'no release snapshot')
+  assert.equal(k[3].value, '0')
+  assert.equal(m.headlineKpis({ ...sum, kpi: { ...kpi, publishedAverageScore: 7.5 } })[2].value, '7.5')
 })
 
 test('rates format as percent and null stays null', () => {

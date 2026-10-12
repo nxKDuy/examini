@@ -1,4 +1,5 @@
 import type { AnalyticsStatus, ExamSummary, StudentSummary } from './analyticsApi'
+import { formatScore } from '../../lib/format'
 
 export const analyticsStatusLabel: Record<AnalyticsStatus | 'ALL', string> = {
   ALL: 'Tất cả trạng thái', PENDING: 'Chờ chấm', NEEDS_REVIEW: 'Cần chấm', GRADED: 'Đã chấm',
@@ -16,16 +17,18 @@ export function percent(rate: number | null | undefined) {
 
 export interface Kpi { key: string; label: string; value: string | null; reason?: string; detail?: string }
 
-/** Four headline KPIs in the locked order; null fields carry a reason instead of a number. */
+const NO_KPI = 'Analytics chưa trả khối chỉ số chính cho kỳ thi này.'
+
+/** Four headline KPIs in the locked order, read only from `summary.kpi`; null fields carry the server reason, never 0. */
 export function headlineKpis(s: ExamSummary): Kpi[] {
+  const k = s.kpi
+  const why = (field: string) => k?.unavailable?.[field] ?? (k ? NO_DATA : NO_KPI)
   return [
-    { key: 'students', label: 'Student tham gia', value: String(s.candidates), detail: s.eligibleCount === null ? undefined : `/ ${s.eligibleCount} đủ điều kiện` },
-    { key: 'completion', label: 'Tỷ lệ hoàn thành', value: percent(s.submissionRate),
-      reason: s.eligibleCount === null ? 'Chưa nhận danh sách Student đủ điều kiện của kỳ thi.' : 'Không có Student đủ điều kiện để tính tỷ lệ.',
-      detail: 'đã nộp bài hợp lệ / đủ điều kiện' },
-    // Published average needs a Grading publication snapshot event the API does not expose yet.
-    { key: 'published', label: 'Điểm TB đã công bố', value: null, reason: 'Analytics chưa nhận điểm đã công bố của từng Student; điểm chấm hiện tại chưa phải điểm công bố.' },
-    { key: 'review', label: 'Bài cần chấm', value: String(s.needsReview), detail: s.pending > 0 ? `+ ${s.pending} chờ xử lý` : undefined },
+    { key: 'students', label: 'Student tham gia', value: k?.participatedStudents == null ? null : String(k.participatedStudents), reason: why('participatedStudents') },
+    { key: 'completion', label: 'Tỷ lệ hoàn thành', value: percent(k?.completionRate), reason: why('completionRate'),
+      detail: k ? `${k.submittedStudents} đã nộp hợp lệ / ${k.eligibleCount ?? '—'} đủ điều kiện` : undefined },
+    { key: 'published', label: 'Điểm TB đã công bố', value: k?.publishedAverageScore == null ? null : formatScore(k.publishedAverageScore), reason: why('publishedAverageScore') },
+    { key: 'review', label: 'Bài cần chấm', value: k ? String(k.needsGradingCount) : null, reason: why('needsGradingCount') },
   ]
 }
 
