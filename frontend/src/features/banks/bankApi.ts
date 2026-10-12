@@ -15,21 +15,21 @@ export type PublicationStatus = 'PUBLISHED' | 'ARCHIVED'
 export interface PublicQuestion {
   id: string; bankId: string; sourceQuestionId: string; sourceQuestionVersion: number; sourceBankId?: string
   sourceOwnerUserId: string; sourceOwnerDisplayName?: string; publicationStatus: PublicationStatus
-  publishedBy?: string; publishedAt?: string; archivedBy?: string; archivedAt?: string; question: SafeQuestion
+  publishedBy?: string; publishedAt?: string; contentUpdatedAt?: string; archivedBy?: string; archivedAt?: string; question: SafeQuestion
   postType?: 'SINGLE_QUESTION' | 'QUESTION_SET'; title?: string; description?: string; postVersion?: number; itemCount?: number
   items?: PublicPostItem[]; subjects?: { id: string; name: string }[]; categories?: { id: string; name: string; subjectId: string; subjectName: string; parentCategoryId?: string; path: string[] }[]
   copies24h?: number; copies30d?: number; copies365d?: number; copiesTotal?: number
   averageRating?: number | null; ratingCount?: number; myRating?: number | null
   views24h?: number; views30d?: number; views365d?: number; viewsTotal?: number
-  isSaved?: boolean
+  isSaved?: boolean; isCopied?: boolean
 }
-export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion }
+export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion; isCopied?: boolean }
 export interface PublicViewResponse { publicationId: string; views24h: number; views30d: number; views365d: number; viewsTotal: number }
 export interface QuestionSet { id: string; bankId: string; ownerUserId: string; title: string; description?: string; version: number; status: 'ACTIVE' | 'ARCHIVED'; updatedAt?: string; items: PublicPostItem[] }
 export interface Taxonomy { id: string; name: string; subjectId?: string; subjectName?: string; parentCategoryId?: string; path?: string[] }
 export interface OrgQuestion {
   id: string; bankId: string; sourceQuestionId: string; sourceQuestionVersion: number; sourceOwnerUserId: string
-  publicationStatus?: string; approvedBy?: string; approvedAt?: string; question: SafeQuestion
+  publicationStatus?: string; approvedBy?: string; approvedAt?: string; question: SafeQuestion; isCopied?: boolean
 }
 export type ContributionStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'
 /** `question` is a projection: reviewers asking for answers receive the full question, everyone else a safe one. */

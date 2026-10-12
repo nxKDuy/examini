@@ -245,10 +245,17 @@ class MultiBankPersistenceTest {
         banks.forkPublic(single.id(),new ForkRequest(1,null),actorA);
         banks.forkPublic(single.id(),new ForkRequest(1,null),actorA); // retries/duplicates do not inflate distinct actors
         banks.forkPublic(single.id(),new ForkRequest(1,null),actorB);
+        assertTrue(banks.publicQuestion(single.id(),actorA).isCopied());
+        assertTrue(banks.publicQuestion(single.id(),actorA).items().getFirst().isCopied());
+        assertFalse(banks.publicQuestion(single.id(),new QuestionActor(UUID.randomUUID(),"TEACHER",false)).isCopied());
+        assertEquals(q.updatedAt(),banks.publicQuestion(single.id(),actorA).contentUpdatedAt());
         jdbc.update("INSERT INTO public_question_copy_events(publication_id,actor_user_id,copied_at) VALUES(:post,:actor,CURRENT_TIMESTAMP-INTERVAL '40 days')",
                 new org.springframework.jdbc.core.namedparam.MapSqlParameterSource().addValue("post",single.id()).addValue("actor",UUID.randomUUID()));
         banks.forkPublic(single.id(),new ForkRequest(1,null),owner); // self-copy excluded
         sets.fork(post.id(),new QuestionSetForkRequest(null),actorA);
+        assertTrue(banks.publicQuestion(post.id(),actorA).isCopied());
+        assertTrue(banks.publicQuestion(post.id(),actorA).items().getFirst().isCopied());
+        assertEquals(set.updatedAt(),banks.publicQuestion(post.id(),actorA).contentUpdatedAt());
         var page=org.springframework.data.domain.PageRequest.of(0,20);
         var top=banks.publicQuestions(null,null,null,null,null,null,false,null,null,null,"NEWEST",page,owner);
         var counted=top.getContent().stream().filter(p->p.id().equals(single.id())).findFirst().orElseThrow();
@@ -586,6 +593,8 @@ class MultiBankPersistenceTest {
         organizations.review(pending.id(),new PublicReview(QuestionReview.Decision.APPROVED,"OK"),reviewer);
         var publication=organizationRepo.findAll().stream().filter(p->p.getContributionId().equals(pending.id())).findFirst().orElseThrow();
         var orgFork=organizations.fork(publication.getId(),new ForkRequest(1,null),reviewer).question();
+        assertTrue(organizations.publication(publication.getId(),reviewer).isCopied());
+        assertFalse(organizations.publication(publication.getId(),owner).isCopied());
         var orgLineage=banks.lineage(orgFork.id(),reviewer);
         assertNull(orgLineage.nodes().get(0).name());
         assertEquals("APPROVED",orgLineage.nodes().get(1).status());

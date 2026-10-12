@@ -118,6 +118,15 @@ Teacher không có system authority từ persona.
 PublicResponse giữ field cũ; thêm postType,title,description,postVersion,itemCount,
 items,subjects,categories,copies24h,copies30d,copies365d,copiesTotal,
 averageRating,ratingCount,myRating,views24h,views30d,views365d,viewsTotal.
+`contentUpdatedAt` là thời điểm sửa nội dung nguồn của snapshot đang đăng;
+`publishedAt` là lúc snapshot được xuất bản. Bài đăng cũ không đổi ngày khi tác giả
+sửa nguồn hoặc đăng một phiên bản mới. Dữ liệu lịch sử trước V10 dùng ngày đăng
+làm mốc cập nhật do không có thời điểm sửa nguồn chính xác.
+`isCopied` trên PublicResponse cho biết actor hiện tại đã sao chép ít nhất một câu
+từ bài đăng này. Mỗi item có `isCopied` riêng; bộ chỉ sao chép một phần được UI
+ghi rõ. OrganizationResponse cũng có `isCopied`. Các cờ này lấy từ lineage trên
+server theo actor, không lấy từ localStorage; người khác không xem được lịch sử
+sao chép của actor. Sao chép lại vẫn tạo bản độc lập, không cần xác nhận trùng.
 Item `{id,position,sourceQuestionId,sourceQuestionVersion,question}` là safe frozen DTO.
 Subject/category giữ ID/name/path snapshot. Không email, private source bank name hay answer key.
 

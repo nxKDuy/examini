@@ -197,6 +197,7 @@ public class MultiBankService {
                 .sourceBankId(q.getBankId()).sourceOwnerUserId(q.getCreatedBy()).sourceOwnerDisplayName(identities.displayName(q.getCreatedBy()))
                 .snapshot(c.getSnapshot()).searchContent(frozen.content()).status(PublicQuestion.PublicationStatus.PUBLISHED)
                 .questionType(frozen.questionType()).difficultyLevel(frozen.difficultyLevel()).verifiedBy(actor.userId()).verifiedAt(now)
+                .contentUpdatedAt(q.getUpdatedAt())
                 .title(frozen.content().substring(0,Math.min(200,frozen.content().length()))).categoryId(frozen.categoryId())
                 .subjectId(q.getCategory().getSubject().getId()).itemCount(1).postType(PublicQuestion.PostType.SINGLE_QUESTION).build());
         publicItems.save(PublicQuestionItem.builder().id(p.getId()).publicationId(p.getId()).position(0).sourceQuestionId(q.getId())
@@ -427,15 +428,16 @@ public class MultiBankService {
     private ContributionResponse contributionResponse(PublicContribution c) { return contributionResponse(c,false); }
     private ContributionResponse contributionResponse(PublicContribution c,boolean includeAnswers) {return new ContributionResponse(c.getId(),c.getSourceQuestionId(),c.getSourceQuestionVersion(),c.getSourceBankId(),c.getSourceOwnerUserId(),c.getSubmittedBy(),c.getSubmittedAt(),c.getStatus(),c.getReviewerId(),c.getReviewNote(),c.getReviewedAt(),includeAnswers?read(c.getSnapshot()):read(c.getSnapshot()).withoutAnswers());}
     private PublicResponse publicResponse(PublicQuestion p,QuestionActor actor) {
+        var copiedSourceIds=actor.userId()==null?Set.<UUID>of():new HashSet<>(lineage.copiedPublicSourceIds(p.getId(),actor.userId()));
         var itemEntities=publicItems.findByPublicationIdOrderByPosition(p.getId());
         var itemResponses=itemEntities.stream().map(i->{
-            var q=read(i.getSnapshot());return new PublicPostItemResponse(i.getId(),i.getPosition(),i.getSourceQuestionId(),i.getSourceQuestionVersion(),q.withoutAnswers());}).toList();
+            var q=read(i.getSnapshot());return new PublicPostItemResponse(i.getId(),i.getPosition(),i.getSourceQuestionId(),i.getSourceQuestionVersion(),q.withoutAnswers(),copiedSourceIds.contains(i.getSourceQuestionId()));}).toList();
         var safeQuestion=itemResponses.isEmpty()?read(p.getSnapshot()).withoutAnswers():itemResponses.getFirst().question();
         var publicSubjects=itemEntities.stream().filter(i->i.getSubjectId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getSubjectId,i->new PublicSubject(i.getSubjectId(),i.getSubjectName()),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         var publicCategories=itemEntities.stream().filter(i->i.getCategoryId()!=null).collect(java.util.stream.Collectors.toMap(PublicQuestionItem::getCategoryId,i->new PublicCategory(i.getCategoryId(),i.getCategoryName(),i.getSubjectId(),i.getSubjectName(),i.getCategoryParentId(),readPath(i.getCategoryPath())),(a,b)->a,LinkedHashMap::new)).values().stream().toList();
         var summary=ratingResponse(p.getId(),actor);
         var views=statistics.views(p.getId());var copies=statistics.copies(p.getId());
-        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total(),bookmarks.isSaved(p.getId(),actor));
+        return new PublicResponse(p.getId(),p.getBankId(),p.getSourceQuestionId(),p.getSourceQuestionVersion(),p.getSourceBankId(),p.getSourceOwnerUserId(),p.getSourceOwnerDisplayName(),p.getStatus(),p.getVerifiedBy(),p.getVerifiedAt(),p.getContentUpdatedAt(),p.getArchivedBy(),p.getArchivedAt(),safeQuestion,p.getPostType(),p.getTitle(),p.getDescription(),p.getPostVersion(),p.getItemCount(),itemResponses,publicSubjects,publicCategories,copies.day(),copies.month(),copies.year(),copies.total(),summary.averageRating(),summary.ratingCount(),summary.myRating(),views.day(),views.month(),views.year(),views.total(),bookmarks.isSaved(p.getId(),actor),!copiedSourceIds.isEmpty());
     }
     private List<String> readPath(String value) {try{return value==null?List.of():json.readValue(value,new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});}catch(Exception e){return List.of();}}
     private String writeCategoryPath(Category category) {try{var names=new ArrayList<String>();for(var c=category;c!=null;c=c.getParent())names.add(c.getName());Collections.reverse(names);return json.writeValueAsString(names);}catch(Exception e){throw new IllegalStateException("Cannot serialize taxonomy snapshot",e);}}

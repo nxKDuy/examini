@@ -59,6 +59,13 @@ test('public: unpublish only by the owner of a live publication; fork only for a
   assert.equal(m.authorName({ sourceOwnerDisplayName: ' Cô Lan ' }), 'Cô Lan'); assert.equal(m.authorName({}), 'Unknown user')
 })
 
+test('copy tag distinguishes a copied question from a partially copied set', () => {
+  assert.equal(m.copiedBadge({ isCopied: false }), null)
+  assert.equal(m.copiedBadge({ isCopied: true, postType: 'SINGLE_QUESTION' }), 'Đã sao chép')
+  assert.equal(m.copiedBadge({ isCopied: true, postType: 'QUESTION_SET', itemCount: 2, items: [{ isCopied: true }, { isCopied: false }] }), 'Đã sao chép một phần')
+  assert.equal(m.copiedBadge({ isCopied: true, postType: 'QUESTION_SET', itemCount: 2, items: [{ isCopied: true }, { isCopied: true }] }), 'Đã sao chép')
+})
+
 test('discovery params: blanks dropped, text capped at 200, author filter only when chosen', () => {
   assert.deepEqual(m.publicParams({ text: '  ', questionType: '', difficulty: '', author: '', page: 0 }), { page: 0 })
   const long = 'x'.repeat(300)

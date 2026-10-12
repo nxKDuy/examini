@@ -52,6 +52,11 @@ export const isPublicOwner = (p: Pick<PublicQuestion, 'sourceOwnerUserId'>, user
 export const canUnpublish = (p: Pick<PublicQuestion, 'sourceOwnerUserId' | 'publicationStatus'>, userId: string | undefined) => isPublicOwner(p, userId) && p.publicationStatus === 'PUBLISHED'
 /** Copying needs a Teacher and a live publication (the server answers 403 / 409 otherwise). */
 export const canForkPublic = (p: Pick<PublicQuestion, 'publicationStatus'>, teacher: boolean) => teacher && p.publicationStatus === 'PUBLISHED'
+export function copiedBadge(p: Pick<PublicQuestion, 'isCopied' | 'postType' | 'items' | 'itemCount'>): string | null {
+  if (!p.isCopied) return null
+  return p.postType === 'QUESTION_SET' && (p.items?.filter(item => item.isCopied).length ?? 0) < (p.itemCount ?? p.items?.length ?? 0)
+    ? 'Đã sao chép một phần' : 'Đã sao chép'
+}
 export const authorName = (p: Pick<PublicQuestion, 'sourceOwnerDisplayName'>) => p.sourceOwnerDisplayName?.trim() || 'Unknown user'
 
 export const MAX_SEARCH = 200
@@ -91,18 +96,6 @@ export const isAuthorLookupFailure = (e: unknown) => (e as { response?: { status
 /** Save/Saved exist for Teacher and Student accounts only (backend answers 403 for other actors). Never inferred from TEACHER = ADMIN: the shared audience decides. */
 export const canBookmark = (audience: string) => audience === 'TEACHER' || audience === 'STUDENT'
 export const isStatus = (e: unknown, status: number) => (e as { response?: { status?: number } })?.response?.status === status
-
-/** Browser-local guard for repeated copy actions. The server remains authoritative; this only gives a useful warning before creating another independent copy. It is scoped by actor so account switching does not leak the warning across users. */
-export const copyMarker = (actorId: string | undefined, kind: string, sourceId: string, version?: number) =>
-  `examini:copy:${actorId ?? 'anonymous'}:${kind}:${sourceId}:${version ?? ''}`
-export function wasCopied(actorId: string | undefined, kind: string, sourceId: string, version?: number): boolean {
-  if (typeof window === 'undefined') return false
-  try { return window.localStorage.getItem(copyMarker(actorId, kind, sourceId, version)) === '1' } catch { return false }
-}
-export function rememberCopied(actorId: string | undefined, kind: string, sourceId: string, version?: number): void {
-  if (typeof window === 'undefined') return
-  try { window.localStorage.setItem(copyMarker(actorId, kind, sourceId, version), '1') } catch { /* private mode/storage quota: warning remains best-effort */ }
-}
 
 /** Eligibility is the provider's decision, never a status approximation. */
 export const canPickQuestion = (q: { eligible?: boolean }) => q.eligible === true

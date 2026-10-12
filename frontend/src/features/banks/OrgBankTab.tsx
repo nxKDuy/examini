@@ -5,7 +5,7 @@ import { BookOpenCheck, CheckCircle2, XCircle } from 'lucide-react'
 import './banks.css'
 import { bankApi, type Contribution, type OrgQuestion } from './bankApi'
 import BankPanel, { QuestionView } from './BankPanel'
-import { CONTRIBUTION_LABEL, ORG_BANK_TAB_LABEL, contributionQuery, excerpt, hasCapability, orgBankTabs, rejectReady, reviewState, shortId, wasCopied, rememberCopied, type OrgBankTab } from './bankModel'
+import { CONTRIBUTION_LABEL, ORG_BANK_TAB_LABEL, contributionQuery, excerpt, hasCapability, orgBankTabs, rejectReady, reviewState, shortId, type OrgBankTab } from './bankModel'
 import type { Organization } from '../organizations/orgApi'
 import { useAuthStore, hasPersona, isSystemAdmin } from '../../store/authStore'
 import { ConfirmDialog, Dialog } from '../../components/Dialog'
@@ -67,7 +67,7 @@ function ApprovedList({ bankId, onOpen }: { bankId: string; onOpen: (id: string)
             : <table className="bk-table"><thead><tr><th scope="col">Câu hỏi</th><th scope="col">Loại</th><th scope="col">Độ khó</th><th scope="col">Phiên bản nguồn</th><th scope="col">Duyệt lúc</th></tr></thead>
                 <tbody>{items.map(i => (
                   <tr key={i.id}>
-                    <td><button type="button" className="bk-row-btn" onClick={() => onOpen(i.id)}>{excerpt(i.question.content)}</button></td>
+                    <td><button type="button" className="bk-row-btn" onClick={() => onOpen(i.id)}>{excerpt(i.question.content)}</button>{i.isCopied && <Badge tone="success">Đã sao chép</Badge>}</td>
                     <td>{QUESTION_TYPE_LABEL[i.question.questionType]}</td><td>{DIFFICULTY_LABEL[i.question.difficultyLevel]}</td><td className="mono">{i.sourceQuestionVersion}</td><td>{formatDateTime(i.approvedAt, '-')}</td>
                   </tr>
                 ))}</tbody></table>}
@@ -82,30 +82,30 @@ function OrgCard({ i, onOpen }: { i: OrgQuestion; onOpen: () => void }) {
   return (
     <button type="button" className="bk-card" onClick={onOpen}>
       <strong style={{ fontWeight: 400 }}>{excerpt(i.question.content, 110)}</strong>
-      <span className="row xsmall muted" style={{ gap: 8 }}><span>{QUESTION_TYPE_LABEL[i.question.questionType]}</span><span>{DIFFICULTY_LABEL[i.question.difficultyLevel]}</span><span>Phiên bản nguồn {i.sourceQuestionVersion}</span></span>
+      <span className="row xsmall muted" style={{ gap: 8 }}><span>{QUESTION_TYPE_LABEL[i.question.questionType]}</span><span>{DIFFICULTY_LABEL[i.question.difficultyLevel]}</span><span>Phiên bản nguồn {i.sourceQuestionVersion}</span>{i.isCopied && <Badge tone="success">Đã sao chép</Badge>}</span>
     </button>
   )
 }
 
 function OrgQuestionDetailPage({ org, item, onBack }: { org: Organization; item: OrgQuestion; onBack: () => void }) {
   const user = useAuthStore(s => s.user)
+  const qc = useQueryClient()
   const canUse = org.status === 'ACTIVE' && hasCapability(org, 'BANK_USE') && (hasPersona(user, 'TEACHER') || isSystemAdmin(user))
-  const [flash, setFlash] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null), [copyWarning, setCopyWarning] = useState(false)
+  const [flash, setFlash] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const fork = useMutation({
     mutationFn: () => bankApi.orgFork(item.id, item.question.questionVersion),
-    onSuccess: () => { rememberCopied(user?.id, 'org-question', item.id, item.question.questionVersion); setCopyWarning(false); setFlash({ tone: 'success', text: 'Đã sao chép về kho cá nhân thành một câu độc lập (bản nháp).' }) },
-    onError: e => { setCopyWarning(false); setFlash({ tone: 'danger', text: errorText(e) }) },
+    onSuccess: () => { setFlash({ tone: 'success', text: 'Đã sao chép về kho cá nhân thành một câu độc lập (bản nháp).' }); void qc.invalidateQueries({ queryKey: ['banks','org-question-detail',org.id,item.id] }); void qc.invalidateQueries({ queryKey: ['banks','org-questions'] }) },
+    onError: e => setFlash({ tone: 'danger', text: errorText(e) }),
   })
-  const requestCopy = () => wasCopied(user?.id, 'org-question', item.id, item.question.questionVersion) ? setCopyWarning(true) : fork.mutate()
   return <div className="stack org-question-detail">
       <PageHeader title="Câu hỏi của tổ chức" crumbs={[{label:org.name},{label:'Ngân hàng câu hỏi'},{label:`Nguồn v${item.sourceQuestionVersion}`}]} actions={<button type="button" className="btn btn-secondary" onClick={onBack}>Quay lại danh sách</button>} description={`Được duyệt ${formatDateTime(item.approvedAt, '-')}`} />
       <section className="card card-body stack">
       {flash && <Notice tone={flash.tone} live action={flash.tone === 'success' ? <Link to="/questions" className="btn btn-secondary btn-sm">Mở kho cá nhân</Link> : undefined}>{flash.text}</Notice>}
+      {item.isCopied && <Badge tone="success">Đã sao chép</Badge>}
       <QuestionView question={item.question} />
       {canUse
-        ? <div><button type="button" className="btn btn-primary" disabled={fork.isPending || copyWarning} onClick={() => { setFlash(null); requestCopy() }}>{fork.isPending ? 'Đang sao chép…' : 'Sao chép về kho cá nhân'}</button></div>
+        ? <div><button type="button" className="btn btn-primary" disabled={fork.isPending} onClick={() => { setFlash(null); fork.mutate() }}>{fork.isPending ? 'Đang sao chép…' : 'Sao chép về kho cá nhân'}</button></div>
         : <p className="xsmall muted">Bạn không có quyền sao chép câu hỏi từ tổ chức này.</p>}
-      {copyWarning && <Dialog title="Bạn đã sao chép câu này trước đó" onClose={() => setCopyWarning(false)} busy={fork.isPending} description="Sao chép thêm sẽ tạo một bản độc lập mới trong kho cá nhân và được ghi nhận là một lượt sao chép khác." footer={<><button type="button" className="btn btn-secondary" onClick={() => setCopyWarning(false)}>Hủy</button><button type="button" className="btn btn-primary" onClick={() => fork.mutate()}>Sao chép thêm</button></>}><Notice tone="warning">Bản sao cũ không bị ghi đè.</Notice></Dialog>}
       </section>
     </div>
 }

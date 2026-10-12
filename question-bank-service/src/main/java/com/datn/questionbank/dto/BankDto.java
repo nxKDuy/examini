@@ -22,17 +22,17 @@ public class BankDto {
         LocalDateTime copiedAt,UUID copiedBy,java.util.List<LineageNode> nodes) {}
     public record ContributionResponse(UUID id,UUID sourceQuestionId,long sourceQuestionVersion,UUID sourceBankId,UUID sourceOwnerUserId,UUID submittedBy,LocalDateTime submittedAt,PublicContribution.VerificationStatus status,UUID reviewerId,String reviewNote,LocalDateTime reviewedAt,QuestionDto.QuestionProjection question) {}
     public record PublicResponse(UUID id,UUID bankId,UUID sourceQuestionId,long sourceQuestionVersion,UUID sourceBankId,UUID sourceOwnerUserId,
-        String sourceOwnerDisplayName,PublicQuestion.PublicationStatus publicationStatus,UUID publishedBy,LocalDateTime publishedAt,
+        String sourceOwnerDisplayName,PublicQuestion.PublicationStatus publicationStatus,UUID publishedBy,LocalDateTime publishedAt,LocalDateTime contentUpdatedAt,
         UUID archivedBy,LocalDateTime archivedAt,QuestionDto.SafeQuestionResponse question,PublicQuestion.PostType postType,String title,
         String description,long postVersion,int itemCount,List<PublicPostItemResponse> items,List<PublicSubject> subjects,
         List<PublicCategory> categories,long copies24h,long copies30d,long copies365d,long copiesTotal,BigDecimal averageRating,long ratingCount,BigDecimal myRating,
-        long views24h,long views30d,long views365d,long viewsTotal,boolean isSaved) {}
+        long views24h,long views30d,long views365d,long viewsTotal,boolean isSaved,boolean isCopied) {}
     public record PublicRatingRequest(@NotNull @DecimalMin("0.0") @DecimalMax("10.0") BigDecimal rating) {}
     public record PublicRatingResponse(UUID publicationId,BigDecimal averageRating,long ratingCount,BigDecimal myRating) {}
     public record PublicViewResponse(UUID publicationId,long views24h,long views30d,long views365d,long viewsTotal) {}
     public enum PublicTaxonomyKind { SUBJECT, CATEGORY }
     public record PublicPostItemResponse(UUID id,int position,UUID sourceQuestionId,long sourceQuestionVersion,
-        QuestionDto.SafeQuestionResponse question) {}
+        QuestionDto.SafeQuestionResponse question,boolean isCopied) {}
     public record PublicSubject(UUID id,String name) {}
     public record PublicCategory(UUID id,String name,UUID subjectId,String subjectName,UUID parentCategoryId,List<String> path) {}
     public record SetItemRequest(@NotNull UUID questionId,@NotNull @Positive Long questionVersion) {}
@@ -48,5 +48,5 @@ public class BankDto {
         UUID sourceOwnerUserId,String submissionNote,OrganizationContribution.ContributionStatus status,UUID reviewerId,String reviewNote,
         LocalDateTime submittedAt,LocalDateTime reviewedAt,QuestionDto.QuestionProjection question) {}
     public record OrganizationResponse(UUID id,UUID bankId,UUID sourceQuestionId,long sourceQuestionVersion,
-        UUID sourceOwnerUserId,String publicationStatus,UUID approvedBy,LocalDateTime approvedAt,QuestionDto.SafeQuestionResponse question) {}
+        UUID sourceOwnerUserId,String publicationStatus,UUID approvedBy,LocalDateTime approvedAt,QuestionDto.SafeQuestionResponse question,boolean isCopied) {}
 }
