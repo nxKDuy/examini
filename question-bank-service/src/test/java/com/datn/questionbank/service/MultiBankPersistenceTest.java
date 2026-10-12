@@ -1,6 +1,7 @@
 package com.datn.questionbank.service;
 
 import com.datn.questionbank.dto.BankDto.*;
+import com.datn.questionbank.dto.CopySyncDto.*;
 import com.datn.questionbank.dto.QuestionDto.*;
 import com.datn.questionbank.entity.*;
 import com.datn.questionbank.repository.*;
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.*;
 @Transactional
 class MultiBankPersistenceTest {
     @Autowired MultiBankService banks;
+    @Autowired CopySyncService copySync;
     @Autowired PublicBookmarks bookmarks;
     @Autowired QuestionSetService sets;
     @Autowired OrganizationBankService organizations;
@@ -68,6 +70,71 @@ class MultiBankPersistenceTest {
     UpdateRequest edit(String content,long version){return new UpdateRequest(null,content,null,null,null,null,null,null,null,null,null,null,version);}
     void fails(int status,Executable call){assertEquals(status,assertThrows(ResponseStatusException.class,call::run).getStatusCode().value());}
     interface Executable {void run();}
+
+    @Test void copySyncRequiresExplicitResolutionAndKeepsPublicSnapshotFrozen() {
+        var source=active("Source v1");var first=banks.publish(source.id(),new ContributionRequest(1),owner);
+        var copied=banks.forkPublic(first.id(),new ForkRequest(1,null),reviewer).question();
+        var local=questions.update(copied.id(),edit("Local edit",1),reviewer);
+        var revised=questions.update(source.id(),edit("Source v2",1),owner);
+        questions.activate(source.id(),revised.questionVersion(),owner);
+        var second=banks.publish(source.id(),new ContributionRequest(2),owner);
+        var preview=copySync.question(copied.id(),reviewer);
+        assertEquals(Availability.AVAILABLE,preview.availability());
+        var content=preview.changes().stream().filter(c->c.field()==QuestionField.CONTENT).findFirst().orElseThrow();
+        assertTrue(content.sourceChanged());assertTrue(content.localChanged());assertTrue(content.conflict());
+        var options=preview.changes().stream().filter(c->c.field()==QuestionField.OPTIONS).findFirst().orElseThrow();
+        assertTrue(options.redacted());assertNull(options.latest());
+        var kept=copySync.applyQuestion(copied.id(),new QuestionApplyRequest(local.questionVersion(),1L,0L,2L,
+                Map.of(QuestionField.CONTENT,Choice.KEEP_LOCAL)),reviewer);
+        assertEquals("Local edit",questions.findById(copied.id(),true,reviewer).content());
+        assertFalse(kept.changes().stream().filter(c->c.field()==QuestionField.CONTENT).findFirst().orElseThrow().sourceChanged());
+        fails(409,()->copySync.applyQuestion(copied.id(),new QuestionApplyRequest(local.questionVersion(),1L,0L,2L,
+                Map.of(QuestionField.CONTENT,Choice.TAKE_SOURCE)),reviewer));
+        assertEquals("Source v1",banks.publicQuestion(first.id(),reviewer).question().content());
+        assertEquals("Source v2",banks.publicQuestion(second.id(),reviewer).question().content());
+        assertEquals(1,copySync.questionHistory(copied.id(),reviewer).size());
+        fails(404,()->copySync.question(copied.id(),owner));
+        banks.archivePublic(second.id(),owner);
+        assertEquals(Availability.UNAVAILABLE,copySync.question(copied.id(),reviewer).availability());
+        fails(409,()->copySync.applyQuestion(copied.id(),new QuestionApplyRequest(local.questionVersion(),2L,1L,2L,
+                Map.of(QuestionField.CONTENT,Choice.TAKE_SOURCE)),reviewer));
+    }
+
+    @Test void copySyncTakeSourceCreatesDraftVersionWithoutMutatingEarlierVersion() {
+        var source=active("Original");var first=banks.publish(source.id(),new ContributionRequest(1),owner);
+        var copied=banks.forkPublic(first.id(),new ForkRequest(1,null),reviewer).question();
+        var edited=questions.update(source.id(),edit("Updated original",1),owner);
+        questions.activate(source.id(),edited.questionVersion(),owner);
+        banks.publish(source.id(),new ContributionRequest(2),owner);
+        var result=copySync.applyQuestion(copied.id(),new QuestionApplyRequest(1L,1L,0L,2L,
+                Map.of(QuestionField.CONTENT,Choice.TAKE_SOURCE)),reviewer);
+        assertEquals(2,result.localVersion());assertEquals(QuestionStatus.DRAFT,result.localStatus());
+        assertEquals("Original",questions.version(copied.id(),1,true,reviewer).question().content());
+        assertEquals("Updated original",questions.findById(copied.id(),true,reviewer).content());
+        assertEquals("Original",banks.publicQuestion(first.id(),reviewer).question().content());
+    }
+
+    @Test void copiedSetSyncShowsUpdatedItemAndAppliesOnlyChosenItem() {
+        var source=active("Set source v1");var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var original=sets.create(bank.getId(),new QuestionSetWrite("Set v1",null,List.of(new SetItemRequest(source.id(),1L)),null),owner);
+        var first=sets.publish(original.id(),new PublishSetRequest(1L),owner);
+        var copied=sets.fork(first.id(),new QuestionSetForkRequest(null),reviewer);
+        var edited=questions.update(source.id(),edit("Set source v2",1),owner);
+        questions.activate(source.id(),edited.questionVersion(),owner);
+        sets.update(original.id(),new QuestionSetWrite("Set v2",null,List.of(new SetItemRequest(source.id(),2L)),1L),owner);
+        sets.publish(original.id(),new PublishSetRequest(2L),owner);
+        var preview=copySync.set(copied.id(),reviewer);
+        assertEquals(Availability.AVAILABLE,preview.availability());
+        assertTrue(preview.itemChanges().stream().anyMatch(c->c.sourceQuestionId().equals(source.id())&&c.kind().equals("UPDATED")));
+        var applied=copySync.applySet(copied.id(),new SetApplyRequest(1L,1L,0L,2L,
+                Map.of("ITEM:"+source.id(),Choice.TAKE_SOURCE)),reviewer);
+        assertEquals(2,applied.localVersion());
+        assertEquals("Set source v1",sets.version(copied.id(),1,reviewer).items().getFirst().question().content());
+        assertEquals("Set source v2",sets.version(copied.id(),2,reviewer).items().getFirst().question().content());
+        assertEquals(QuestionStatus.DRAFT,sets.version(copied.id(),2,reviewer).items().getFirst().question().status());
+        assertEquals("Set source v1",banks.publicQuestion(first.id(),reviewer).items().getFirst().question().content());
+        assertEquals(1,copySync.setHistory(copied.id(),reviewer).size());
+    }
 
     @Test void personalOwnerActivatesUsesAndVersionsWithoutReview(){
         var q=active("Personal active");
@@ -517,6 +584,9 @@ class MultiBankPersistenceTest {
                         String expected=switch(before){case "APPROVED"->"ACTIVE";case "PENDING_REVIEW","REJECTED"->"DRAFT";default->before;};
                         assertEquals(expected,rows.getString(2));assertEquals(snapshots.get(id),rows.getString(4));
                     }
+                }
+                try(var rows=sql.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_schema='"+schema+"' AND table_name IN ('question_copy_sync_cursors','question_set_copy_sync_cursors','copy_sync_events')")){
+                    rows.next();assertEquals(3,rows.getInt(1));
                 }
             }}
         } finally {try(var connection=DriverManager.getConnection(url,user,password);var sql=connection.createStatement()){sql.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}}
