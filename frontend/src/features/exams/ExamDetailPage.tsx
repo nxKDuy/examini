@@ -19,6 +19,9 @@ import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
 import ScheduleDialog from '../calendar/ScheduleDialog'
 import LifecycleDialog, { type LifecycleKind } from '../calendar/LifecycleDialog'
 import ExamAnalyticsPanel from './ExamAnalyticsPanel'
+import IntegrityTab from '../integrity/IntegrityTab'
+import IntegrityLockControl from '../integrity/IntegrityLockControl'
+import { policySummary } from '../integrity/integrityModel'
 import { useNow, useViewerZone } from '../calendar/useCalendar'
 import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { UPSTREAM_GENERIC, errorInfo, errorText } from '../../lib/errors'
@@ -27,7 +30,7 @@ import { ACCESS_MODE_LABEL, EXAM_TYPE_LABEL, MEMBER_ROLE_LABEL, QUESTION_TYPE_LA
 const LIFECYCLE = ['DRAFT', 'PUBLISHED', 'OPEN', 'CLOSED'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type Transition = 'publish' | 'open' | 'delete'
-type Tab = 'overview' | 'schedule' | 'participation' | 'collaborators' | 'attempts' | 'analytics' | 'audit'
+type Tab = 'overview' | 'schedule' | 'participation' | 'collaborators' | 'attempts' | 'integrity' | 'analytics' | 'audit'
 
 export default function ExamDetailPage() {
   const { id } = useParams()
@@ -59,6 +62,8 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   const nowMs = useNow(schedule.data?.clockOffset ?? 0, 15_000)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const manage = role === 'OWNER' || role === 'MANAGER'
+  const staff = manage || role === 'PROCTOR'
+  const canLock = staff && (exam.status === 'PUBLISHED' || exam.status === 'OPEN' || !!exam.integrityLocked)
   // Badge on the Grading button: this Exam's own count of submissions that need a manual score (server-side overview, not a guess).
   const gradingOverview = useQuery({
     queryKey: ['grading', 'overview', exam.id], queryFn: () => gradingApi.overview(exam.id), retry: false, staleTime: 30_000,
@@ -90,15 +95,17 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   })
 
   const current = LIFECYCLE.indexOf(exam.status as typeof LIFECYCLE[number])
-  const tabs: [Tab, string][] = [['overview', 'Tổng quan'], ['schedule', 'Lịch'], ['participation', 'Tham gia'], ['collaborators', 'Cộng tác'], ['attempts', 'Lượt làm bài'], ...(manage ? [['analytics', 'Phân tích'] as [Tab, string]] : []), ['audit', 'Nhật ký']]
+  const tabs: [Tab, string][] = [['overview', 'Tổng quan'], ['schedule', 'Lịch'], ['participation', 'Tham gia'], ['collaborators', 'Cộng tác'], ['attempts', 'Lượt làm bài'], ...(staff && exam.status !== 'DRAFT' ? [['integrity', 'Giám sát'] as [Tab, string]] : []), ...(manage ? [['analytics', 'Phân tích'] as [Tab, string]] : []), ['audit', 'Nhật ký']]
 
   return (
     <div className="stack-lg">
       <PageHeader title={exam.title} crumbs={[{ label: 'Đề thi', to: '/exams' }, { label: exam.title }]}
         description={<span className="row" style={{ gap: 8 }}><ExamStatusBadge status={exam.status} />
           {role && role !== 'NONE' && <Badge tone="muted">Vai trò: {MEMBER_ROLE_LABEL[role]}</Badge>}
+          {exam.integrityLocked && <Badge tone="danger" icon={<Lock size={12} aria-hidden />}>Đã khóa toàn kỳ thi</Badge>}
           <span>Mã đề <strong className="mono">{exam.code}</strong></span></span>}
-        actions={manage && <>
+        actions={staff && <>
+          {manage && <>
           {exam.status === 'DRAFT' && <>
             <button type="button" className="btn btn-danger-ghost" onClick={() => setConfirm('delete')}><Trash2 size={16} aria-hidden /> Xóa</button>
             <Link to={`/exams/${exam.id}/edit`} className="btn btn-secondary"><Pencil size={16} aria-hidden /> Sửa</Link>
@@ -108,7 +115,10 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
           {(exam.status === 'OPEN' || exam.status === 'PUBLISHED') && <button type="button" className="btn btn-danger" onClick={() => setLifecycle('close')}><Lock size={16} aria-hidden /> Đóng kỳ thi</button>}
           {exam.status === 'CLOSED' && <button type="button" className="btn btn-secondary" onClick={() => setLifecycle('reopen')}><RotateCcw size={16} aria-hidden /> Mở lại</button>}
           {(exam.status === 'OPEN' || exam.status === 'CLOSED') && <Link to={`/grading?examId=${exam.id}`} className="btn btn-secondary"><ClipboardCheck size={16} aria-hidden /> Chấm bài{gradingBadge > 0 && <span className="badge badge-warning" style={{ marginLeft: 6 }} aria-label={`${gradingBadge} bài cần chấm tay`}>{gradingBadge}</span>}</Link>}
+          </>}
+          {canLock && <IntegrityLockControl exam={exam} onDone={text => setMessage({ tone: 'success', text })} />}
         </>} />
+      {exam.integrityLocked && <Notice tone="danger" title="Kỳ thi đang bị khóa">Không nhận lượt bắt đầu mới. Mở khóa không khôi phục các bài đã được nộp khi khóa.</Notice>}
 
       {flash?.notice && !message && <Notice tone={flash.tone ?? 'success'} live>{flash.notice}</Notice>}
       {exam.status === 'DRAFT' && questions.isError && <Notice tone="warning">Chưa xác minh được câu hỏi trong đề: {errorText(questions.error)}. Máy chủ kiểm tra lại khi xuất bản.</Notice>}
@@ -143,6 +153,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         {tab === 'participation' && <Participation exam={exam} manage={manage} />}
         {tab === 'collaborators' && <Collaborators exam={exam} owner={role === 'OWNER'} members={members} />}
         {tab === 'attempts' && <Attempts exam={exam} />}
+        {tab === 'integrity' && staff && <IntegrityTab examId={exam.id} policy={exam.integrityPolicy} manage={manage} live={exam.status === 'OPEN'} />}
         {tab === 'analytics' && manage && <ExamAnalyticsPanel examId={exam.id} actorId={actorId} />}
         {tab === 'audit' && <Audit exam={exam} />}
       </div>
@@ -181,6 +192,7 @@ function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: E
           <div><dt>Lịch thi</dt><dd style={{ fontSize: '1rem' }}>{w ? <>{w.primary}{w.zone && <><br /><span className="muted">{w.zone}</span></>}</> : '…'}<br /><button type="button" className="btn btn-ghost btn-sm" style={{ paddingLeft: 0 }} onClick={onSchedule}>Xem tab Lịch</button></dd></div>
           <div><dt>Số câu / tổng điểm</dt><dd>{exam.questionIds.length} câu · {formatScore(exam.totalScore)} điểm</dd></div>
           <div><dt>Điểm đạt</dt><dd>{exam.passingScore === null ? 'Không đặt' : formatScore(exam.passingScore)}</dd></div>
+          <div><dt>Giám sát trình duyệt</dt><dd>{policySummary(exam.integrityPolicy)}</dd></div>
           <div><dt>Đảo câu hỏi / lựa chọn</dt><dd>{exam.shuffleQuestions ? 'Có' : 'Không'} / {exam.shuffleOptions ? 'Có' : 'Không'}</dd></div>
           <div><dt>Tạo lúc</dt><dd>{formatDateTime(exam.createdAt)}</dd></div>
         </dl>
@@ -346,6 +358,7 @@ const AUDIT_LABEL: Record<string, string> = {
   PARTICIPATION_POLICY_UPDATED: 'Cập nhật chính sách tham gia', PARTICIPANT_ASSIGNED: 'Phân công thí sinh', PARTICIPANT_REMOVED: 'Bỏ phân công thí sinh',
   MANAGER_INVITED: 'Mời Quản lý', PROCTOR_INVITED: 'Mời Giám thị', MANAGER_ADDED: 'Quản lý chấp nhận lời mời', PROCTOR_ADDED: 'Giám thị chấp nhận lời mời',
   MANAGER_REMOVED: 'Xóa Quản lý', PROCTOR_REMOVED: 'Xóa Giám thị',
+  INTEGRITY_POLICY_UPDATED: 'Cập nhật giám sát trình duyệt', EXAM_INTEGRITY_LOCKED: 'Khóa toàn kỳ thi', EXAM_INTEGRITY_UNLOCKED: 'Mở khóa kỳ thi',
 }
 
 function Audit({ exam }: { exam: Exam }) {

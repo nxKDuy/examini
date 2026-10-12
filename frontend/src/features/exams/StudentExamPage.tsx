@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Send, Timer } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
-import { ConfirmDialog } from '../../components/Dialog'
+import { useIntegrityMonitor } from '../integrity/useIntegrityMonitor'
+import { signalState, type StudentSignalState } from '../integrity/integrityModel'
+import { ConfirmDialog, Dialog } from '../../components/Dialog'
 import { ErrorState, Notice, Spinner } from '../../components/ui'
 import { errorInfo, errorText } from '../../lib/errors'
 import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '../../lib/format'
@@ -30,6 +32,10 @@ export default function StudentExamPage() {
   const [submitting, setSubmitting] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [announcement, setAnnouncement] = useState('')
+  const [signals, setSignals] = useState<StudentSignalState | null>(null)
+  const [lastWarning, setLastWarning] = useState(false)
+  const [autoSubmitted, setAutoSubmitted] = useState(false)
+  const autoSubmittedRef = useRef(false)
 
   const offset = useRef(0) // serverNow - clientNow at last sync
   const latest = useRef<Record<string, string>>({})
@@ -51,6 +57,8 @@ export default function StudentExamPage() {
     try {
       const s = await examApi.session(id!)
       offset.current = Date.parse(s.serverNow) - Date.now()
+      // After an integrity auto-submit the page stays on its own submitted state instead of jumping away.
+      if (autoSubmittedRef.current) return
       if (s.status !== 'IN_PROGRESS') { goResult(); return }
       setSession(s)
       if (initial) {
@@ -85,6 +93,13 @@ export default function StudentExamPage() {
       window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline)
     }
   }, [sync])
+
+  const integrity = useIntegrityMonitor(id, !!session && !autoSubmitted, r => {
+    const next = signalState(r)
+    setSignals(next)
+    if (next.stage === 'submitted') { autoSubmittedRef.current = true; setAutoSubmitted(true); setConfirming(false); setLastWarning(false); return }
+    if (r.warningRecommended) { setLastWarning(true); setAnnouncement(`Đã ghi nhận ${next.count}/${next.limit} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.`) }
+  })
 
   const remaining = session ? Math.max(0, Math.ceil((Date.parse(session.expiresAt) - (now + offset.current)) / 1000)) : 0
   const expired = !!session && remaining <= 0
@@ -183,6 +198,19 @@ export default function StudentExamPage() {
 
   if (loadError) return <main className="auth-shell"><div className="card" style={{ width: 'min(520px, 100%)' }}><ErrorState error={loadError} onRetry={() => { setLoadError(null); loadedFor.current = id ?? null; void sync(true) }} /></div></main>
   if (!session) return <main className="auth-shell"><p role="status" className="row muted"><Spinner /> Đang tải bài thi…</p></main>
+  if (autoSubmitted) return (
+    <main className="auth-shell">
+      <section className="card card-body stack" style={{ width: 'min(560px, 100%)' }} aria-labelledby="auto-submitted-title">
+        <h1 id="auto-submitted-title" className="row" style={{ fontSize: '1.4rem', gap: 10 }}><ShieldAlert size={22} aria-hidden /> Bài đã được tự động nộp</h1>
+        <p>Lượt làm bài này đã vượt ngưỡng {signals?.limit ?? ''} tín hiệu trình duyệt của kỳ thi nên hệ thống đã nộp các câu trả lời đã lưu.</p>
+        <p className="small muted">Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Nếu cần làm lại, hãy liên hệ giáo viên phụ trách kỳ thi.</p>
+        <div className="row">
+          <button type="button" className="btn btn-primary" onClick={goResult}>Xem kết quả</button>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`, { replace: true })}>Về phòng chờ</button>
+        </div>
+      </section>
+    </main>
+  )
 
   const questions = session.questions
   const q = questions[index]
@@ -201,7 +229,7 @@ export default function StudentExamPage() {
       <header className="take-bar">
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
-          <div className="xsmall muted">Lượt {session.attemptNumber} · Đã trả lời {answeredCount}/{questions.length}</div>
+          <div className="xsmall muted">Lượt {session.attemptNumber} · Đã trả lời {answeredCount}/{questions.length}{integrity.policy && ' · Có ghi nhận tín hiệu trình duyệt'}</div>
         </div>
         <SaveIndicator online={online} errors={errors} busy={busy} lastSavedAt={lastSavedAt} />
         <span className="timer" role="timer" aria-label={`Thời gian còn lại ${formatDuration(remaining)}`} data-level={level}>
@@ -215,6 +243,12 @@ export default function StudentExamPage() {
           {expired && <Notice tone="warning" live title="Đã hết giờ">Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.</Notice>}
           {!online && <Notice tone="warning" live title="Mất kết nối mạng">Câu trả lời mới chưa được gửi lên máy chủ. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở cho đến khi có mạng.</Notice>}
           {actionError && <Notice tone="danger" live>{actionError}</Notice>}
+          {integrity.policy?.requireFullscreen && !integrity.fullscreen && <Notice tone="warning" title="Kỳ thi yêu cầu toàn màn hình"
+            action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void integrity.enterFullscreen()}><Maximize size={14} aria-hidden /> Vào toàn màn hình</button>}>
+            Thoát toàn màn hình được ghi nhận là một tín hiệu.</Notice>}
+          {signals && signals.stage !== 'none' && (signals.stage === 'last' || integrity.policy?.warningPolicy === 'WARN_ONLY') && (
+            <Notice tone="warning" live>Đã ghi nhận <strong>{signals.count}/{signals.limit}</strong> tín hiệu rời khỏi bài.{' '}
+              {signals.stage === 'last' ? 'Thêm một tín hiệu nữa, bài sẽ được tự động nộp.' : `Vượt quá ${signals.limit} tín hiệu, bài sẽ được tự động nộp.`}</Notice>)}
 
           <section className="card card-body stack-lg" aria-labelledby="question-heading">
             <div className="spread">
@@ -255,6 +289,16 @@ export default function StudentExamPage() {
         </aside>
       </div>
 
+      {lastWarning && (
+        <Dialog title="Bạn đã chạm ngưỡng tín hiệu" onClose={() => setLastWarning(false)}
+          footer={<button type="button" className="btn btn-primary" data-autofocus onClick={() => setLastWarning(false)}>Tiếp tục làm bài</button>}>
+          <div className="stack-sm">
+            <p>Hệ thống đã ghi nhận <strong>{signals?.count}/{signals?.limit}</strong> tín hiệu rời khỏi bài (chuyển tab, rời cửa sổ, thoát toàn màn hình, tải lại trang hoặc mất mạng).</p>
+            <p><strong>Thêm một tín hiệu nữa, bài sẽ được tự động nộp.</strong></p>
+            <p className="small muted">Đây là tín hiệu ghi nhận, không phải kết luận gian lận.</p>
+          </div>
+        </Dialog>
+      )}
       {confirming && (
         <ConfirmDialog title="Nộp bài?" confirmLabel="Nộp bài" busy={submitting} cancelLabel="Tiếp tục làm bài"
           onConfirm={() => void submit()} onCancel={() => setConfirming(false)}>

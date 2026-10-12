@@ -11,6 +11,7 @@ import FollowButton from '../calendar/FollowButton'
 import { useBoundaryRefetch, useNow, useViewerZone } from '../calendar/useCalendar'
 import { useAuthStore } from '../../store/authStore'
 import StudentAttempts, { RevokedNotice } from '../participants/StudentAttempts'
+import { monitored, policySummary } from '../integrity/integrityModel'
 import { useParticipation } from '../participants/useParticipation'
 import { ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { errorStatus, errorText } from '../../lib/errors'
@@ -132,6 +133,7 @@ export default function ExamLobbyPage() {
           <li>Câu trả lời được lưu tự động. Tải lại trang hoặc mở lại sẽ khôi phục lượt đang làm và các câu đã lưu.</li>
           <li>Hết giờ, hệ thống tự động nộp những câu trả lời đã lưu.</li>
           <li>Sau khi nộp, không thể thay đổi câu trả lời.</li>
+          {monitored(exam?.integrityPolicy) && <li>Kỳ thi có ghi nhận tín hiệu trình duyệt: {policySummary(exam!.integrityPolicy)}. Tín hiệu là dữ liệu ghi nhận, không phải kết luận gian lận.</li>}
         </ul>
       </Section>
 
