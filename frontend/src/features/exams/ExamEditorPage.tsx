@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, LayoutList, Plus, Trash2 } from 'lucide-react'
 import { examApi, type Exam, type ExamInput, type Policy } from './examApi'
 import type { Question } from '../question-bank/questionApi'
 import { bankApi } from '../banks/bankApi'
@@ -9,6 +9,9 @@ import PolicyFields from './PolicyFields'
 import { legacyScheduleFields } from './examInput'
 import { DEFAULT_POLICY, policyError } from './policy'
 import QuestionPicker from './QuestionPicker'
+import BlueprintDialog from './BlueprintDialog'
+import { setAllPoints } from './builderModel'
+import { ConfirmDialog } from '../../components/Dialog'
 import IntegrityFields from '../integrity/IntegrityFields'
 import { integrityApi, type IntegrityPolicy } from '../integrity/integrityApi'
 import { DISABLED_POLICY, counts, limitError, policySummary } from '../integrity/integrityModel'
@@ -52,6 +55,9 @@ function Editor({ exam }: { exam?: Exam }) {
   const [policy, setPolicy] = useState<Policy>(exam ? { accessMode: exam.accessMode, maxParticipants: exam.maxParticipants, maxConcurrentSessions: exam.maxConcurrentSessions, attemptLimit: exam.attemptLimit } : DEFAULT_POLICY)
   const [integrity, setIntegrity] = useState<IntegrityPolicy>(exam?.integrityPolicy ? { ...DISABLED_POLICY, ...exam.integrityPolicy } : DISABLED_POLICY)
   const [picking, setPicking] = useState(false)
+  const [bulkPoints, setBulkPoints] = useState('')
+  const [clearing, setClearing] = useState(false)
+  const [blueprint, setBlueprint] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -174,8 +180,17 @@ function Editor({ exam }: { exam?: Exam }) {
           {loaded.isError && <Notice tone="warning">Không xác minh được các câu đã chọn: {errorText(loaded.error)}. Máy chủ kiểm tra lại khi xuất bản.</Notice>}
           <div className="spread">
             <p className="small"><strong>{items.length}</strong> câu hỏi · Tổng điểm <strong className="mono">{formatScore(total)}</strong></p>
-            <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}><Plus size={16} aria-hidden /> Thêm câu hỏi đủ điều kiện</button>
+            <span className="row" style={{ gap: 8 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setBlueprint(true)}><LayoutList size={16} aria-hidden /> Tạo theo khung đề</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}><Plus size={16} aria-hidden /> Thêm câu hỏi đủ điều kiện</button>
+            </span>
           </div>
+          {items.length > 1 && <div className="row" style={{ gap: 8 }}>
+            <label className="row xsmall" style={{ gap: 6 }}>Đặt cùng điểm cho mọi câu
+              <input type="number" min={0.25} step={0.25} className="input" style={{ width: 90, minHeight: 34 }} value={bulkPoints} onChange={e => setBulkPoints(e.target.value)} /></label>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={!(Number(bulkPoints) > 0)} onClick={() => setItems(list => setAllPoints(list, Number(bulkPoints)))}>Áp dụng</button>
+            <button type="button" className="btn btn-danger-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setClearing(true)}>Bỏ tất cả câu</button>
+          </div>}
           {items.length === 0 ? <div className="card"><EmptyState title="Chưa có câu hỏi" description="Thêm câu hỏi đủ điều kiện từ Ngân hàng câu hỏi."
             action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setPicking(true)}><Plus size={14} aria-hidden /> Thêm câu hỏi</button>} /></div>
             : <ol className="card" style={{ listStyle: 'none', margin: 0, padding: 0, overflow: 'hidden' }}>
@@ -236,6 +251,15 @@ function Editor({ exam }: { exam?: Exam }) {
         </div>
       </section>
 
+      {clearing && <ConfirmDialog title="Bỏ tất cả câu khỏi đề?" tone="danger" confirmLabel={`Bỏ ${items.length} câu`}
+        description="Chỉ bỏ khỏi bản nháp đang sửa; câu hỏi trong ngân hàng không bị ảnh hưởng. Chưa lưu cho đến khi bạn bấm Lưu."
+        onConfirm={() => { setItems([]); setClearing(false) }} onCancel={() => setClearing(false)} />}
+      {blueprint && <BlueprintDialog inExam={items.map(i => i.questionId)} onClose={() => setBlueprint(false)}
+        onApply={picked => {
+          setKnown(k => ({ ...k, ...Object.fromEntries(picked.map(p => [p.question.id, p.question])) }))
+          setItems(list => [...list, ...picked.filter(p => !list.some(i => i.questionId === p.question.id)).map(p => ({ questionId: p.question.id, weight: p.weight }))])
+          setBlueprint(false)
+        }} />}
       {picking && <QuestionPicker excluded={items.map(i => i.questionId)} onClose={() => setPicking(false)}
         onAdd={qs => { setKnown(k => ({ ...k, ...Object.fromEntries(qs.map(q => [q.id, q])) })); setItems(list => [...list, ...qs.map(q => ({ questionId: q.id, weight: 1 }))]); setPicking(false) }} />}
     </div>

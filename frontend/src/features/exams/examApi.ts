@@ -1,5 +1,6 @@
 import api from '../../lib/api'
 import type { IntegrityPolicy } from '../integrity/integrityApi'
+import type { BlueprintPreview, BlueprintRequest } from './builderModel'
 
 export type ExamStatus = 'DRAFT' | 'PUBLISHED' | 'OPEN' | 'CLOSED' | 'COMPLETED'
 export type AccessMode = 'ASSIGNED' | 'JOIN_CODE' | 'PUBLIC'
@@ -58,6 +59,8 @@ export const examApi = {
   create: (data: ExamInput) => api.post<Exam>('/exams/manual', { ...data, ...PHASE1_FLAGS }).then(r => r.data),
   update: (id: string, data: ExamInput) => api.put<Exam>(`/exams/${id}`, { ...data, ...PHASE1_FLAGS }).then(r => r.data),
   remove: (id: string) => api.delete(`/exams/${id}`),
+  /** Draft only, nothing persisted (contracts/exam-builder.md); save goes through create/update. */
+  blueprintPreview: (body: BlueprintRequest) => api.post<BlueprintPreview>('/exams/blueprint/preview', body).then(r => r.data),
   publish: (id: string) => api.put<Exam>(`/exams/${id}/publish`).then(r => r.data),
   open: (id: string) => api.put<Exam>(`/exams/${id}/open`).then(r => r.data),
   close: (id: string, reason?: string) => api.put<Exam>(`/exams/${id}/close`, reason ? { reason } : undefined).then(r => r.data),

@@ -25,6 +25,13 @@ export interface PublicQuestion {
 }
 export interface PublicPostItem { id: string; position: number; sourceQuestionId: string; sourceQuestionVersion: number; question: SafeQuestion; isCopied?: boolean }
 export interface PublicViewResponse { publicationId: string; views24h: number; views30d: number; views365d: number; viewsTotal: number }
+export interface EligibleFilters { bankId?: string; categoryId?: string; questionType?: string; difficulty?: string; text?: string }
+const cleanFilters = (f: EligibleFilters) => Object.fromEntries(Object.entries({ bankId: f.bankId, categoryId: f.categoryId, questionType: f.questionType, difficulty: f.difficulty, text: f.text?.trim().slice(0, 200) }).filter(([, v]) => v))
+export interface SetEligibleItems {
+  setId: string; setVersion: number
+  items: { position: number; questionId: string; setQuestionVersion: number; questionVersion: number; versionChanged: boolean; question: Question }[]
+  skipped: { position: number; questionId: string; setQuestionVersion: number; status?: string; reason: 'QUESTION_NOT_FOUND' | 'NOT_ACCESSIBLE' | 'NOT_ACTIVE'; message: string }[]
+}
 export interface QuestionSet { id: string; bankId: string; ownerUserId: string; title: string; description?: string; version: number; status: 'ACTIVE' | 'ARCHIVED'; updatedAt?: string; items: PublicPostItem[] }
 export interface Taxonomy { id: string; name: string; subjectId?: string; subjectName?: string; parentCategoryId?: string; path?: string[] }
 export interface OrgQuestion {
@@ -57,6 +64,10 @@ export const bankApi = {
       if (page + 1 >= data.totalPages) return result
     }
   },
+  // Exam Builder selection (question-bank-api.md 'CURRENT: Exam Builder selection'): one eligible universe, filters AND-combined.
+  eligible: (f: EligibleFilters & { page: number; size?: number }) => api.get<Page<Question>>('/questions/eligible', { params: { ...cleanFilters(f), page: f.page, size: f.size ?? 20 } }).then(r => r.data),
+  eligibleIds: (f: EligibleFilters) => api.post<{ ids: string[]; total: number; truncated: boolean }>('/questions/eligible/ids', cleanFilters(f)).then(r => r.data),
+  setEligibleItems: (setId: string) => api.get<SetEligibleItems>(`/question-sets/${setId}/eligible-items`).then(r => r.data),
   eligibleBatch: (ids: string[]) => api.post<Question[]>('/questions/batch', ids, { params: { eligible: true, includeAnswers: false } }).then(r => r.data),
   pickerList: async (bank: Bank, params: { questionType?: string; difficulty?: string; page: number; size: number }): Promise<Page<Question>> => {
     // Publication IDs are the Exam resources, never sourceQuestionId.
