@@ -72,7 +72,8 @@ public class QuestionAuthentication extends OncePerRequestFilter {
             throw unauthorized();
         boolean random = request.getMethod().equals("GET") && path(request).equals("/questions/random");
         boolean batch = request.getMethod().equals("POST") && path(request).equals("/questions/batch");
-        if (!random && !batch) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Service chỉ được chọn/đọc batch đủ điều kiện");
+        boolean pick = request.getMethod().equals("POST") && path(request).equals("/questions/eligible/random");
+        if (!random && !batch && !pick) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Service chỉ được chọn/đọc batch đủ điều kiện");
         String[] eligibility = request.getParameterValues("eligible");
         if (batch && eligibility != null && (eligibility.length != 1 || !"true".equalsIgnoreCase(eligibility[0])))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Service không được bỏ kiểm tra eligibility");

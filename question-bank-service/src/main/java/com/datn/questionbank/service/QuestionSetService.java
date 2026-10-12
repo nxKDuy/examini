@@ -39,6 +39,7 @@ public class QuestionSetService {
     private final NamedParameterJdbcTemplate jdbc;
     private final PublicPostStatistics statistics;
     private final PublicBookmarks bookmarks;
+    private final ExamEligibilityService eligibility;
 
     @Transactional public QuestionSetResponse create(UUID bankId,QuestionSetWrite request,QuestionActor actor) {
         policy.requireAuthor(actor);
@@ -80,6 +81,24 @@ public class QuestionSetService {
     public QuestionSetResponse version(UUID id,long version,QuestionActor actor) {
         var s=owned(id,actor);var v=versions.findById(new QuestionSetVersion.Key(id,version)).orElseThrow(this::missing);
         try{return response(s,json.readValue(v.getSnapshot(),SetSnapshot.class),v.getVersionNumber());}catch(Exception e){throw new IllegalStateException("Invalid Question Set snapshot",e);}
+    }
+    /** Members are judged on their current state; the exam freezes the current version through the eligible batch. */
+    public SetEligibleItemsResponse eligibleItems(UUID id,QuestionActor actor) {
+        var set=owned(id,actor);var snapshot=readVersion(set).items();
+        var current=new HashMap<UUID,Question>();questions.findAllById(snapshot.stream().map(QuestionResponse::id).toList()).forEach(q->current.put(q.getId(),q));
+        var usable=new ArrayList<Integer>();var skipped=new ArrayList<SetSkippedItem>();
+        for(int i=0;i<snapshot.size();i++){var item=snapshot.get(i);var q=current.get(item.id());
+            if(q==null)skipped.add(new SetSkippedItem(i,item.id(),item.questionVersion(),null,SetSkipReason.QUESTION_NOT_FOUND,"Câu hỏi không còn tồn tại"));
+            else if(!policy.accessible(q,actor))skipped.add(new SetSkippedItem(i,item.id(),item.questionVersion(),null,SetSkipReason.NOT_ACCESSIBLE,"Không còn quyền dùng câu hỏi"));
+            else if(q.getStatus()!=Question.QuestionStatus.ACTIVE)skipped.add(new SetSkippedItem(i,item.id(),item.questionVersion(),q.getStatus(),SetSkipReason.NOT_ACTIVE,
+                    q.getStatus()==Question.QuestionStatus.ARCHIVED?"Câu hỏi đã lưu trữ":"Câu hỏi đang ở bản nháp; kích hoạt để dùng trong đề"));
+            else usable.add(i);
+        }
+        var projections=usable.isEmpty()?List.<QuestionProjection>of():eligibility.batch(usable.stream().map(i->snapshot.get(i).id()).toList(),false,actor);
+        var items=new ArrayList<SetEligibleItem>();
+        for(int n=0;n<usable.size();n++){var item=snapshot.get(usable.get(n));var q=projections.get(n);
+            items.add(new SetEligibleItem(usable.get(n),item.id(),item.questionVersion(),q.questionVersion(),q.questionVersion()!=item.questionVersion(),q));}
+        return new SetEligibleItemsResponse(set.getId(),set.getCurrentVersion(),items,skipped);
     }
     @Transactional public void archive(UUID id,QuestionActor actor) {policy.requireAuthor(actor);var s=ownedForUpdate(id,actor);s.setStatus(QuestionSet.SetStatus.ARCHIVED);s.setUpdatedAt(LocalDateTime.now());}
 

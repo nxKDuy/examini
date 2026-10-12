@@ -126,5 +126,14 @@ public class QuestionDto {
     public record RevisionRequest(@NotNull @Positive Long questionVersion) {}
     public record ReviewResponse(UUID id, long questionVersion, UUID reviewerId, QuestionReview.Decision decision,
                                  String reviewNote, LocalDateTime reviewedAt) {}
+    /** Exam Builder bulk selection filters; all optional, combined with AND. */
+    public record EligibleFilter(UUID bankId, UUID categoryId, Question.QuestionType questionType,
+            Question.DifficultyLevel difficulty, @Size(max = 200) String text) {}
+    public record EligibleIdsResponse(List<UUID> ids, long total, boolean truncated) {}
+    /** One blueprint row: random ACTIVE eligible picks; shortfall = requested - ids.size(), never backfilled. */
+    public record EligibleRandomRequest(UUID bankId, UUID categoryId, Question.QuestionType questionType,
+            Question.DifficultyLevel difficulty, @Min(1) @Max(200) int count,
+            @Size(max = 1000) List<@NotNull UUID> excludeQuestionIds) {}
+    public record EligibleRandomResponse(List<UUID> ids, int requested, long available) {}
     public record ImportResult(int totalRows, int imported, int failed, List<String> errors) {}
 }

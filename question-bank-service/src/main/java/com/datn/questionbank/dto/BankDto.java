@@ -41,6 +41,12 @@ public class BankDto {
     public record PublishSetRequest(@NotNull @Positive Long version) {}
     public record QuestionSetResponse(UUID id,UUID bankId,UUID ownerUserId,String title,String description,long version,
         QuestionSet.SetStatus status,LocalDateTime updatedAt,List<PublicPostItemResponse> items) {}
+    /** Exam Builder view of a Set: members usable now (current ACTIVE version) plus skipped members with a reason. */
+    public record SetEligibleItemsResponse(UUID setId,long setVersion,List<SetEligibleItem> items,List<SetSkippedItem> skipped) {}
+    public record SetEligibleItem(int position,UUID questionId,long setQuestionVersion,long questionVersion,boolean versionChanged,
+        QuestionDto.QuestionProjection question) {}
+    public enum SetSkipReason { QUESTION_NOT_FOUND, NOT_ACCESSIBLE, NOT_ACTIVE }
+    public record SetSkippedItem(int position,UUID questionId,long setQuestionVersion,Question.QuestionStatus status,SetSkipReason reason,String message) {}
     public record QuestionSetForkRequest(UUID targetBankId) {}
     public record OrganizationContributionRequest(@NotNull UUID bankId,@Positive long sourceQuestionVersion,
         @Size(max=5000) String submissionNote) {}
