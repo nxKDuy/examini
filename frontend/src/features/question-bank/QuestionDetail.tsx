@@ -4,6 +4,7 @@ import { Archive, CheckCircle2, Pencil } from 'lucide-react'
 import { bankApi } from '../banks/bankApi'
 import { canShare } from '../banks/bankModel'
 import ProvenanceBlock from '../banks/ProvenanceBlock'
+import { CopySyncEntry } from '../banks/CopySync'
 import { SubmitToOrgDialog } from '../banks/ShareDialogs'
 import { questionBankApi, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
@@ -100,6 +101,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
       {owns && q.explanation?.trim() && <section aria-label="Giải thích của người soạn"><span className="field-label">Giải thích của người soạn</span><p className="prewrap small">{q.explanation}</p><p className="xsmall muted">Chỉ được đưa vào kết quả học sinh khi chính sách cho phép và kỳ thi đã đóng.</p></section>}
 
       <ProvenanceBlock questionId={q.id} />
+      {owns && personal && q.status !== 'ARCHIVED' && <CopySyncEntry kind="question" id={q.id} />}
       {owns && <div className="stack" style={{ paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
         <div className="row">
           {q.status === 'DRAFT' && <button type="button" className="btn btn-primary" disabled={action.isPending} onClick={() => setConfirm('activate')}><CheckCircle2 size={16} aria-hidden /> Kích hoạt</button>}
