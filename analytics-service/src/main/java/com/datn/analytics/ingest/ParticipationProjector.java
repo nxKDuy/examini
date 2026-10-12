@@ -13,7 +13,7 @@ import java.util.UUID;
 
 import static com.datn.analytics.ingest.EventEnvelope.*;
 
-/** Applies exam.participant.changed / exam.attempt.invalidated idempotently. */
+/** Applies exam.participant.changed / exam.attempt.invalidated / exam.attempt.started idempotently. */
 @Service
 @RequiredArgsConstructor
 public class ParticipationProjector {
@@ -29,6 +29,7 @@ public class ParticipationProjector {
         return switch (e.eventType()) {
             case PARTICIPANT_CHANGED -> participantChanged(e, validateParticipant(e.payload()));
             case ATTEMPT_INVALIDATED -> attemptInvalidated(e, validateInvalidation(e.payload()));
+            case ATTEMPT_STARTED -> attemptStarted(e, validateStarted(e.payload()));
             default -> throw new ResultProjector.InvalidEventException("Unsupported eventType " + e.eventType());
         };
     }
@@ -101,6 +102,38 @@ public class ParticipationProjector {
                 """, new MapSqlParameterSource("session", v.sessionId()).addValue("exam", v.examId())
                 .addValue("user", v.userId()).addValue("attempt", v.attempt()), Boolean.class));
         if (!same) throw new ResultProjector.InvalidEventException("Identity conflict for invalidated session " + v.sessionId());
+        return false;
+    }
+
+    record Started(UUID sessionId, UUID examId, UUID candidateId, int attempt, java.time.Instant startedAt, java.time.Instant expiresAt) {}
+
+    private Started validateStarted(JsonNode p) {
+        UUID session = uuid(p, "sessionId"), exam = uuid(p, "examId"), candidate = uuid(p, "candidateId");
+        int attempt = integer(p, "attemptNumber");
+        if (attempt < 1) throw new ResultProjector.InvalidEventException("attemptNumber must be positive");
+        JsonNode expires = p.get("expiresAt");
+        return new Started(session, exam, candidate, attempt, instant(p, "startedAt"),
+                expires == null || expires.isNull() ? null : instant(p, "expiresAt"));
+    }
+
+    /** One row per session; a replay (same or new eventId) of the same start is a no-op. */
+    private boolean attemptStarted(EventEnvelope e, Started v) {
+        if (!firstDelivery(e)) return false;
+        var params = new MapSqlParameterSource("session", v.sessionId()).addValue("exam", v.examId())
+                .addValue("candidate", v.candidateId()).addValue("attempt", v.attempt())
+                .addValue("started", Timestamp.from(v.startedAt()))
+                .addValue("expires", v.expiresAt() == null ? null : Timestamp.from(v.expiresAt()))
+                .addValue("event", e.eventId());
+        if (jdbc.update("""
+                INSERT INTO attempt_started(session_id, exam_id, candidate_id, attempt_number, started_at, expires_at, last_event_id)
+                VALUES (:session, :exam, :candidate, :attempt, :started, :expires, :event)
+                ON CONFLICT (session_id) DO NOTHING
+                """, params) == 1) return true;
+        boolean same = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT exam_id = :exam AND candidate_id = :candidate AND attempt_number = :attempt
+                FROM attempt_started WHERE session_id = :session
+                """, params, Boolean.class));
+        if (!same) throw new ResultProjector.InvalidEventException("Identity conflict for started session " + v.sessionId());
         return false;
     }
 }

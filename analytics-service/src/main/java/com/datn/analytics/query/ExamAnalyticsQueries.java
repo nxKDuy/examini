@@ -64,19 +64,55 @@ public class ExamAnalyticsQueries {
             long invalidated = jdbc.queryForObject("SELECT count(*) FROM attempt_invalidation WHERE exam_id = :exam", exam, Long.class);
             long needsReview = rs.getLong("needs_review"), pending = rs.getLong("pending");
             var unavailable = new java.util.LinkedHashMap<String, String>();
-            unavailable.put("participatedStudents", "Chưa có event bắt đầu attempt từ Session (Contract Request ANALYTICS-SESSION-ATTEMPT-STARTED)");
-            unavailable.put("publishedAverageScore", "Chưa có snapshot điểm đã công bố từ Grading (Contract Request ANALYTICS-GRADING-RELEASED-SCORE)");
+            Long participated = jdbc.queryForObject("""
+                    SELECT CASE WHEN count(*) = 0 THEN NULL ELSE count(DISTINCT candidate_id)
+                        FILTER (WHERE NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = s.session_id)) END
+                    FROM attempt_started s WHERE exam_id = :exam
+                    """, exam, Long.class);
+            if (participated == null)
+                unavailable.put("participatedStudents", "Chưa nhận event exam.attempt.started nào cho kỳ thi này (chưa ai bắt đầu hoặc chưa replay/backfill)");
+            var published = published(examId);
+            if (published.averagePercent() == null)
+                unavailable.put("publishedAverageScore", "Chưa có kết quả đã công bố hợp lệ (grading.result.published) cho kỳ thi này");
             // The projection carries counts only, so a revoked Student's submission still counts in the
             // numerator; clamp to 1 instead of guessing which submitters are still eligible.
             BigDecimal completion = rate == null ? null : rate.min(BigDecimal.ONE.setScale(4));
             if (completion == null) unavailable.put("completionRate", "Chưa có snapshot participant hoặc eligibleCount = 0");
-            var kpi = new Kpi(null, candidates, registered, eligible, completion, "eligibleCount (Student đủ điều kiện, không gồm đã thu hồi)",
-                    null, needsReview + pending, unavailable);
+            var kpi = new Kpi(participated, candidates, registered, eligible, completion, "eligibleCount (Student đủ điều kiện, không gồm đã thu hồi)",
+                    published.averagePercent(), needsReview + pending, unavailable);
             return new ExamSummary(examId, candidates, submissions, graded,
                     rs.getLong("needs_review"), rs.getLong("pending"), rs.getBigDecimal("max_possible"),
                     rs.getBigDecimal("avg_score"), rs.getBigDecimal("min_score"), rs.getBigDecimal("max_score"),
-                    rs.getBigDecimal("avg_percent"), buckets, registered, eligible, invalidated, rate, gradingCompletionRate, kpi);
+                    rs.getBigDecimal("avg_percent"), buckets, registered, eligible, invalidated, rate, gradingCompletionRate, kpi, published);
         });
+    }
+
+    /** Latest released valid attempt per Student; see {@link PublishedStats}. */
+    PublishedStats published(UUID examId) {
+        var params = new MapSqlParameterSource("exam", examId).addValue("buckets", BUCKETS);
+        String latest = """
+                WITH latest AS (
+                    SELECT p.*, CASE WHEN max_score > 0 THEN total_score * 100 / max_score END AS percent,
+                           row_number() OVER (PARTITION BY candidate_id ORDER BY released_at DESC, session_id DESC) AS rank
+                    FROM published_result_projection p
+                    WHERE exam_id = :exam AND NOT invalidated
+                      AND NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = p.session_id)
+                )
+                """;
+        long[] histogram = new long[BUCKETS];
+        jdbc.query(latest + """
+                SELECT LEAST(width_bucket(percent, 0, 100, :buckets), :buckets) AS bucket, count(*) AS n
+                FROM latest WHERE rank = 1 AND percent IS NOT NULL GROUP BY 1
+                """, params, rs -> { histogram[rs.getInt("bucket") - 1] = rs.getLong("n"); });
+        var buckets = new ArrayList<ScoreBucket>();
+        for (int i = 0; i < BUCKETS; i++) buckets.add(new ScoreBucket(i * 100 / BUCKETS, (i + 1) * 100 / BUCKETS, histogram[i]));
+        return jdbc.queryForObject(latest + """
+                SELECT count(*) AS students, round(avg(total_score), 4) AS avg_score, max(total_score) AS high, min(total_score) AS low,
+                       round(avg(percent), 4) AS avg_percent, round(max(percent), 4) AS high_percent, round(min(percent), 4) AS low_percent
+                FROM latest WHERE rank = 1
+                """, params, (rs, i) -> new PublishedStats(rs.getLong("students"), rs.getBigDecimal("avg_score"),
+                rs.getBigDecimal("high"), rs.getBigDecimal("low"), rs.getBigDecimal("avg_percent"),
+                rs.getBigDecimal("high_percent"), rs.getBigDecimal("low_percent"), buckets));
     }
 
     public List<QuestionStats> questions(UUID examId) {

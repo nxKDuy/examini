@@ -90,15 +90,14 @@ Exam summary:
   **GRADED results only**; NEEDS_REVIEW totals are provisional and excluded.
 - `scoreDistribution`: 10 buckets of percent of `maxScore`, `[0,10)…[90,100]`.
 - `maxPossibleScore`: snapshot total from the results.
-- Started/actual participants and started/completed Session attempts are not reported: the
-  current events do not contain attempt-start or all terminal Session transitions.
+- Started participants come from `exam.attempt.started` (`kpi.participatedStudents`); completed Session
+  attempts beyond valid submissions are not reported.
 - **Product scope lock (2026-10-12):** a published-score chart and published average/high/low
   must use the latest released valid attempt per Student. The current `grading.result.recorded.v1`
   event carries draft/current score only and no released revision or frozen published score.
   The existing `averageScore`, `minScore`, `maxScore`, `averagePercent` and `scoreDistribution`
   are legacy **current GRADED attempt** statistics and must not be shown as a published chart.
-  Analytics needs a Grading-owned publication snapshot event before those fields can fulfill
-  the locked product definition; see the contract gap reported to MAIN.
+  Published statistics now come from `grading.result.published` v1 in `ExamSummary.published` (see below).
 
 Question stats are keyed by the frozen snapshot item `(questionId, questionVersion)`, never
 by the live Question Bank question:
@@ -169,10 +168,32 @@ anything else is dead-lettered without retry and does not consume its `eventId`.
 
 ## Header KPIs (`ExamSummary.kpi`, scope lock 2026-10-12)
 
-`participatedStudents` (null: no attempt-start event), `submittedStudents` (distinct Students with a valid
-submission), `registeredCount`, `eligibleCount`, `completionRate` = min(1, submittedStudents / eligibleCount)
-(null without participant snapshot or when eligibleCount = 0; denominator named in `completionRateDenominator`; clamped
-because the count-only projection cannot remove revoked Students from the numerator; `submissionRate` is kept unclamped
-for compatibility), `publishedAverageScore` (null: no Grading
-released-score snapshot), `needsGradingCount` = valid NEEDS_REVIEW + PENDING attempts. Null is never 0; reasons are in
-`kpi.unavailable`. Contract Requests for MAIN: `ANALYTICS-SESSION-ATTEMPT-STARTED`, `ANALYTICS-GRADING-RELEASED-SCORE`.
+- `participatedStudents` = distinct Students with a started, non-invalidated attempt (`exam.attempt.started`); null while no
+  start for the exam has been projected (indistinguishable from "not replayed/backfilled yet").
+- `submittedStudents` = distinct Students with a valid submission.
+- `completionRate` = min(1, submittedStudents / eligibleCount) (null without participant snapshot or when eligibleCount = 0;
+  denominator named in `completionRateDenominator`; clamped because the count-only projection cannot remove revoked Students
+  from the numerator; `submissionRate` is kept unclamped for compatibility). `registeredCount`, `eligibleCount` echoed.
+- `publishedAverageScore` = **percent 0-100** = `published.averagePercent`; null while no valid released result exists.
+- `needsGradingCount` = valid NEEDS_REVIEW + PENDING attempts (attempt-level).
+
+Null is never 0; reasons are in `kpi.unavailable` and a KPI's entry disappears once its source data exists.
+
+## Started attempts and released scores (`contracts/events.md`, MAIN 9952bbf)
+
+- `exam.attempt.started` v1 is consumed on the existing `analytics.exam-events.queue` (binding key `exam.attempt.started`,
+  same strict envelope, eventId dedup). `attempt_started` keeps one row per `sessionId`; a replay with a new eventId is a
+  no-op, a different exam/candidate/attemptNumber for the same session is dead-lettered. Invalidation (before or after the
+  start) excludes the session via `NOT EXISTS attempt_invalidation`.
+- `grading.result.published` v1: own durable queue `analytics.grading-published.queue` (DLQ `analytics.grading-published.dlq`)
+  bound to `examini.grading.events` with `grading.result.published.v1`. Envelope eventType is `grading.result.published`;
+  the routing key must be eventType + `.v1`. `published_result_projection` keeps the highest `resultRevision` per session,
+  so redelivery, regrade releases out of order and producer replay/backfill converge. Question outcomes are validated but
+  not stored (no published question endpoint yet).
+- `ExamSummary.published` (`PublishedStats`, student-level): for each Student the valid attempt with the latest `releasedAt`
+  (ties by sessionId); excludes sessions invalidated by `exam.attempt.invalidated` or flagged `invalidated` at release, then
+  falls back to that Student's previous valid release. `students`, `averageScore`/`highScore`/`lowScore` (points),
+  `averagePercent`/`highPercent`/`lowPercent` and `distribution` (same 10 percent buckets; maxScore 0 excluded from percent).
+- Legacy `averageScore`/`minScore`/`maxScore`/`averagePercent`/`scoreDistribution` at the summary root remain current
+  GRADED attempt-level statistics (draft state) and must not be shown as published scores.
+- Deployment order: consumer first, then MAIN replays the outbox and enables the one-shot producer backfills.
