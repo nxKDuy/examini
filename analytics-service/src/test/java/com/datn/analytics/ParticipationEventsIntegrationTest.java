@@ -162,6 +162,37 @@ class ParticipationEventsIntegrationTest {
         assertTrue(k.unavailable().containsKey("completionRate"));
     }
 
+    com.datn.analytics.ingest.GradingResultEvent withAttempt(com.datn.analytics.ingest.GradingResultEvent e, UUID eventId, Integer attempt) {
+        return new com.datn.analytics.ingest.GradingResultEvent(eventId, e.schemaVersion(), e.occurredAt(), e.resultId(),
+                e.resultRevision(), e.sessionId(), e.examId(), e.candidateId(), attempt, e.status(), e.totalScore(),
+                e.maxScore(), e.submittedAt(), e.gradedAt(), e.questions());
+    }
+
+    /** Regression for the 2 historical analytics.grading-result.dlq messages (attemptNumber 0, NEEDS_REVIEW, rev 1). */
+    @Test void legacyZeroAttemptNumberIsUnknownNotDeadLettered() {
+        UUID session = UUID.randomUUID(), result = UUID.randomUUID(), candidate = UUID.randomUUID(), event = UUID.randomUUID();
+        var items = List.of(item(q1, 0, "2", true, false, "2"), item(UUID.randomUUID(), 1, "5", true, true, null));
+        var corrected = withAttempt(result(exam, session, result, candidate, 1, "NEEDS_REVIEW", "2", "7", items), event, 1);
+        assertTrue(results.apply(corrected));
+        // Replaying the dead-lettered copy (same eventId and revision, attemptNumber 0) is an accepted no-op.
+        assertFalse(results.apply(withAttempt(corrected, event, 0)));
+        assertEquals(1, db.queryForObject("SELECT attempt_number FROM exam_result_projection WHERE session_id = ?", Integer.class, session));
+        // A newer revision still carrying 0 updates the result but never erases the known attempt number.
+        var graded = result(exam, session, result, candidate, 2, "GRADED", "6", "7",
+                List.of(item(q1, 0, "2", true, false, "2"), item(UUID.randomUUID(), 1, "5", true, false, "4")));
+        assertTrue(results.apply(withAttempt(graded, UUID.randomUUID(), 0)));
+        assertEquals(1, db.queryForObject("SELECT attempt_number FROM exam_result_projection WHERE session_id = ?", Integer.class, session));
+        assertEquals("GRADED", db.queryForObject("SELECT status FROM exam_result_projection WHERE session_id = ?", String.class, session));
+        // First sight with 0: projected with an unknown (null) attempt number.
+        UUID other = UUID.randomUUID();
+        assertTrue(results.apply(withAttempt(result(exam, other, UUID.randomUUID(), UUID.randomUUID(), 1, "NEEDS_REVIEW", "2", "7", items),
+                UUID.randomUUID(), 0)));
+        assertNull(db.queryForObject("SELECT attempt_number FROM exam_result_projection WHERE session_id = ?", Integer.class, other));
+        assertThrows(ResultProjector.InvalidEventException.class,
+                () -> results.apply(withAttempt(result(exam, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 1, "PENDING", null, "7", items),
+                        UUID.randomUUID(), -1)));
+    }
+
     @Test void studentSummariesAndResultFiltersCountValidAttemptsPrecisely() {
         UUID alice = UUID.randomUUID(), bob = UUID.randomUUID();
         UUID a1 = UUID.randomUUID(), a2 = UUID.randomUUID(), b1 = UUID.randomUUID();

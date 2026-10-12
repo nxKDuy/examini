@@ -197,3 +197,28 @@ Null is never 0; reasons are in `kpi.unavailable` and a KPI's entry disappears o
 - Legacy `averageScore`/`minScore`/`maxScore`/`averagePercent`/`scoreDistribution` at the summary root remain current
   GRADED attempt-level statistics (draft state) and must not be shown as published scores.
 - Deployment order: consumer first, then MAIN replays the outbox and enables the one-shot producer backfills.
+
+## DLQ audit: `analytics.grading-result.dlq` (2 historical messages, Task E, 2026-10-12)
+
+Read with `rabbitmqadmin get … ackmode=ack_requeue_true` (not consumed). Both are `grading.result.recorded.v1`,
+exam `53a8fc10-9130-459c-88ca-3f781f0f7cc6`, `resultRevision` 1, `NEEDS_REVIEW`, produced 2026-10-09T09:40:06Z, rejected
+2026-10-12T03:15:57Z (`x-death` reason `rejected`, count 1, no retry):
+
+| eventId | sessionId | resultId |
+| --- | --- | --- |
+| `acfbfaec-0df4-47f4-b97b-47e76ac77e2f` | `ac4c6289-3e32-4fc9-90d7-610649eb2576` | `e0866f59-f5f3-43a5-8879-aa77e45833d0` |
+| `14fa117f-1a60-42a8-9e3d-dbd83f0640df` | `b1596c7f-d294-46ed-b5dd-33675347e164` | `d52abafc-07e2-4d0c-a178-07f09322f548` |
+
+**Root cause:** the payload carried `attemptNumber: 0`, the Grading `int` default from before Session exposed the attempt
+number. `ResultProjector.validate` accepted only null or > 0, so the whole result was treated as a contract violation and
+dead-lettered. The Grading outbox rows for the same eventIds now carry `attemptNumber: 1` (matching Session) and were
+delivered again; Analytics applied them at 2026-10-12T03:20:08Z (`last_event_id` = the same eventIds). The projection
+already matches the source (revision 1, NEEDS_REVIEW, totals 12/17 and 8/17, attempt 1): **no data was lost**.
+
+**Consumer fix:** `attemptNumber = 0` is the legacy "unknown" sentinel: projected as null, never overwriting a known attempt
+number (`COALESCE`); negative values are still dead-lettered. Regression test
+`ParticipationEventsIntegrationTest.legacyZeroAttemptNumberIsUnknownNotDeadLettered`.
+
+**Runtime (MAIN):** after deploying this consumer, replay both messages to `analytics.grading-result.queue`; each is an
+equal-revision duplicate and is acknowledged as a no-op. Keep the `get` JSON snapshot as the audit record. Replaying
+before the deploy just dead-letters them again (harmless). Do not purge without the snapshot.

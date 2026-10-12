@@ -50,7 +50,8 @@ public class ResultProjector {
                     :total, :max, :submitted, :graded, :revision, :event)
                 ON CONFLICT (session_id) DO UPDATE SET
                     status = EXCLUDED.status, total_score = EXCLUDED.total_score, max_score = EXCLUDED.max_score,
-                    attempt_number = EXCLUDED.attempt_number, submitted_at = EXCLUDED.submitted_at,
+                    attempt_number = COALESCE(EXCLUDED.attempt_number, exam_result_projection.attempt_number),
+                    submitted_at = EXCLUDED.submitted_at,
                     graded_at = EXCLUDED.graded_at, result_revision = EXCLUDED.result_revision,
                     last_event_id = EXCLUDED.last_event_id, projected_at = now()
                 WHERE exam_result_projection.result_revision < EXCLUDED.result_revision
@@ -60,7 +61,7 @@ public class ResultProjector {
                 """, new MapSqlParameterSource()
                 .addValue("session", e.sessionId()).addValue("result", e.resultId())
                 .addValue("exam", e.examId()).addValue("candidate", e.candidateId())
-                .addValue("attempt", e.attemptNumber()).addValue("status", e.status())
+                .addValue("attempt", knownAttempt(e.attemptNumber())).addValue("status", e.status())
                 .addValue("total", e.totalScore()).addValue("max", e.maxScore())
                 .addValue("submitted", timestamp(e.submittedAt())).addValue("graded", timestamp(e.gradedAt()))
                 .addValue("revision", e.resultRevision()).addValue("event", e.eventId()));
@@ -96,6 +97,10 @@ public class ResultProjector {
         return Outcome.PARTIAL;
     }
 
+    static Integer knownAttempt(Integer attemptNumber) {
+        return attemptNumber == null || attemptNumber == 0 ? null : attemptNumber;
+    }
+
     static void validate(GradingResultEvent e) {
         require(e != null, "Missing event");
         require(e.schemaVersion() == GradingResultEvent.SCHEMA_VERSION, "Unsupported schemaVersion " + e.schemaVersion());
@@ -104,7 +109,9 @@ public class ResultProjector {
                 && e.candidateId() != null, "Missing identity");
         require(e.resultRevision() > 0, "resultRevision must be positive");
         require(e.status() != null && STATUSES.contains(e.status()), "Unknown status " + e.status());
-        require(e.attemptNumber() == null || e.attemptNumber() > 0, "attemptNumber must be positive");
+        // 0 is the legacy "unknown" sentinel (Grading int default before Session exposed the attempt);
+        // it is projected as null instead of dead-lettering the whole result. Negative is still a violation.
+        require(e.attemptNumber() == null || e.attemptNumber() >= 0, "attemptNumber must not be negative");
         require(e.maxScore() != null && e.maxScore().signum() >= 0, "maxScore required");
         require(!"GRADED".equals(e.status()) || e.totalScore() != null, "GRADED result requires totalScore");
         require(e.totalScore() == null || (e.totalScore().signum() >= 0 && e.totalScore().compareTo(e.maxScore()) <= 0),
