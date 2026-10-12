@@ -585,6 +585,9 @@ class MultiBankPersistenceTest {
                         assertEquals(expected,rows.getString(2));assertEquals(snapshots.get(id),rows.getString(4));
                     }
                 }
+                try(var rows=sql.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_schema='"+schema+"' AND table_name IN ('question_copy_sync_cursors','question_set_copy_sync_cursors','copy_sync_events')")){
+                    rows.next();assertEquals(3,rows.getInt(1));
+                }
             }}
         } finally {try(var connection=DriverManager.getConnection(url,user,password);var sql=connection.createStatement()){sql.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}}
     }
