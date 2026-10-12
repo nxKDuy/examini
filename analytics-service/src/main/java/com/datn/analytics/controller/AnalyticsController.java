@@ -43,10 +43,27 @@ public class AnalyticsController {
     public AnalyticsDto.PageResponse<AnalyticsDto.CandidateResult> results(
             @PathVariable UUID examId, @RequestAttribute UUID actor,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID candidateId,
+            @RequestParam(required = false) Boolean invalidated,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         if (status != null && !STATUSES.contains(status)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown grading status");
-        if (page < 0 || size < 1 || size > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page >= 0 and 1 <= size <= 100");
+        validatePage(page, size);
         access.require(examId, actor);
-        return queries.results(examId, status, page, size);
+        return queries.results(examId, status, candidateId, invalidated, page, size);
+    }
+
+    @GetMapping("/students")
+    @Operation(summary = "Tóm tắt các lượt nộp hợp lệ theo Student")
+    public AnalyticsDto.PageResponse<AnalyticsDto.StudentSummary> students(
+            @PathVariable UUID examId, @RequestAttribute UUID actor,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        validatePage(page, size);
+        access.require(examId, actor);
+        return queries.students(examId, page, size);
+    }
+
+    private static void validatePage(int page, int size) {
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page >= 0, 1 <= size <= 100, and offset <= 2147483647");
     }
 }

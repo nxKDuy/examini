@@ -35,7 +35,31 @@ public final class AnalyticsDto {
             Integer registeredCount,
             Integer eligibleCount,
             long invalidatedCount,
-            BigDecimal submissionRate
+            BigDecimal submissionRate,
+            BigDecimal gradingCompletionRate,
+            Kpi kpi
+    ) {}
+
+    /**
+     * Header KPIs. A null value is "source data not available", never 0; the reason is in
+     * unavailable[kpiName]. Invalidated attempts are excluded everywhere.
+     * participatedStudents: distinct Students who started an attempt (needs a Session attempt-start event).
+     * submittedStudents: distinct Students with a valid submission (denominator for nothing; informational).
+     * completionRate = min(1, submittedStudents / eligibleCount) (needs participant snapshot, eligibleCount > 0); null otherwise.
+     *   Clamped because the count-only projection cannot drop revoked Students from the numerator.
+     * publishedAverageScore: mean of each Student's latest RELEASED score (needs Grading publication snapshot).
+     * needsGradingCount: attempt-level NEEDS_REVIEW + PENDING valid results.
+     */
+    public record Kpi(
+            Long participatedStudents,
+            long submittedStudents,
+            Integer registeredCount,
+            Integer eligibleCount,
+            BigDecimal completionRate,
+            String completionRateDenominator,
+            BigDecimal publishedAverageScore,
+            long needsGradingCount,
+            java.util.Map<String, String> unavailable
     ) {}
 
     /** Half-open percent range [fromPercent, toPercent); the last bucket includes 100. */
@@ -75,6 +99,18 @@ public final class AnalyticsDto {
             Instant submittedAt,
             Instant gradedAt,
             boolean invalidated
+    ) {}
+
+    /** One Student, counting valid recorded submissions only; the latest state is a Grading state. */
+    public record StudentSummary(
+            UUID candidateId,
+            long submittedAttempts,
+            long gradedAttempts,
+            long needsReviewAttempts,
+            long pendingAttempts,
+            UUID latestSessionId,
+            String latestGradingStatus,
+            Instant latestSubmittedAt
     ) {}
 
     public record PageResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}
