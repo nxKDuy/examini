@@ -4,7 +4,7 @@ import { Archive, CheckCircle2, Pencil } from 'lucide-react'
 import { bankApi } from '../banks/bankApi'
 import { canShare } from '../banks/bankModel'
 import ProvenanceBlock from '../banks/ProvenanceBlock'
-import { SubmitToOrgDialog, PublishPublicDialog } from '../banks/ShareDialogs'
+import { SubmitToOrgDialog } from '../banks/ShareDialogs'
 import { questionBankApi, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
@@ -55,7 +55,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
   const user = useAuthStore(s => s.user)
   const audience = audienceOf(user)
   const canReadAnswers = audience !== 'STUDENT'
-  const [sharing, setSharing] = useState<'org' | 'public' | null>(null)
+  const [sharing, setSharing] = useState(false)
   const [confirm, setConfirm] = useState<Action | null>(null)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const detail = useQuery({ queryKey: ['question', id, canReadAnswers], queryFn: () => questionBankApi.getQuestion(id, canReadAnswers) })
@@ -105,14 +105,11 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
           {q.status === 'DRAFT' && <button type="button" className="btn btn-primary" disabled={action.isPending} onClick={() => setConfirm('activate')}><CheckCircle2 size={16} aria-hidden /> Kích hoạt</button>}
           {canEdit && <button type="button" className="btn btn-secondary" onClick={() => onEdit(q)}><Pencil size={16} aria-hidden /> {q.status === 'ACTIVE' ? 'Sửa (tạo phiên bản mới)' : 'Sửa'}</button>}
           {q.status !== 'ARCHIVED' && <button type="button" className="btn btn-danger-ghost" disabled={action.isPending} onClick={() => setConfirm('archive')}><Archive size={16} aria-hidden /> Lưu trữ</button>}
-          {personal && canShare(q) && <>
-            <button type="button" className="btn btn-secondary" onClick={() => setSharing('org')}>Gửi vào tổ chức</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setSharing('public')}>Xuất bản công khai</button>
-          </>}
+          {personal && canShare(q) && <button type="button" className="btn btn-secondary" onClick={() => setSharing(true)}>Gửi vào tổ chức</button>}
         </div>
+        {personal && <p className="xsmall muted">Muốn đăng câu này lên cộng đồng? Dùng nút + ở Ngân hàng công khai.</p>}
       </div>}
-      {sharing === 'org' && <SubmitToOrgDialog questionId={q.id} version={q.questionVersion} onClose={() => setSharing(null)} onDone={text => { setSharing(null); setMessage({ tone: 'success', text }); void qc.invalidateQueries({ queryKey: ['banks'] }) }} />}
-      {sharing === 'public' && <PublishPublicDialog questionId={q.id} version={q.questionVersion} onClose={() => setSharing(null)} onDone={text => { setSharing(null); setMessage({ tone: 'success', text }); void qc.invalidateQueries({ queryKey: ['banks'] }) }} />}
+      {sharing && <SubmitToOrgDialog questionId={q.id} version={q.questionVersion} onClose={() => setSharing(false)} onDone={text => { setSharing(false); setMessage({ tone: 'success', text }); void qc.invalidateQueries({ queryKey: ['banks'] }) }} />}
 
       <details>
         <summary className="field-label" style={{ cursor: 'pointer' }}>Lịch sử duyệt cũ ({reviews.data?.length ?? 0})</summary>
