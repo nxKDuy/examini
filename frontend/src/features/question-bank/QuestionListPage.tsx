@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { BookOpenCheck, FileUp, Plus } from 'lucide-react'
 import { questionBankApi, type Filters, type ImportResult, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
@@ -14,6 +15,7 @@ import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
 import PersonalQuestionSets from '../banks/PersonalQuestionSets'
 
+const VIEWS = [{ value: 'questions', label: 'Câu hỏi lẻ' }, { value: 'sets', label: 'Bộ câu hỏi' }] as const
 const TABS = [{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }]
 
 export default function QuestionListPage() {
@@ -26,6 +28,9 @@ export default function QuestionListPage() {
   const [editing, setEditing] = useState<Question | null | 'new'>(null)
   const [importing, setImporting] = useState(false)
   const detailRef = useRef<HTMLDivElement>(null)
+  const [params, setParams] = useSearchParams()
+  // Single questions are the default view; Question Sets live in their own tab so the list is never pushed below the fold.
+  const view = !admin && params.get('view') === 'sets' ? 'sets' : 'questions'
 
   useEffect(() => {
     const t = setTimeout(() => setFilters(f => (f.text ?? '') === search.trim() ? f : { ...f, text: search.trim() || undefined, page: 0 }), 300)
@@ -44,12 +49,20 @@ export default function QuestionListPage() {
     <div className="stack">
       <PageHeader
         title={admin ? 'Câu hỏi' : 'Kho cá nhân'}
-        description="Soạn bản nháp, kích hoạt để dùng. Gửi vào tổ chức hoặc xuất bản công khai từ câu cá nhân đang dùng; câu gốc giữ độc lập."
+        description={admin ? 'Soạn bản nháp, kích hoạt để dùng.' : 'Soạn bản nháp, kích hoạt, gom thành bộ và lưu trữ. Để đăng câu hoặc bộ lên cộng đồng, dùng nút + ở Ngân hàng công khai.'}
         actions={!admin && <>
           <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> Nhập CSV</button>
           <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> Tạo câu hỏi</button>
         </>} />
 
+      {!admin && <div className="tabs" role="tablist" aria-label="Nội dung kho cá nhân">
+        {VIEWS.map(v => (
+          <button key={v.value} type="button" role="tab" className="tab" aria-selected={view === v.value}
+            onClick={() => setParams(v.value === 'sets' ? { view: 'sets' } : {}, { replace: true })}>{v.label}</button>
+        ))}
+      </div>}
+
+      {view === 'sets' ? <PersonalQuestionSets /> : <>
       <section className="card" aria-label="Bộ lọc câu hỏi">
         <div className="tabs" role="tablist" aria-label="Trạng thái">
           {TABS.map(t => (
@@ -78,8 +91,6 @@ export default function QuestionListPage() {
           </div>
         </div>
       </section>
-
-      {!admin && <PersonalQuestionSets />}
 
       <div className="split">
         <section className="card" aria-label="Danh sách câu hỏi" style={{ overflow: 'hidden' }}>
@@ -112,6 +123,7 @@ export default function QuestionListPage() {
             : <EmptyState title="Chọn một câu hỏi" description="Chi tiết, đáp án, nguồn gốc và lịch sử phiên bản sẽ hiển thị ở đây." />}
         </section>
       </div>
+      </>}
 
       {editing && <QuestionEditor initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
         onSaved={q => { setEditing(null); setSelectedId(q.id) }} />}
