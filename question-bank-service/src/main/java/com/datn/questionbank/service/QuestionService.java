@@ -1,10 +1,12 @@
 package com.datn.questionbank.service;
 
 import com.datn.questionbank.dto.QuestionDto.*;
+import com.datn.questionbank.dto.CopySyncDto.QuestionField;
 import com.datn.questionbank.entity.*;
 import com.datn.questionbank.repository.*;
 import com.datn.questionbank.security.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
@@ -129,6 +131,27 @@ public class QuestionService {
         if (q.getStatus() != QuestionStatus.DRAFT) throw conflict("Chỉ DRAFT được activate");
         validate(q); q.setStatus(QuestionStatus.ACTIVE); q.setUpdatedAt(LocalDateTime.now());
         return fullResponse(q);
+    }
+
+    @Transactional
+    public QuestionResponse applyCopySync(UUID id,long expectedVersion,Map<QuestionField,JsonNode> chosen,QuestionActor actor) {
+        var q=lock(id);policy.requireOwner(q,actor);matchVersion(q,expectedVersion);
+        if(q.getStatus()==QuestionStatus.ARCHIVED)throw conflict("Không thể đồng bộ Question đã archive");
+        if(chosen.isEmpty())return fullResponse(q);
+        chosen.forEach((field,value)->{
+            switch(field) {
+                case CATEGORY -> q.setCategory(categoryService.getOrThrow(UUID.fromString(value.asText())));
+                case CONTENT -> q.setContent(value.asText());
+                case QUESTION_TYPE -> q.setQuestionType(QuestionType.valueOf(value.asText()));
+                case DIFFICULTY -> q.setDifficultyLevel(DifficultyLevel.valueOf(value.asText()));
+                case OPTIONS -> replaceOptions(q,json.convertValue(value,new com.fasterxml.jackson.core.type.TypeReference<List<OptionRequest>>(){}));
+                case EXPECTED_ANSWER -> q.setExpectedAnswer(value.isNull()?null:value.asText());
+                case EXPLANATION -> q.setExplanation(value.isNull()?null:value.asText());
+                default -> throw bad("Field không thuộc Question");
+            }
+        });
+        validate(q);q.setStatus(QuestionStatus.DRAFT);q.setQuestionVersion(q.getQuestionVersion()+1);
+        q.setUpdatedAt(LocalDateTime.now());saveRevision(q,actor.userId());return fullResponse(q);
     }
     public QuestionResponse submit(UUID id, long version, QuestionActor actor) {
         throw new ResponseStatusException(HttpStatus.GONE, "Review Question đã bỏ; dùng /activate hoặc Organization contribution");
