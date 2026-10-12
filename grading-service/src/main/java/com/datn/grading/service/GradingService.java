@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 public class GradingService {
     private final ExamSessionClient sessions;private final ExamClient exams;private final GeminiClient ai;
     private final ExamResultRepository results;private final ResultPublicationRepository publications;
-    private final GradingAuditRepository audits;private final GradingEventPublisher events;
+    private final GradingAuditRepository audits;private final GradingEventPublisher events;private final com.datn.grading.repository.GradingOutboxRepository outbox;
     private final EntityManager em;private final ObjectMapper json;
     @Value("${exam.internal-token:}") private String token="";
     private static ResponseStatusException error(int status,String msg){return new ResponseStatusException(HttpStatus.valueOf(status),msg);}
@@ -191,9 +191,24 @@ public class GradingService {
         if(result.getTotalScore()==null)throw error(409,"Final score unavailable");
         try{
             var items=result.getQuestionGrades().stream().map(q->new PublicationItem(q.getQuestionId(),q.getScore(),q.getFeedback(),answerDisplay(q),q.getExplanation())).toList();
-            publications.save(new ResultPublication(result.getId(),result.getResultRevision(),result.getTotalScore(),result.getFeedback(),result.getPendingPublicReason(),result.getGradingMode(),now,result.getGradedAt(),json.writeValueAsString(items)));
+            var publication=publications.save(new ResultPublication(result.getId(),result.getResultRevision(),result.getTotalScore(),result.getFeedback(),result.getPendingPublicReason(),result.getGradingMode(),now,result.getGradedAt(),json.writeValueAsString(items)));
+            em.flush();em.refresh(publication); // persisted precision, so a backfill rebuilds the identical payload
+            events.published(result,publication,awarded(items),regraded);
         }catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("Cannot freeze result publication",e);}
         result.setReleasedRevision(result.getResultRevision());result.setReleasedScore(result.getTotalScore());result.setPendingPublicReason(null);result.setPendingPrivateAuditNote(null);events.released(result,regraded);
+    }
+    private static Map<UUID,Float> awarded(List<PublicationItem> items){var m=new HashMap<UUID,Float>();items.forEach(i->m.put(i.questionId(),i.score()));return m;}
+    /** Enqueues grading.result.published for publications that predate the event; safe to run repeatedly. */
+    @Transactional
+    public int backfillPublishedEvents(){
+        int added=0;
+        for(var publication:publications.findAll(org.springframework.data.domain.Sort.by("resultId","resultRevision"))) {
+            if(outbox.existsById(GradingEventPublisher.publishedEventId(publication.getId())))continue;
+            var result=results.findById(publication.getResultId()).orElseThrow();
+            var first=publications.findByResultIdOrderByResultRevisionAsc(result.getId()).getFirst();
+            events.published(result,publication,awarded(readItems(publication)),!first.getId().equals(publication.getId()));added++;
+        }
+        return added;
     }
     private List<PublicationItem> readItems(ResultPublication publication){try{return json.readValue(publication.getItems(),new TypeReference<>(){});}catch(Exception e){throw new IllegalStateException("Invalid published result snapshot",e);}}
     private static List<String> correct(ExamClient.Question q){if(q==null)return List.of();if("SHORT_ANSWER".equals(q.questionType()))return q.expectedAnswer()==null?List.of():List.of(q.expectedAnswer());return q.options().stream().filter(ExamClient.Option::correct).map(ExamClient.Option::content).toList();}

@@ -26,6 +26,20 @@ public class GradingEventPublisher {
         enqueue(eventId,result,"examini.grading.events","grading.result.recorded.v1",event,now);
     }
 
+    /** grading.result.published v1: frozen released snapshot; feedback, answers, explanations and keys are never included. */
+    public static UUID publishedEventId(UUID publicationId){return UUID.nameUUIDFromBytes(("grading.result.published:v1:"+publicationId).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+    public void published(ExamResult result,ResultPublication publication,Map<UUID,Float> awarded,boolean regraded) {
+        UUID eventId=publishedEventId(publication.getId());Instant now=publication.getReleasedAt();
+        var questions=result.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->
+                new PublishedQuestion(q.getQuestionId(),q.getQuestionVersion(),q.getQuestionType(),q.getPosition(),decimal(q.getPointValue()),
+                        q.getAnswerContent()!=null&&!q.getAnswerContent().isBlank(),decimal(awarded.get(q.getQuestionId())))).toList();
+        var payload=new Published(publication.getId(),result.getId(),publication.getResultRevision(),result.getSessionId(),result.getExamId(),
+                result.getUserId(),result.getAttemptNumber(),regraded,decimal(publication.getTotalScore()),decimal(result.getMaxScore()),
+                publication.getGradingMode(),publication.getGradedAt(),publication.getReleasedAt(),result.isInvalidated(),questions);
+        enqueue(eventId,result.getId(),publication.getResultRevision(),"examini.grading.events","grading.result.published.v1",
+                new Envelope(eventId,"grading.result.published",1,now,payload),now);
+    }
+
     public void reviewRequired(ExamResult result) {
         notification(result,"grading.review.required",new ReviewRequired(result.getId(),result.getSessionId(),result.getExamId(),result.getExamTitle(),result.getResultRevision()));
     }
@@ -43,9 +57,13 @@ public class GradingEventPublisher {
         enqueue(eventId,result,"examini.events",type,new Envelope(eventId,type,1,now,payload),now);
     }
     private void enqueue(UUID eventId,ExamResult result,String exchange,String route,Object payload,Instant now) {
-        try {outbox.save(new GradingOutboxEvent(eventId,result.getId(),result.getResultRevision(),exchange,route,json.writeValueAsString(payload),now));}
+        enqueue(eventId,result.getId(),result.getResultRevision(),exchange,route,payload,now);
+    }
+    private void enqueue(UUID eventId,UUID resultId,long revision,String exchange,String route,Object payload,Instant now) {
+        try {outbox.save(new GradingOutboxEvent(eventId,resultId,revision,exchange,route,json.writeValueAsString(payload),now));}
         catch(JsonProcessingException e){throw new IllegalStateException("Cannot encode grading event",e);}
     }
+    private static BigDecimal decimal(float value){return BigDecimal.valueOf((double)value);}
     private static BigDecimal decimal(Float value){return value==null?null:BigDecimal.valueOf(value.doubleValue());}
 
     public record RecordedEvent(UUID eventId,int schemaVersion,Instant occurredAt,UUID resultId,long resultRevision,
@@ -53,6 +71,11 @@ public class GradingEventPublisher {
                                 BigDecimal totalScore,BigDecimal maxScore,Instant submittedAt,Instant gradedAt,List<QuestionState> questions){}
     public record QuestionState(UUID questionId,long questionVersion,String questionType,int position,BigDecimal pointValue,
                                 boolean answered,boolean needsReview,BigDecimal awardedPoints){}
+    public record Published(UUID publicationId,UUID resultId,long resultRevision,UUID sessionId,UUID examId,UUID candidateId,
+                            int attemptNumber,boolean regraded,BigDecimal totalScore,BigDecimal maxScore,String gradingMode,
+                            Instant gradedAt,Instant releasedAt,boolean invalidated,List<PublishedQuestion> questions){}
+    public record PublishedQuestion(UUID questionId,long questionVersion,String questionType,int position,BigDecimal pointValue,
+                                    boolean answered,BigDecimal awardedPoints){}
     public record Envelope(UUID eventId,String eventType,int eventVersion,Instant occurredAt,Object payload){}
     public record ReviewRequired(UUID resultId,UUID sessionId,UUID examId,String examTitle,long resultRevision){}
     public record Released(UUID resultId,long resultRevision,UUID sessionId,UUID examId,String examTitle,UUID studentUserId,String gradingMode){}

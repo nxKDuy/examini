@@ -72,8 +72,26 @@ public class SessionService {
         s.setExpiresAt(admission.deadlineAt());s.setScheduleRevision(admission.scheduleRevision());s.setStartAdmissionId(admission.admissionId());
         s.setAttemptNumber(nextAttemptNumber(examId,user)); // monotonic and never reused, independent of how many rows exist
         // Immutable snapshot order is persisted for this attempt and reused on refresh.
-        sessions.saveAndFlush(s);persistedSessionId[0]=s.getId();return response(s);
+        sessions.saveAndFlush(s);persistedSessionId[0]=s.getId();
+        em.refresh(s); // event carries the persisted (DB-precision) times so backfill/replay rebuilds the same payload
+        attemptEvents.save(startedEvent(s));return response(s);
     }
+    /** exam.attempt.started v1: one per successful Start; eventId is derived from sessionId so replay/backfill is idempotent. */
+    public static UUID startedEventId(UUID sessionId){return UUID.nameUUIDFromBytes(("exam.attempt.started:v1:"+sessionId).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+    AttemptEvent startedEvent(ExamSession s){
+        Instant startedAt=s.getStartTime().toInstant(ZoneOffset.UTC);
+        var payload=new AttemptStarted(s.getId(),s.getExamId(),s.getUserId(),s.getAttemptNumber(),startedAt,s.getExpiresAt());
+        try{return AttemptEvent.publicOnly(startedEventId(s.getId()),"exam.attempt.started",s.getId(),json.writeValueAsString(payload),startedAt);}
+        catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("Cannot encode attempt event",e);}
+    }
+    /** Enqueues exam.attempt.started for sessions that predate the event; safe to run repeatedly. */
+    @Transactional
+    public int backfillStartedEvents(){
+        int added=0;
+        for(var s:sessions.findAll())if(s.getStartTime()!=null && !attemptEvents.existsById(startedEventId(s.getId()))){attemptEvents.save(startedEvent(s));added++;}
+        return added;
+    }
+    public record AttemptStarted(UUID sessionId,UUID examId,UUID candidateId,int attemptNumber,Instant startedAt,Instant expiresAt){}
     /** Attempt numbers are monotonic per participant and never reused, independent of how many rows exist. */
     private int nextAttemptNumber(UUID examId,UUID user){return sessions.findTopByExamIdAndUserIdOrderByAttemptNumberDesc(examId,user).map(s->Math.addExact(s.getAttemptNumber(),1)).orElse(1);}
     public StartSessionResponse get(UUID id,UUID user) {var s=owned(id,user);expire(s);return response(s);}

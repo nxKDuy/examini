@@ -43,6 +43,23 @@ class AttemptInvalidationTest {
     }
     static int status(Runnable r){return assertThrows(ResponseStatusException.class,r::run).getStatusCode().value();}
 
+    @Test void startedEventOncePerStartPublicOnlyAndBackfillIdempotent()throws Exception {
+        var first=service.startExam(exam,user);
+        assertEquals(first.sessionId(),service.startExam(exam,user).sessionId()); // resume does not emit again
+        var started=attemptEvents.findAll().stream().filter(e->e.getSessionId().equals(first.sessionId())&&e.getEventType().equals("exam.attempt.started")).toList();
+        assertEquals(1,started.size());var event=started.getFirst();
+        assertEquals(SessionService.startedEventId(first.sessionId()),event.getEventId());
+        assertTrue(event.isGradingDelivered());assertFalse(event.isPublicDelivered()); // never sent to Grading's invalidation queue
+        var payload=json.readTree(event.getPayload());
+        assertEquals(first.sessionId().toString(),payload.path("sessionId").asText());assertEquals(exam.toString(),payload.path("examId").asText());
+        assertEquals(user.toString(),payload.path("candidateId").asText());assertEquals(1,payload.path("attemptNumber").asInt());
+        assertEquals(event.getOccurredAt(),Instant.parse(payload.path("startedAt").asText()));assertFalse(payload.path("expiresAt").isNull());
+        service.invalidate(first.sessionId(),staff,"Incident");
+        assertEquals(1,attemptEvents.findAll().stream().filter(e->e.getSessionId().equals(first.sessionId())&&e.getEventType().equals("exam.attempt.started")).count());
+        attemptEvents.delete(event);
+        assertTrue(service.backfillStartedEvents()>=1);assertEquals(0,service.backfillStartedEvents());
+        assertEquals(event.getPayload(),attemptEvents.findById(event.getEventId()).orElseThrow().getPayload());
+    }
     @Test void invalidatingAnActiveAttemptStopsItKeepsHistoryNeverRefundsAndNumbersStayStable() {
         var first=service.startExam(exam,user);service.saveAnswer(first.sessionId(),user,qid,option.toString());
         assertEquals(1,first.attemptNumber());
@@ -58,7 +75,7 @@ class AttemptInvalidationTest {
         service.submitExam(second.sessionId(),user);
         authorizeWithLimit(1,3);
         assertEquals(3,service.startExam(exam,user).attemptNumber()); // numbers are monotonic, never reused
-        var events=attemptEvents.findAll().stream().filter(e->e.getSessionId().equals(first.sessionId())).toList();
+        var events=attemptEvents.findAll().stream().filter(e->e.getSessionId().equals(first.sessionId())&&!e.getEventType().equals("exam.attempt.started")).toList();
         assertEquals(1,events.size());assertEquals("exam.attempt.invalidated",events.get(0).getEventType());
         var payload=assertDoesNotThrow(()->json.readTree(events.get(0).getPayload()));
         assertEquals("Technical incident confirmed",payload.get("reason").asText());assertEquals(exam.toString(),payload.get("examId").asText());
@@ -75,7 +92,7 @@ class AttemptInvalidationTest {
         assertEquals("SUBMITTED",done.status());assertTrue(done.invalidated());
         var again=service.invalidate(started.sessionId(),staff,"Another reason");
         assertEquals("Cheating confirmed",again.invalidationReason()); // first reason wins, no new event
-        assertEquals(1,attemptEvents.findAll().stream().filter(e->e.getSessionId().equals(started.sessionId())).count());
+        assertEquals(1,attemptEvents.findAll().stream().filter(e->e.getSessionId().equals(started.sessionId())&&e.getEventType().equals("exam.attempt.invalidated")).count());
         var detail=service.getSessionDetails(started.sessionId());
         assertNotNull(detail.invalidatedAt());assertEquals("Cheating confirmed",detail.invalidationReason());assertEquals("SUBMITTED",detail.status());
         assertEquals(404,status(()->service.invalidate(UUID.randomUUID(),staff,"Missing")));

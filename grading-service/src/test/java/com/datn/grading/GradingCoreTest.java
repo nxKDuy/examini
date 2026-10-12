@@ -117,6 +117,36 @@ class GradingCoreTest {
         assertNotNull(service.student(session,user).questions().get(0).correctAnswers());
     }
 
+    @Test void publishedSnapshotEventsAreFrozenPrivateSafeAndBackfillIdempotent()throws Exception{
+        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        submitted(List.of(objective,essay),List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Own essay")));
+        UUID resultId=results.findBySessionId(session).orElseThrow().getId();
+        service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,"Overall secret",List.of(new SubmissionDto.ItemGrade(essay.questionId(),2f,"Essay feedback secret"))),teacher);
+        service.finalizeResult(resultId,2,teacher);
+        service.beginRegrade(resultId,new SubmissionDto.RegradeRequest(3,"Public reason text","private audit only"),teacher);
+        service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(4,null,List.of(new SubmissionDto.ItemGrade(essay.questionId(),1f,null))),teacher);
+        service.finalizeResult(resultId,5,teacher);
+        var published=outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.published.v1")).sorted(Comparator.comparingLong(e->e.getResultRevision())).toList();
+        assertEquals(2,published.size());assertTrue(published.stream().allMatch(e->e.getExchangeName().equals("examini.grading.events")));
+        var pubs=publications.findByResultIdOrderByResultRevisionAsc(resultId);
+        for(int i=0;i<2;i++){
+            var event=json.readTree(published.get(i).getPayload());var payload=event.path("payload");
+            assertEquals("grading.result.published",event.path("eventType").asText());assertEquals(1,event.path("eventVersion").asInt());
+            assertEquals(GradingEventPublisher.publishedEventId(pubs.get(i).getId()).toString(),event.path("eventId").asText());
+            assertEquals(pubs.get(i).getId().toString(),payload.path("publicationId").asText());assertEquals(pubs.get(i).getResultRevision(),payload.path("resultRevision").asLong());
+            assertEquals(user.toString(),payload.path("candidateId").asText());assertEquals(2,payload.path("attemptNumber").asInt());assertEquals(i==1,payload.path("regraded").asBoolean());
+            assertEquals(5.0,payload.path("maxScore").asDouble());assertFalse(payload.path("invalidated").asBoolean());assertFalse(payload.path("releasedAt").isNull());
+            assertEquals(i==0?4.5:3.5,payload.path("totalScore").asDouble());assertEquals(i==0?2.0:1.0,payload.path("questions").get(1).path("awardedPoints").asDouble());
+            assertEquals(3,payload.path("questions").get(0).path("questionVersion").asLong());assertEquals(2.5,payload.path("questions").get(0).path("pointValue").asDouble());
+            String raw=published.get(i).getPayload();
+            for(String leak:List.of("secret","Own essay","Public reason","private audit","explanation","feedback","answerDisplay","correct","Yes"))assertFalse(raw.contains(leak),leak);
+        }
+        assertEquals(0,service.backfillPublishedEvents());
+        outbox.deleteAll(published);
+        assertEquals(2,service.backfillPublishedEvents());assertEquals(0,service.backfillPublishedEvents());
+        for(var original:published)assertEquals(json.readTree(original.getPayload()),json.readTree(outbox.findById(original.getEventId()).orElseThrow().getPayload()));
+    }
+
     @Test void identityFallbackAndLegacyExplanationStaySafe(){
         when(exams.identity(eq(exam),eq(user),eq("test-internal"))).thenThrow(new IllegalStateException("identity unavailable"));
         when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,true,true,true,false,true,"CLOSED"));

@@ -101,3 +101,60 @@ State-carried payload; each event is the complete current state of one result:
   thông báo Student. Grading outbox không replay các event đã đánh dấu published.
 - Manual grading hiện lưu score từng item và phát outcomes tương ứng revision mới;
   không còn dùng total-only override cho workflow mới.
+
+## CURRENT: Analytics attempt started + released score (ANALYTICS-SESSION-ATTEMPT-STARTED, ANALYTICS-GRADING-RELEASED-SCORE)
+
+MAIN duyệt 2026-10-12. Additive v1; không đổi `grading.result.recorded.v1`,
+`exam.submitted.queue`, `exam.attempt.invalidated`. Envelope chuẩn
+`{eventId,eventType,eventVersion,occurredAt,payload}`, JSON persistent, outbox
+sau commit. Consumer Analytics là task Reporting riêng (chưa bind).
+
+### exam.attempt.started v1 (producer exam-session-service)
+
+```text
+Exchange: examini.events (topic)   Routing key: exam.attempt.started
+eventId: UUID.nameUUIDFromBytes(UTF-8 "exam.attempt.started:v1:" + sessionId)
+occurredAt = payload.startedAt
+payload: {sessionId, examId, candidateId, attemptNumber, startedAt, expiresAt}
+```
+
+- Ghi vào `attempt_events` trong cùng transaction Start thành công; resume
+  session đang IN_PROGRESS không phát lại. Không đi leg `exam.attempt.invalidated.queue`.
+- attemptNumber ổn định, không tái dùng; invalidation vẫn chỉ qua
+  `exam.attempt.invalidated` (không hoàn lượt). Consumer dedup theo eventId/sessionId.
+
+### grading.result.published v1 (producer grading-service)
+
+```text
+Exchange: examini.grading.events (topic)   Routing key: grading.result.published.v1
+eventId: UUID.nameUUIDFromBytes(UTF-8 "grading.result.published:v1:" + publicationId)
+occurredAt = payload.releasedAt
+payload: {publicationId, resultId, resultRevision, sessionId, examId, candidateId,
+  attemptNumber, regraded, totalScore, maxScore, gradingMode, gradedAt, releasedAt,
+  invalidated, questions:[{questionId, questionVersion, questionType, position,
+  pointValue, answered, awardedPoints}]}
+```
+
+- Một event cho mỗi `ResultPublication` (release đầu `regraded=false`, mỗi regrade
+  release `regraded=true`), cùng transaction tạo publication. Đây là snapshot đã
+  công bố cho Student; khác `grading.result.recorded.v1` (trạng thái chấm hiện hành, có thể nháp).
+- questionVersion/position/pointValue từ frozen Exam snapshot; awardedPoints và
+  totalScore từ publication. Không có feedback (chung/từng câu), publicReason,
+  ghi chú nội bộ, answer/answerDisplay, explanation, đáp án hay key.
+- Consumer giữ bản `resultRevision` lớn nhất theo sessionId. Invalidation sau
+  release dùng `exam.attempt.invalidated` (không phát lại published).
+- Khác Notification `grading.result.released` trên `examini.events` (payload khác).
+
+### Backfill một lần (mặc định TẮT)
+
+eventId xác định nên replay an toàn; runner chỉ enqueue eventId chưa có trong outbox,
+chạy lại không tạo trùng. Bật một lần rồi tắt sau khi log báo số event:
+
+```text
+exam-session-service: EXAM_EVENTS_BACKFILLSTARTED=true  (exam.events.backfill-started)
+grading-service:      GRADING_EVENTS_BACKFILLPUBLISHED=true  (grading.events.backfill-published)
+```
+
+Log: `exam.attempt.started backfill enqueued N events` /
+`grading.result.published backfill enqueued N events`. Backfill published lấy
+`invalidated` theo trạng thái hiện tại của result.

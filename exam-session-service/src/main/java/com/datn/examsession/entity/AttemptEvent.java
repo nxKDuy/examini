@@ -18,6 +18,10 @@ public class AttemptEvent {
     public AttemptEvent(UUID eventId,String eventType,UUID sessionId,String payload,Instant occurredAt){
         this.eventId=eventId;this.eventType=eventType;this.sessionId=sessionId;this.payload=payload;this.occurredAt=occurredAt;
     }
+    /** Public-only event: Grading's point-to-point queue carries invalidations only. */
+    public static AttemptEvent publicOnly(UUID eventId,String eventType,UUID sessionId,String payload,Instant occurredAt){
+        var e=new AttemptEvent(eventId,eventType,sessionId,payload,occurredAt);e.gradingDelivered=true;return e;
+    }
     public void markGradingDelivered(){gradingDelivered=true;}
     public void markPublicDelivered(){publicDelivered=true;}
 }
