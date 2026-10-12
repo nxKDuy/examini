@@ -1,6 +1,6 @@
 # Question Bank — Document Import & OCR (scope lock C)
 
-Status: **PROPOSED by Question Bank provider, 2026-10-12** (base MAIN `251d620`,
+Status: **LOCKED by MAIN, 2026-10-12** (proposed by Question Bank provider) (base MAIN `251d620`,
 `contracts/enforcement-builder-import-scope.md` §C). Provider: `question-bank-service`
 (`QuestionImportController`, `QuestionImportService`, migration `V12`). Consumer: APP.
 CSV `POST /questions/import/csv` stays unchanged.
@@ -52,7 +52,7 @@ Item fields (owner view, includes keys — this is the author's own draft):
 
 ```text
 ImportItem {
-  id, position, version (optimistic lock, starts 1),
+  id, position, version (optimistic lock, starts 0),
   content, questionType, difficultyLevel, categoryId?,
   options: [{content, correct, displayOrder}], expectedAnswer?, explanation?,
   source: {fileName, page (1-based, null if unknown), method: TEXT|OCR},
