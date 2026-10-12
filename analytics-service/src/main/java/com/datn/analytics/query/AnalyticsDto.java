@@ -35,7 +35,8 @@ public final class AnalyticsDto {
             Integer registeredCount,
             Integer eligibleCount,
             long invalidatedCount,
-            BigDecimal submissionRate
+            BigDecimal submissionRate,
+            BigDecimal gradingCompletionRate
     ) {}
 
     /** Half-open percent range [fromPercent, toPercent); the last bucket includes 100. */
@@ -75,6 +76,18 @@ public final class AnalyticsDto {
             Instant submittedAt,
             Instant gradedAt,
             boolean invalidated
+    ) {}
+
+    /** One Student, counting valid recorded submissions only; the latest state is a Grading state. */
+    public record StudentSummary(
+            UUID candidateId,
+            long submittedAttempts,
+            long gradedAttempts,
+            long needsReviewAttempts,
+            long pendingAttempts,
+            UUID latestSessionId,
+            String latestGradingStatus,
+            Instant latestSubmittedAt
     ) {}
 
     public record PageResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {}

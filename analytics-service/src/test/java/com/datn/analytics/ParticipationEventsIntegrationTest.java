@@ -122,6 +122,7 @@ class ParticipationEventsIntegrationTest {
         assertEquals(2, s.invalidatedCount());
         assertEquals(0, new BigDecimal("10").compareTo(s.averageScore()));
         assertEquals(0, new BigDecimal("0.2500").compareTo(s.submissionRate()));   // 1 of 4 eligible
+        assertEquals(0, new BigDecimal("1.0000").compareTo(s.gradingCompletionRate())); // 1 graded of 1 valid submission
         assertEquals(1, s.scoreDistribution().stream().mapToLong(b -> b.count()).sum());
         assertEquals(1, queries.questions(exam).get(0).attempts());
         // Trace is kept: all three results stay listed, invalidated ones flagged.
@@ -129,6 +130,31 @@ class ParticipationEventsIntegrationTest {
         assertEquals(3, rows.size());
         assertEquals(Set.of(s2, s3), rows.stream().filter(r -> r.invalidated()).map(r -> r.sessionId())
                 .collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test void studentSummariesAndResultFiltersCountValidAttemptsPrecisely() {
+        UUID alice = UUID.randomUUID(), bob = UUID.randomUUID();
+        UUID a1 = UUID.randomUUID(), a2 = UUID.randomUUID(), b1 = UUID.randomUUID();
+        graded(a1, alice, "7");
+        results.apply(result(exam, a2, UUID.randomUUID(), alice, 2, "GRADED", "9", "10",
+                List.of(item(q1, 0, "10", true, false, "9"))));
+        graded(b1, bob, "5");
+        deliver(invalidated(UUID.randomUUID(), a1, exam, alice, 1, "SUBMITTED"));
+
+        var students = queries.students(exam, 0, 20);
+        assertEquals(2, students.totalElements());
+        assertEquals(2, students.content().size());
+        var a = students.content().stream().filter(s -> s.candidateId().equals(alice)).findFirst().orElseThrow();
+        assertEquals(1, a.submittedAttempts());
+        assertEquals(1, a.gradedAttempts());
+        assertEquals(a2, a.latestSessionId());
+        assertEquals("GRADED", a.latestGradingStatus());
+
+        assertEquals(2, queries.results(exam, "GRADED", null, false, 0, 20).totalElements());
+        assertEquals(1, queries.results(exam, null, alice, true, 0, 20).totalElements());
+        assertEquals(a1, queries.results(exam, null, alice, true, 0, 20).content().get(0).sessionId());
+        assertEquals(1, queries.students(exam, 0, 1).content().size());
+        assertEquals(2, queries.students(exam, 0, 1).totalPages());
     }
 
     @Test void invalidationWithoutResultAndDuplicatesAreCountedOnce() {
@@ -140,6 +166,7 @@ class ParticipationEventsIntegrationTest {
         assertEquals(1, s.invalidatedCount());
         assertEquals(0, s.submissions());
         assertNull(s.submissionRate());
+        assertNull(s.gradingCompletionRate());
         // Same session claimed by another exam is a contract violation.
         assertThrows(AmqpRejectAndDontRequeueException.class,
                 () -> deliver(invalidated(UUID.randomUUID(), session, UUID.randomUUID(), user, 1, "CANCELLED")));

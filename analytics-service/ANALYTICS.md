@@ -68,18 +68,37 @@ All require an access JWT (Gateway route `/analytics/**`). Errors are `ProblemDe
 | `GET /analytics/exams/{examId}/summary` | `ExamSummary` |
 | `GET /analytics/exams/{examId}/questions` | `QuestionStats[]`, ordered by snapshot position |
 | `GET /analytics/exams/{examId}/results?status=&page=0&size=20` | Page of `CandidateResult` (newest submission first, size ≤ 100) |
+| `GET /analytics/exams/{examId}/students?page=0&size=20` | Page of `StudentSummary`, one row per Student with a valid recorded result |
+
+`/results` also accepts `candidateId` (UUID) and `invalidated` (boolean); filters compose
+with `status` and apply to both `content` and `totalElements`. `/students` excludes invalidated
+attempts. Both pages allow size 1..100. All four routes require Exam OWNER/MANAGER permission.
 
 ### Metric definitions
 
 Exam summary:
-- `candidates` distinct candidates with a recorded result; `submissions` recorded results (attempts).
-- `graded` / `needsReview` / `pending` counts by Grading status.
+- `registeredCount` is the distinct registered Student count (including revoked); `eligibleCount`
+  is the current non-revoked Student count, both from the highest Exam recipient revision.
+  Neither count measures who opened an attempt. `candidates` means distinct Students with at
+  least one **valid recorded submission**, not all Students who started an attempt.
+- `submissionRate` = `candidates / eligibleCount`, null without a participant projection or
+  when `eligibleCount = 0`. This can exceed 1 after participant revocation; it is not clamped.
+- `graded`, `needsReview`, `pending`, `submissions` are **attempt-level** counts of valid
+  recorded results. `gradingCompletionRate` = `graded / submissions`, null for zero submissions.
+  This measures Grading finalization, not Session completion or published results.
 - `averageScore`, `minScore`, `maxScore`, `averagePercent` and `scoreDistribution` use
   **GRADED results only**; NEEDS_REVIEW totals are provisional and excluded.
 - `scoreDistribution`: 10 buckets of percent of `maxScore`, `[0,10)…[90,100]`.
 - `maxPossibleScore`: snapshot total from the results.
-- Not reported (no reliable source yet): registered participants, in-progress attempts and
-  submission/completion rate. They need Exam/Session data (see Contract Requests).
+- Started/actual participants and started/completed Session attempts are not reported: the
+  current events do not contain attempt-start or all terminal Session transitions.
+- **Product scope lock (2026-10-12):** a published-score chart and published average/high/low
+  must use the latest released valid attempt per Student. The current `grading.result.recorded.v1`
+  event carries draft/current score only and no released revision or frozen published score.
+  The existing `averageScore`, `minScore`, `maxScore`, `averagePercent` and `scoreDistribution`
+  are legacy **current GRADED attempt** statistics and must not be shown as a published chart.
+  Analytics needs a Grading-owned publication snapshot event before those fields can fulfill
+  the locked product definition; see the contract gap reported to MAIN.
 
 Question stats are keyed by the frozen snapshot item `(questionId, questionVersion)`, never
 by the live Question Bank question:
