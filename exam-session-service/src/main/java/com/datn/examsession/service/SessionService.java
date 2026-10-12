@@ -19,6 +19,7 @@ public class SessionService {
     private final SessionRepository sessions;private final SessionAnswerRepository answers;
     private final SubmissionEventRepository events;private final ExamClient exams;private final EntityManager em;
     private final AttemptEventRepository attemptEvents;private final com.fasterxml.jackson.databind.ObjectMapper json;
+    private final ExamIntegrityLockRepository integrityLocks;private final SessionIntegrityAuditRepository integrityAudits;
     @Value("${exam.internal-token:}") private String token="";
     @Value("${exam.capacity.platform-limit:100}") private int platformLimit=100;
     private static ResponseStatusException error(int code,String msg){return new ResponseStatusException(HttpStatus.valueOf(code),msg);}
@@ -27,6 +28,7 @@ public class SessionService {
     @Transactional(noRollbackFor=ResponseStatusException.class)
     public StartSessionResponse startExam(UUID examId,UUID user) {
         examLock(examId);
+        if(integrityLocks.existsById(examId))throw error(409,"EXAM_INTEGRITY_LOCKED");
         var active=sessions.findActiveSession(examId,user);
         if(active.isPresent()) {
             var s=load(active.get().getId());expire(s);
@@ -65,6 +67,7 @@ public class SessionService {
         Instant now=admission.startedAt();
         var s=ExamSession.builder().examId(examId).userId(user).startTime(LocalDateTime.ofInstant(now,ZoneOffset.UTC))
             .expiresAt(now.plusSeconds(exam.durationMinutes()*60L)).status(ExamSession.Status.IN_PROGRESS)
+            .integrityPolicy(exam.integrityPolicy()==null?com.datn.examsession.dto.IntegrityPolicy.disabled():exam.integrityPolicy())
             .attemptNumber(Math.toIntExact(attempts+1)).questions(questions).examTitle(exam.title()).build();
         s.setExpiresAt(admission.deadlineAt());s.setScheduleRevision(admission.scheduleRevision());s.setStartAdmissionId(admission.admissionId());
         s.setAttemptNumber(nextAttemptNumber(examId,user)); // monotonic and never reused, independent of how many rows exist
@@ -78,6 +81,29 @@ public class SessionService {
     private ExamSession load(UUID id){var s=sessions.lockById(id).orElseThrow(()->error(404,"Session not found"));em.refresh(s);return s;}
     private void expire(ExamSession s){if(s.getStatus()==ExamSession.Status.IN_PROGRESS && !Instant.now().isBefore(s.getExpiresAt()))finish(s,ExamSession.Status.AUTO_SUBMITTED);}
     private void finish(ExamSession s,ExamSession.Status status){s.setStatus(status);s.setEndTime(LocalDateTime.now(ZoneOffset.UTC));events.save(new SubmissionEvent(s.getId()));}
+    public boolean autoSubmitForIntegrity(ExamSession s,UUID triggerEventId,long eventCount) {
+        if(s.getStatus()!=ExamSession.Status.IN_PROGRESS)return false;
+        finish(s,ExamSession.Status.AUTO_SUBMITTED);Instant now=Instant.now();
+        integrityAudits.save(new SessionIntegrityAudit(s,null,"SYSTEM","INTEGRITY_BUDGET_AUTO_SUBMITTED",triggerEventId,eventCount,now,"warningEventLimit="+s.getIntegrityPolicy().warningEventLimit()));
+        return true;
+    }
+    public IntegrityLockResult lockIntegrityExam(UUID examId,UUID actor,String reason) {
+        examLock(examId);boolean already=integrityLocks.existsById(examId);Instant now=Instant.now();
+        if(!already)integrityLocks.save(new ExamIntegrityLock(examId,actor,now,reason));
+        int submitted=0;
+        for(var row:sessions.findByExamIdAndStatus(examId,ExamSession.Status.IN_PROGRESS)) {
+            var s=load(row.getId());expire(s);
+            if(s.getStatus()==ExamSession.Status.IN_PROGRESS) {
+                finish(s,ExamSession.Status.AUTO_SUBMITTED);submitted++;
+                integrityAudits.save(new SessionIntegrityAudit(s,actor,"EXAM_STAFF","EXAM_INTEGRITY_LOCK_AUTO_SUBMITTED",null,null,now,reason));
+            }
+        }
+        return new IntegrityLockResult(examId,true,already,submitted,now);
+    }
+    public IntegrityLockResult unlockIntegrityExam(UUID examId,UUID actor) {
+        examLock(examId);var existing=integrityLocks.findById(examId);existing.ifPresent(integrityLocks::delete);
+        return new IntegrityLockResult(examId,false,existing.isEmpty(),0,Instant.now());
+    }
     // Do not roll back AUTO_SUBMITTED when rejecting a late answer.
     @Transactional(noRollbackFor=ResponseStatusException.class)
     public void saveAnswer(UUID sessionId,UUID userId,UUID questionId,String content){
@@ -187,6 +213,7 @@ public class SessionService {
     public record ScheduleAvailability(long attempts,boolean resumable,Instant activeExpiresAt,long activeSessions,UUID latestSessionId,String latestSessionStatus){}
     public record RecipientProgress(UUID userId,boolean started,boolean submitted){}
     public record AdmissionStatus(UUID examId,UUID admissionId,UUID sessionId,boolean started){}
+    public record IntegrityLockResult(UUID examId,boolean locked,boolean unchanged,int activeSessionsSubmitted,Instant changedAt){}
     public record Monitor(UUID sessionId,UUID userId,String status,int attemptNumber,LocalDateTime startedAt,Instant expiresAt,boolean invalidated,Instant invalidatedAt,String invalidationReason){}
     public record SessionDetailDto(UUID sessionId,UUID examId,UUID userId,String status,String examTitle,int attemptNumber,LocalDateTime startedAt,LocalDateTime submittedAt,List<AnswerDto> answers,Instant invalidatedAt,String invalidationReason){public record AnswerDto(UUID questionId,String answerContent){}}
 }

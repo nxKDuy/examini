@@ -158,6 +158,12 @@ public class Exam {
     @Column(name = "snapshots", columnDefinition = "jsonb", nullable = false)
     @Builder.Default private java.util.List<com.datn.exam.dto.Snapshot> snapshots = new java.util.ArrayList<>();
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name="integrity_policy", columnDefinition="jsonb", nullable=false)
+    @Builder.Default private com.datn.exam.dto.IntegrityPolicy integrityPolicy = com.datn.exam.dto.IntegrityPolicy.disabled();
+    @Column(name="integrity_locked",nullable=false)
+    @Builder.Default private boolean integrityLocked=false;
+
     public enum MemberRole { MANAGER, PROCTOR }
     public enum AccessMode { ASSIGNED, JOIN_CODE, PUBLIC }
 

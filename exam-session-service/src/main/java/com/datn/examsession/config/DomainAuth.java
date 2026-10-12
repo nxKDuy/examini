@@ -44,6 +44,6 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}
     }
     private boolean isScheduleInternal(String path) {
-        return path.matches("/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+|attempt-summary|attempts)");
+        return path.matches("/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+|attempt-summary|attempts|integrity-lock|integrity-unlock)");
     }
 }
