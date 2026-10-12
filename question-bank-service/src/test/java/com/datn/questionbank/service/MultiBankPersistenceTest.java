@@ -114,6 +114,35 @@ class MultiBankPersistenceTest {
         assertEquals("Original",banks.publicQuestion(first.id(),reviewer).question().content());
     }
 
+    @Test void copySyncUnselectedFieldsKeepBaselineAndHistoryRecordsCreatedLocalVersion() {
+        var source=active("Source");var first=banks.publish(source.id(),new ContributionRequest(1),owner);
+        var copied=banks.forkPublic(first.id(),new ForkRequest(1,null),reviewer).question();
+        var local=questions.update(copied.id(),edit("Local edit",1),reviewer);
+        var revised=questions.update(source.id(),new UpdateRequest(null,null,null,DifficultyLevel.HARD,null,
+                List.of(new OptionRequest("Yes",true,(short)0),new OptionRequest("Maybe",false,(short)1)),null,null,null,null,null,null,1L),owner);
+        questions.activate(source.id(),revised.questionVersion(),owner);
+        banks.publish(source.id(),new ContributionRequest(2),owner);
+        var before=copySync.question(copied.id(),reviewer);
+        var options=before.changes().stream().filter(c->c.field()==QuestionField.OPTIONS).findFirst().orElseThrow();
+        assertTrue(options.sourceChanged());assertFalse(options.localChanged());assertFalse(options.conflict());
+        var applied=copySync.applyQuestion(copied.id(),new QuestionApplyRequest(local.questionVersion(),1L,0L,2L,
+                Map.of(QuestionField.DIFFICULTY,Choice.TAKE_SOURCE)),reviewer);
+        assertEquals(3,applied.localVersion());assertEquals(3,questions.findById(copied.id(),true,reviewer).questionVersion());
+        var after=copySync.question(copied.id(),reviewer);
+        assertEquals(3,after.localVersion());
+        var difficulty=after.changes().stream().filter(c->c.field()==QuestionField.DIFFICULTY).findFirst().orElseThrow();
+        assertFalse(difficulty.sourceChanged());assertFalse(difficulty.localChanged());assertFalse(difficulty.conflict());
+        options=after.changes().stream().filter(c->c.field()==QuestionField.OPTIONS).findFirst().orElseThrow();
+        assertTrue(options.sourceChanged());assertFalse(options.localChanged());assertFalse(options.conflict());
+        var content=after.changes().stream().filter(c->c.field()==QuestionField.CONTENT).findFirst().orElseThrow();
+        assertFalse(content.sourceChanged());assertTrue(content.localChanged());assertFalse(content.conflict());
+        var history=copySync.questionHistory(copied.id(),reviewer);
+        assertEquals(1,history.size());assertEquals(3,history.getFirst().localVersion());
+        var kept=copySync.applyQuestion(copied.id(),new QuestionApplyRequest(3L,after.referenceSourceVersion(),after.cursorRevision(),2L,
+                Map.of(QuestionField.OPTIONS,Choice.KEEP_LOCAL)),reviewer);
+        assertEquals(3,kept.localVersion());assertEquals(3,copySync.questionHistory(copied.id(),reviewer).getFirst().localVersion());
+    }
+
     @Test void copiedSetSyncShowsUpdatedItemAndAppliesOnlyChosenItem() {
         var source=active("Set source v1");var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
         var original=sets.create(bank.getId(),new QuestionSetWrite("Set v1",null,List.of(new SetItemRequest(source.id(),1L)),null),owner);
