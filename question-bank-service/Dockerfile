@@ -7,6 +7,8 @@ RUN --mount=type=cache,target=/root/.m2 mvn -f question-bank-service/pom.xml pac
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
+# Local OCR for document import (contracts/question-import.md): Tesseract with Vietnamese + English data.
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-vie tesseract-ocr-data-eng
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/question-bank-service/target/*.jar app.jar
 USER appuser

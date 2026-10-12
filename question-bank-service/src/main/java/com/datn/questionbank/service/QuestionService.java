@@ -79,6 +79,16 @@ public class QuestionService {
 
     @Transactional
     public QuestionResponse createInBank(CreateRequest req, UUID bankId, QuestionActor actor) {
+        return createInBank(req, bankId, actor, CreationMethod.MANUAL);
+    }
+
+    /** Document import lane: same validation and bank checks as manual create, recorded as IMPORT, always DRAFT. */
+    @Transactional
+    public QuestionResponse importDraft(CreateRequest req, UUID bankId, QuestionActor actor) {
+        return createInBank(req, bankId, actor, CreationMethod.IMPORT);
+    }
+
+    private QuestionResponse createInBank(CreateRequest req, UUID bankId, QuestionActor actor, CreationMethod method) {
         var bank = banks.get(bankId);
         banks.requireWrite(bank, actor);
         QuestionScope scope = QuestionScope.valueOf(bank.getType().name());
@@ -89,7 +99,7 @@ public class QuestionService {
                 .sourceType(req.sourceType() == null ? SourceType.NONE : req.sourceType())
                 .sourceRefId(req.sourceRefId()).sourceUrl(req.sourceUrl()).sourceExcerpt(req.sourceExcerpt())
                 .expectedAnswer(req.expectedAnswer()).explanation(req.explanation()==null||req.explanation().isBlank()?null:req.explanation().trim())
-                .createdBy(actor.userId()).bankId(bankId).scope(scope).updatedAt(LocalDateTime.now())
+                .createdBy(actor.userId()).bankId(bankId).scope(scope).creationMethod(method).updatedAt(LocalDateTime.now())
                 .build();
         replaceOptions(q, req.options());
         validate(q);

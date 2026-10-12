@@ -67,6 +67,18 @@
             <version>${opencsv.version}</version>
         </dependency>
 
+        <!-- Document import: DOCX text (POI) and PDF text layer / page rendering for OCR (PDFBox) -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
         <!-- Swagger -->
         <dependency>
             <groupId>org.springdoc</groupId>
