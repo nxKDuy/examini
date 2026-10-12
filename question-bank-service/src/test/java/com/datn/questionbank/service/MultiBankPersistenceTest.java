@@ -148,6 +148,30 @@ class MultiBankPersistenceTest {
         assertEquals(3,kept.localVersion());assertEquals(3,copySync.questionHistory(copied.id(),reviewer).getFirst().localVersion());
     }
 
+    @Test void copiedSetSyncReturnsFullReferenceSourceAndLocalOrder() {
+        var a=active("Order A");var b=active("Order B");var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var original=sets.create(bank.getId(),new QuestionSetWrite("Order set",null,List.of(new SetItemRequest(a.id(),1L),new SetItemRequest(b.id(),1L)),null),owner);
+        var first=sets.publish(original.id(),new PublishSetRequest(1L),owner);
+        var copied=sets.fork(first.id(),new QuestionSetForkRequest(null),reviewer);
+        var localIds=copied.items().stream().map(PublicPostItemResponse::sourceQuestionId).toList();
+        sets.update(original.id(),new QuestionSetWrite("Order set",null,List.of(new SetItemRequest(b.id(),1L),new SetItemRequest(a.id(),1L)),1L),owner);
+        sets.publish(original.id(),new PublishSetRequest(2L),owner);
+        var preview=copySync.set(copied.id(),reviewer);
+        assertTrue(preview.sourceReordered());assertFalse(preview.localReordered());assertFalse(preview.reorderConflict());
+        assertEquals(List.of(a.id(),b.id()),preview.referenceOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(b.id(),a.id()),preview.sourceOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(a.id(),b.id()),preview.localOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(0,1),preview.sourceOrder().stream().map(OrderEntry::position).toList());
+        assertEquals(List.of("Order B","Order A"),preview.sourceOrder().stream().map(OrderEntry::content).toList());
+        assertEquals(List.of("Order A","Order B"),preview.localOrder().stream().map(OrderEntry::content).toList());
+        assertEquals(localIds,preview.localOrder().stream().map(OrderEntry::localQuestionId).toList());
+        assertEquals(preview.localOrder().get(1).localQuestionId(),preview.sourceOrder().get(0).localQuestionId());
+        var applied=copySync.applySet(copied.id(),new SetApplyRequest(1L,1L,0L,2L,Map.of("ORDER",Choice.TAKE_SOURCE)),reviewer);
+        assertEquals(List.of(b.id(),a.id()),applied.localOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(b.id(),a.id()),applied.referenceOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertFalse(applied.sourceReordered());
+    }
+
     @Test void copiedSetSyncShowsUpdatedItemAndAppliesOnlyChosenItem() {
         var source=active("Set source v1");var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
         var original=sets.create(bank.getId(),new QuestionSetWrite("Set v1",null,List.of(new SetItemRequest(source.id(),1L)),null),owner);

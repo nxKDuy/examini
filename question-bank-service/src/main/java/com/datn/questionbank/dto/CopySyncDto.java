@@ -31,7 +31,10 @@ public final class CopySyncDto {
             boolean localChanged,boolean conflict) {}
     public record SetPreview(UUID questionSetId,long localVersion,long referenceSourceVersion,long cursorRevision,Long latestSourceVersion,
             Availability availability,List<FieldChange> metadataChanges,List<SetItemChange> itemChanges,
-            boolean sourceReordered,boolean localReordered,boolean reorderConflict) {}
+            boolean sourceReordered,boolean localReordered,boolean reorderConflict,
+            List<OrderEntry> referenceOrder,List<OrderEntry> sourceOrder,List<OrderEntry> localOrder) {}
+    /** One row of a full ordering; sourceQuestionId null = local-only item, localQuestionId null = no local copy; content is the non-secret stem. */
+    public record OrderEntry(int position,UUID sourceQuestionId,UUID localQuestionId,String content) {}
     public record SetApplyRequest(@NotNull Long expectedLocalVersion,@NotNull Long expectedReferenceSourceVersion,@NotNull Long expectedCursorRevision,@NotNull Long expectedSourceVersion,
             @NotNull Map<String,Choice> decisions) {}
 }
