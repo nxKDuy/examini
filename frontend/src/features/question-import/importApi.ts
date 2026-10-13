@@ -32,7 +32,8 @@ export const importApi = {
     form.append('file', file)
     if (opts.categoryId) form.append('categoryId', opts.categoryId)
     if (opts.defaultDifficulty) form.append('defaultDifficulty', opts.defaultDifficulty)
-    return api.post<ImportJob>('/question-imports', form).then(r => r.data)
+    // The shared client defaults to JSON; multipart must be explicit (same as the CSV import).
+    return api.post<ImportJob>('/question-imports', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
   },
   jobs: (page = 0, size = 20) => api.get<Page<ImportJob>>('/question-imports', { params: { page, size } }).then(r => r.data),
   job: (id: string) => api.get<ImportJob>(`/question-imports/${id}`).then(r => r.data),

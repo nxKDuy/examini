@@ -66,7 +66,7 @@ export default function ImportJobPage() {
               : !items.data?.content.length ? <EmptyState title="Không có câu trong mục này" />
               : <ol className="imp-list">{items.data.content.map(i => <ItemRow key={i.id} item={i} active={i.id === selectedId} onOpen={() => setSelectedId(i.id)} />)}</ol>}
           </section>
-          {selected && <ItemEditor key={`${selected.id}:${selected.version}`} jobId={j.id} item={selected} editable={ready && !selected.importedQuestionId}
+          {selected && <ItemEditor key={selected.id} jobId={j.id} item={selected} editable={ready && !selected.importedQuestionId}
             onClose={() => setSelectedId(null)} onSaved={async () => { await refresh() }} />}
         </div>
       </>}
@@ -100,7 +100,9 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
   const [d, setD] = useState<Draft>(() => draftOf(item))
   const [subjectId, setSubjectId] = useState('')
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger' | 'warning'; text: string } | null>(null)
-  useEffect(() => { setNotice(null) }, [item.id])
+  // A saved (or reloaded) version replaces the draft; the save notice stays visible.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new server version replaces the draft, never a background refetch
+  useEffect(() => { setD(draftOf(item)) }, [item.version])
   const save = useMutation({
     mutationFn: (extra: { reviewed?: boolean; excluded?: boolean }) => importApi.update(jobId, item.id, patchOf(item, d, extra)),
     onSuccess: async (r, extra) => {
