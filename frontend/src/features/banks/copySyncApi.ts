@@ -17,8 +17,15 @@ export interface SetItemChange {
 export interface SetSyncPreview extends SyncExpected {
   questionSetId: string; metadataChanges: FieldChange[]; itemChanges: SetItemChange[]
   sourceReordered: boolean; localReordered: boolean; reorderConflict: boolean
+  /** Full orders (contract E). Older providers omit them. */
+  referenceOrder?: OrderEntry[]; sourceOrder?: OrderEntry[]; localOrder?: OrderEntry[]
 }
-export interface SyncEvent { id: string; resourceKind: string; localVersion: number; sourceVersion: number; actions: string; actorUserId: string; createdAt: string }
+export interface OrderEntry { position: number; sourceQuestionId: string | null; localQuestionId: string | null; content: string | null }
+/** `localVersion` is what was recorded at apply time; a correction (append-only) gives the effective version. */
+export interface SyncEvent {
+  id: string; resourceKind: string; localVersion: number; sourceVersion: number; actions: string; actorUserId: string; createdAt: string
+  correctedLocalVersion?: number | null; correctionReason?: string | null; correctedAt?: string | null
+}
 export interface SyncApplyBody {
   expectedLocalVersion: number; expectedReferenceSourceVersion: number; expectedCursorRevision: number; expectedSourceVersion: number
   decisions: Record<string, SyncChoice>

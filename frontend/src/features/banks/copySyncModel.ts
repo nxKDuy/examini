@@ -1,5 +1,5 @@
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, shortId } from '../../lib/format'
-import type { FieldChange, QuestionSyncPreview, SetSyncPreview, SyncApplyBody, SyncChoice } from './copySyncApi'
+import type { FieldChange, OrderEntry, QuestionSyncPreview, SetSyncPreview, SyncApplyBody, SyncChoice } from './copySyncApi'
 
 export const SYNC_FIELD_LABEL: Record<string, string> = {
   CATEGORY: 'Chủ đề', CONTENT: 'Nội dung câu hỏi', QUESTION_TYPE: 'Loại câu hỏi', DIFFICULTY: 'Độ khó',
@@ -84,3 +84,24 @@ export function syncValue(field: string, value: unknown): string | null {
 }
 
 export const pendingChanges = (p: QuestionSyncPreview | SetSyncPreview) => syncRows(p).length
+
+export interface OrderRow { key: string; content: string | null; local: number | null; source: number | null; reference: number | null; onlyLocal: boolean; notCopied: boolean }
+/**
+ * Joins the three full orders on the source item (local-only items join on their local id) so the
+ * Order tab can show every item: current position, latest source position and the last synced position.
+ */
+export function orderRows(local: OrderEntry[], source: OrderEntry[], reference: OrderEntry[]): OrderRow[] {
+  const key = (e: OrderEntry) => e.sourceQuestionId ? `s:${e.sourceQuestionId}` : `l:${e.localQuestionId}`
+  const rows = new Map<string, OrderRow>()
+  const touch = (e: OrderEntry) => {
+    const k = key(e)
+    const r = rows.get(k) ?? { key: k, content: e.content, local: null, source: null, reference: null, onlyLocal: !e.sourceQuestionId, notCopied: false }
+    if (!r.content && e.content) r.content = e.content
+    rows.set(k, r); return r
+  }
+  local.forEach(e => { touch(e).local = e.position })
+  source.forEach(e => { const r = touch(e); r.source = e.position; if (!e.localQuestionId && r.local === null) r.notCopied = true })
+  reference.forEach(e => { touch(e).reference = e.position })
+  const rank = (r: OrderRow) => r.local ?? (1000 + (r.source ?? r.reference ?? 0))
+  return [...rows.values()].sort((a, b) => rank(a) - rank(b))
+}

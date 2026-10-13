@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { copySyncApi, type FieldChange, type QuestionSyncPreview, type SetItemChange, type SetSyncPreview, type SyncChoice, type SyncEvent, type SyncKind } from './copySyncApi'
-import { ITEM_KIND_LABEL, SYNC_CHOICE_LABEL, SYNC_FIELD_LABEL, applyBody, canApply, decisionLabel, keepChoices, parseActions, syncRows, syncValue, tookSource, unresolvedByTab, type Decisions, type SyncRow, type SyncTab } from './copySyncModel'
+import { ITEM_KIND_LABEL, SYNC_CHOICE_LABEL, SYNC_FIELD_LABEL, applyBody, canApply, decisionLabel, keepChoices, orderRows, parseActions, syncRows, syncValue, tookSource, unresolvedByTab, type Decisions, type SyncRow, type SyncTab } from './copySyncModel'
 import { bankApi, type PublicPostItem } from './bankApi'
 import { excerpt, isStatus } from './bankModel'
 import { Dialog } from '../../components/Dialog'
@@ -216,21 +216,30 @@ function ItemList({ preview, rows, local, decisions, onChoose }: { preview: SetS
 }
 
 function OrderPanel({ preview, local, decisions, onChoose }: { preview: SetSyncPreview; local: PublicPostItem[]; decisions: Decisions; onChoose: (key: string, c: SyncChoice | null) => void }) {
-  if (!preview.sourceReordered) return <EmptyState title="Nguồn không đổi thứ tự" description={preview.localReordered ? 'Bạn đã sắp xếp lại; thứ tự của bạn được giữ.' : 'Thứ tự các câu chung giống nhau.'} />
-  const latest = new Map(preview.itemChanges.filter(i => i.localQuestionId && i.latestPosition !== null).map(i => [i.localQuestionId!, i.latestPosition!]))
-  const ordered = [...local].sort((a, b) => a.position - b.position)
+  const full = preview.localOrder !== undefined
+  const rows = full ? orderRows(preview.localOrder ?? [], preview.sourceOrder ?? [], preview.referenceOrder ?? [])
+    // Older provider: current order only, source position for changed items.
+    : [...local].sort((a, b) => a.position - b.position).map(i => ({ key: i.id, content: i.question.content, local: i.position, reference: null, onlyLocal: false, notCopied: false,
+      source: preview.itemChanges.find(c => c.localQuestionId === i.sourceQuestionId)?.latestPosition ?? null }))
+  const pos = (n: number | null) => n === null ? '—' : n + 1
   return (
     <div className="stack">
-      <article className="sync-row" data-conflict={preview.reorderConflict && !decisions.ORDER ? 'open' : preview.reorderConflict ? 'done' : undefined}>
+      {preview.sourceReordered ? <article className="sync-row" data-conflict={preview.reorderConflict && !decisions.ORDER ? 'open' : preview.reorderConflict ? 'done' : undefined}>
         <header className="row" style={{ justifyContent: 'space-between' }}><strong>Thứ tự câu</strong><ConflictMark conflict={preview.reorderConflict} decided={!!decisions.ORDER} /></header>
         <p className="xsmall muted">Nguồn đã sắp xếp lại các câu chung{preview.localReordered ? '; bạn cũng đã sắp xếp lại' : ''}.</p>
         <Choice name="ORDER" value="thứ tự câu" decisions={decisions} conflict={preview.reorderConflict} labels={{ KEEP_LOCAL: 'Giữ thứ tự của tôi', TAKE_SOURCE: 'Theo thứ tự nguồn' }} onChoose={onChoose} />
-      </article>
+      </article> : <p className="small muted">{preview.localReordered ? 'Nguồn không đổi thứ tự; bạn đã sắp xếp lại và thứ tự của bạn được giữ.' : 'Nguồn không đổi thứ tự các câu chung.'}</p>}
       <div className="table-wrap"><table className="bk-table">
-        <thead><tr><th scope="col">Thứ tự hiện tại</th><th scope="col">Câu</th><th scope="col">Vị trí trong nguồn</th></tr></thead>
-        <tbody>{ordered.map((i, n) => <tr key={i.id}><td>{n + 1}</td><td className="small">{excerpt(i.question.content, 90)}</td><td>{latest.has(i.sourceQuestionId) ? latest.get(i.sourceQuestionId)! + 1 : '—'}</td></tr>)}</tbody>
+        <thead><tr><th scope="col">Của bạn</th><th scope="col">Câu</th><th scope="col">Nguồn mới nhất</th>{full && <th scope="col">Lần đồng bộ trước</th>}</tr></thead>
+        <tbody>{rows.map(r => <tr key={r.key}>
+          <td>{pos(r.local)}</td>
+          <td className="small">{r.content ? excerpt(r.content, 90) : <span className="muted">(câu đã bị bỏ khỏi nguồn)</span>}
+            {r.onlyLocal && <span className="xsmall muted" style={{ display: 'block' }}>Câu bạn tự thêm</span>}
+            {r.notCopied && <span className="xsmall muted" style={{ display: 'block' }}>Chưa có trong bộ của bạn</span>}</td>
+          <td>{pos(r.source)}</td>{full && <td>{pos(r.reference)}</td>}
+        </tr>)}</tbody>
       </table></div>
-      <p className="xsmall muted">Vị trí trong nguồn chỉ có cho câu nguồn đã thay đổi; câu khác hiện “—”.</p>
+      {!full && <p className="xsmall muted">Vị trí trong nguồn chỉ có cho câu nguồn đã thay đổi; câu khác hiện “—”.</p>}
     </div>
   )
 }
@@ -244,7 +253,9 @@ function History({ query }: { query: UseQueryResult<SyncEvent[]> }) {
       <thead><tr><th scope="col">Thời gian</th><th scope="col">Người thực hiện</th><th scope="col">Phiên bản</th><th scope="col">Lựa chọn</th></tr></thead>
       <tbody>{query.data.map(e => <tr key={e.id}>
         <td className="small">{formatDateTime(e.createdAt)}</td><td className="small">{shortId(e.actorUserId)}</td>
-        <td className="small">Bản của bạn v{e.localVersion} · nguồn v{e.sourceVersion}</td>
+        <td className="small">{e.correctedLocalVersion != null
+          ? <>Bản của bạn v{e.correctedLocalVersion} · nguồn v{e.sourceVersion}<span className="xsmall" style={{ display: 'block' }}><Badge>Đã đính chính</Badge> ghi nhận lúc áp dụng: v{e.localVersion}{e.correctionReason ? ` · ${e.correctionReason}` : ''}{e.correctedAt ? ` · ${formatDateTime(e.correctedAt)}` : ''}</span></>
+          : <>Bản của bạn v{e.localVersion} · nguồn v{e.sourceVersion}</>}</td>
         <td className="small">{parseActions(e.actions).map(a => <div key={a.key}>{decisionLabel(a.key)}: {SYNC_CHOICE_LABEL[a.choice as SyncChoice] ?? a.choice}</div>)}</td>
       </tr>)}</tbody>
     </table></div>
