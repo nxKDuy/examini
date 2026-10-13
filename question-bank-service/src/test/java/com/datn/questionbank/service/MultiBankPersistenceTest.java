@@ -138,10 +138,38 @@ class MultiBankPersistenceTest {
         var content=after.changes().stream().filter(c->c.field()==QuestionField.CONTENT).findFirst().orElseThrow();
         assertFalse(content.sourceChanged());assertTrue(content.localChanged());assertFalse(content.conflict());
         var history=copySync.questionHistory(copied.id(),reviewer);
-        assertEquals(1,history.size());assertEquals(3,history.getFirst().localVersion());
+        assertEquals(1,history.size());assertEquals(3,history.getFirst().localVersion());assertNull(history.getFirst().correctedLocalVersion());
+        jdbc.update("INSERT INTO copy_sync_event_corrections(event_id,field,recorded_value,corrected_value,reason,corrected_by) VALUES(:e,'LOCAL_VERSION',3,2,'test','TEST')",
+                new org.springframework.jdbc.core.namedparam.MapSqlParameterSource("e",history.getFirst().id()));
+        var corrected=copySync.questionHistory(copied.id(),reviewer).getFirst();
+        assertEquals(3,corrected.localVersion());assertEquals(2L,corrected.correctedLocalVersion());assertEquals("test",corrected.correctionReason());assertNotNull(corrected.correctedAt());
         var kept=copySync.applyQuestion(copied.id(),new QuestionApplyRequest(3L,after.referenceSourceVersion(),after.cursorRevision(),2L,
                 Map.of(QuestionField.OPTIONS,Choice.KEEP_LOCAL)),reviewer);
         assertEquals(3,kept.localVersion());assertEquals(3,copySync.questionHistory(copied.id(),reviewer).getFirst().localVersion());
+    }
+
+    @Test void copiedSetSyncReturnsFullReferenceSourceAndLocalOrder() {
+        var a=active("Order A");var b=active("Order B");var bank=bankRepo.findByOwnerUserIdAndDefaultBankTrue(owner.userId()).orElseThrow();
+        var original=sets.create(bank.getId(),new QuestionSetWrite("Order set",null,List.of(new SetItemRequest(a.id(),1L),new SetItemRequest(b.id(),1L)),null),owner);
+        var first=sets.publish(original.id(),new PublishSetRequest(1L),owner);
+        var copied=sets.fork(first.id(),new QuestionSetForkRequest(null),reviewer);
+        var localIds=copied.items().stream().map(PublicPostItemResponse::sourceQuestionId).toList();
+        sets.update(original.id(),new QuestionSetWrite("Order set",null,List.of(new SetItemRequest(b.id(),1L),new SetItemRequest(a.id(),1L)),1L),owner);
+        sets.publish(original.id(),new PublishSetRequest(2L),owner);
+        var preview=copySync.set(copied.id(),reviewer);
+        assertTrue(preview.sourceReordered());assertFalse(preview.localReordered());assertFalse(preview.reorderConflict());
+        assertEquals(List.of(a.id(),b.id()),preview.referenceOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(b.id(),a.id()),preview.sourceOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(a.id(),b.id()),preview.localOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(0,1),preview.sourceOrder().stream().map(OrderEntry::position).toList());
+        assertEquals(List.of("Order B","Order A"),preview.sourceOrder().stream().map(OrderEntry::content).toList());
+        assertEquals(List.of("Order A","Order B"),preview.localOrder().stream().map(OrderEntry::content).toList());
+        assertEquals(localIds,preview.localOrder().stream().map(OrderEntry::localQuestionId).toList());
+        assertEquals(preview.localOrder().get(1).localQuestionId(),preview.sourceOrder().get(0).localQuestionId());
+        var applied=copySync.applySet(copied.id(),new SetApplyRequest(1L,1L,0L,2L,Map.of("ORDER",Choice.TAKE_SOURCE)),reviewer);
+        assertEquals(List.of(b.id(),a.id()),applied.localOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertEquals(List.of(b.id(),a.id()),applied.referenceOrder().stream().map(OrderEntry::sourceQuestionId).toList());
+        assertFalse(applied.sourceReordered());
     }
 
     @Test void copiedSetSyncShowsUpdatedItemAndAppliesOnlyChosenItem() {
@@ -798,6 +826,32 @@ class MultiBankPersistenceTest {
         fails(403,()->organizations.fork(pub.getId(),new ForkRequest(1,null),owner));
         // the already-created Personal fork stays independent
         assertEquals(QuestionStatus.ACTIVE,questions.findById(source.id(),false,owner).status());
+    }
+
+    @Test void migrationV13AddsCorrectionForInflatedCopySyncVersionWithoutRewritingHistory() throws Exception {
+        String schema="qb_sync_fix_"+UUID.randomUUID().toString().replace("-","");
+        String url=environment.getRequiredProperty("spring.datasource.url");
+        String user=environment.getRequiredProperty("spring.datasource.username");
+        String password=environment.getRequiredProperty("spring.datasource.password");
+        try {
+            Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).target("12").load().migrate();
+            UUID actor=UUID.randomUUID(),buggy=UUID.randomUUID(),correct=UUID.randomUUID();
+            try(var connection=DriverManager.getConnection(url,user,password)){connection.setSchema(schema);try(var sql=connection.createStatement()){
+                UUID question;long version;String snapshot;
+                try(var rows=sql.executeQuery("SELECT question_id,max(version_number),max(snapshot) FROM question_versions GROUP BY question_id LIMIT 1")){
+                    rows.next();question=(UUID)rows.getObject(1);version=rows.getLong(2);snapshot=rows.getString(3).replace("'","''");}
+                // buggy apply: created version+1 but recorded version+2; a later correct apply records its real version+2
+                sql.executeUpdate("INSERT INTO question_versions(question_id,version_number,snapshot,created_at,changed_by) VALUES('"+question+"',"+(version+1)+",'"+snapshot+"',TIMESTAMP '2026-10-12 13:09:49.558','"+actor+"')");
+                sql.executeUpdate("INSERT INTO copy_sync_events(id,resource_kind,resource_id,local_version,source_version,actions,actor_user_id,created_at) VALUES('"+buggy+"','QUESTION','"+question+"',"+(version+2)+",2,'{DIFFICULTY=TAKE_SOURCE, CONTENT=KEEP_LOCAL}','"+actor+"',TIMESTAMP '2026-10-12 13:09:49.532')");
+                sql.executeUpdate("INSERT INTO question_versions(question_id,version_number,snapshot,created_at,changed_by) VALUES('"+question+"',"+(version+2)+",'"+snapshot+"',TIMESTAMP '2026-10-12 14:00:00.020','"+actor+"')");
+                sql.executeUpdate("INSERT INTO copy_sync_events(id,resource_kind,resource_id,local_version,source_version,actions,actor_user_id,created_at) VALUES('"+correct+"','QUESTION','"+question+"',"+(version+2)+",3,'{CONTENT=TAKE_SOURCE}','"+actor+"',TIMESTAMP '2026-10-12 14:00:00.000')");
+                Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).load().migrate();
+                try(var rows=sql.executeQuery("SELECT event_id,recorded_value,corrected_value,corrected_by FROM copy_sync_event_corrections")){
+                    assertTrue(rows.next());assertEquals(buggy,rows.getObject(1));assertEquals(version+2,rows.getLong(2));assertEquals(version+1,rows.getLong(3));
+                    assertEquals("MIGRATION_V13",rows.getString(4));assertFalse(rows.next());}
+                try(var rows=sql.executeQuery("SELECT local_version FROM copy_sync_events WHERE id='"+buggy+"'")){rows.next();assertEquals(version+2,rows.getLong(1));}
+            }}
+        } finally {try(var connection=DriverManager.getConnection(url,user,password);var sql=connection.createStatement()){sql.execute("DROP SCHEMA IF EXISTS "+schema+" CASCADE");}}
     }
 
     @Test void migrationV4ToV5BackfillsExistingPublicationsAsPublished() throws Exception {
