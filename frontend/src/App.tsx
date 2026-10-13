@@ -13,6 +13,8 @@ const PersonalQuestionSetEditorPage = lazy(() => import('./features/banks/Person
 const QuestionListPage = lazy(() => import('./features/question-bank/QuestionListPage'))
 import ExamListPage from './features/exams/ExamListPage'
 const ExamEditorPage = lazy(() => import('./features/exams/ExamEditorPage'))
+const ImportJobsPage = lazy(() => import('./features/question-import/ImportJobsPage'))
+const ImportJobPage = lazy(() => import('./features/question-import/ImportJobPage'))
 const ExamDetailPage = lazy(() => import('./features/exams/ExamDetailPage'))
 const GradingPage = lazy(() => import('./features/grading/GradingPage'))
 const OrganizationsPage = lazy(() => import('./features/organizations/OrganizationsPage'))
@@ -57,6 +59,8 @@ function AppRoutes() {
         {/* Teacher areas; system Admin may also enter (question review, exam management). */}
         <Route element={<ProtectedRoute persona="TEACHER"><AppLayout /></ProtectedRoute>}>
           <Route path="/questions" element={<QuestionListPage />} />
+          <Route path="/questions/imports" element={<ImportJobsPage />} />
+          <Route path="/questions/imports/:id" element={<ImportJobPage />} />
           <Route path="/questions/sets/new" element={<PersonalQuestionSetEditorPage />} />
           <Route path="/questions/sets/:setId" element={<PersonalQuestionSetEditorPage />} />
           <Route path="/exams" element={<ExamListPage />} />

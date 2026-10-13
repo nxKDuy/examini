@@ -61,3 +61,11 @@ test('comparison values use labels and never invent a category name', () => {
   assert.equal(m.syncValue('CATEGORY', '12345678-aaaa'), 'Chủ đề mã 12345678')
   assert.equal(m.syncValue('CONTENT', null), null)
 })
+
+test('full order rows join local, source and reference orders, keeping local-only and not-yet-copied items', () => {
+  const e = (p, s, l, c = 'x') => ({ position: p, sourceQuestionId: s, localQuestionId: l, content: c })
+  const rows = m.orderRows([e(0, 'b', 'lb', 'B'), e(1, 'a', 'la', 'A'), e(2, null, 'own', 'Own')], [e(0, 'a', 'la', 'A'), e(1, 'b', 'lb', 'B'), e(2, 'n', null, 'New')], [e(0, 'a', 'la'), e(1, 'b', 'lb'), e(2, 'gone', null, null)])
+  assert.deepEqual(rows.map(r => [r.content, r.local, r.source, r.reference]), [['B', 0, 1, 1], ['A', 1, 0, 0], ['Own', 2, null, null], ['New', null, 2, null], [null, null, null, 2]])
+  assert.equal(rows[2].onlyLocal, true)
+  assert.equal(rows[3].notCopied, true)
+})
