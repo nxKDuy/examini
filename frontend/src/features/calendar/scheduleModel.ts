@@ -37,7 +37,8 @@ export function initForm(s: Schedule): FormState {
   const reminders = fresh ? DEFAULT_REMINDERS : normalizeReminders(s.reminderOffsetsMinutes)
   return {
     tz: s.timezone, start: fieldFrom(s.startAt, s.timezone), end: fieldFrom(s.endAt, s.timezone), rule: s.deadlineRule,
-    autoOpen: s.autoOpen, autoClose: s.autoClose, reminders, remindersOff: !fresh && reminders.length === 0, reason: '',
+    // A fresh schedule preselects auto open/close; they apply only once a valid start/end is set (toInput). Saved schedules keep their value.
+    autoOpen: fresh ? true : s.autoOpen, autoClose: fresh ? true : s.autoClose, reminders, remindersOff: !fresh && reminders.length === 0, reason: '',
   }
 }
 
@@ -69,7 +70,7 @@ const sameMs = (a: string | null, b: Field) => (a === null ? b.ms === null && !b
 
 export function isChanged(state: FormState, s: Schedule): boolean {
   const original = normalizeReminders(s.reminderOffsetsMinutes), current = state.remindersOff ? [] : normalizeReminders(state.reminders)
-  return state.tz !== s.timezone || state.rule !== s.deadlineRule || state.autoOpen !== s.autoOpen || state.autoClose !== s.autoClose
+  return state.tz !== s.timezone || state.rule !== s.deadlineRule || (state.autoOpen && state.start.ms !== null) !== s.autoOpen || (state.autoClose && state.end.ms !== null) !== s.autoClose
     || !sameMs(s.startAt, state.start) || !sameMs(s.endAt, state.end) || original.join() !== current.join()
 }
 

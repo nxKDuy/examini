@@ -14,7 +14,7 @@ import { setAllPoints } from './builderModel'
 import { ConfirmDialog } from '../../components/Dialog'
 import IntegrityFields from '../integrity/IntegrityFields'
 import { integrityApi, type IntegrityPolicy } from '../integrity/integrityApi'
-import { DISABLED_POLICY, counts, limitError, policySummary } from '../integrity/integrityModel'
+import { DISABLED_POLICY, NEW_EXAM_POLICY, counts, limitError, policySummary } from '../integrity/integrityModel'
 import { EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, DIFFICULTY_LABEL, EXAM_TYPE_LABEL, QUESTION_TYPE_LABEL, formatScore, shortId } from '../../lib/format'
@@ -53,7 +53,7 @@ function Editor({ exam }: { exam?: Exam }) {
   const [items, setItems] = useState<Item[]>(exam ? exam.questions.map(q => ({ questionId: q.questionId, weight: q.weight })) : [])
   const [known, setKnown] = useState<Record<string, Question>>({})
   const [policy, setPolicy] = useState<Policy>(exam ? { accessMode: exam.accessMode, maxParticipants: exam.maxParticipants, maxConcurrentSessions: exam.maxConcurrentSessions, attemptLimit: exam.attemptLimit } : DEFAULT_POLICY)
-  const [integrity, setIntegrity] = useState<IntegrityPolicy>(exam?.integrityPolicy ? { ...DISABLED_POLICY, ...exam.integrityPolicy } : DISABLED_POLICY)
+  const [integrity, setIntegrity] = useState<IntegrityPolicy>(exam ? (exam.integrityPolicy ? { ...DISABLED_POLICY, ...exam.integrityPolicy } : DISABLED_POLICY) : NEW_EXAM_POLICY)
   const [picking, setPicking] = useState(false)
   const [bulkPoints, setBulkPoints] = useState('')
   const [clearing, setClearing] = useState(false)

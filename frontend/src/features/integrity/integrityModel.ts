@@ -8,6 +8,12 @@ export const DISABLED_POLICY: IntegrityPolicy = {
   monitorNetwork: false, warningPolicy: 'LOG_ONLY', warningEventLimit: DEFAULT_LIMIT,
 }
 
+/** Smart default for a NEW exam only (scope D): every monitor on, warnings shown, threshold 5. Saved exams are never changed. */
+export const NEW_EXAM_POLICY: IntegrityPolicy = {
+  monitorTabSwitch: true, monitorWindowBlur: true, requireFullscreen: true, monitorCopy: true, monitorPaste: true,
+  monitorNetwork: true, warningPolicy: 'WARN_ONLY', warningEventLimit: DEFAULT_LIMIT,
+}
+
 /** Signals that count toward the per-attempt budget (contract A): network, recovery and COPY/PASTE are audit only. */
 export const BUDGET_SIGNALS: SignalType[] = ['TAB_SWITCH', 'WINDOW_BLUR', 'EXIT_FULLSCREEN', 'PAGE_RELOAD']
 

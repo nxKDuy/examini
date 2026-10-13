@@ -112,3 +112,12 @@ test('reminder helpers: labels, limits, custom units, send times', () => {
   assert.equal(m.reminderSend(start, 60, start - 3600e3 - 1).past, false)
   assert.equal(m.reminderSend(start, 60, start - 3600e3).past, true)
 })
+
+test('fresh schedules preselect auto open/close but apply them only with a valid start/end; saved ones keep theirs', () => {
+  const fresh = m.initForm(sched())
+  assert.equal(fresh.autoOpen, true)
+  assert.equal(fresh.autoClose, true)
+  assert.equal(m.isChanged(fresh, sched()), false, 'nothing to save until a time is set')
+  const saved = m.initForm(sched({ scheduleRevision: 2, startAt: '2030-01-02T01:00:00Z', autoOpen: false, autoClose: false }))
+  assert.equal(saved.autoOpen, false)
+})
