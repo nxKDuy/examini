@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { BookOpenCheck, FileUp, Plus } from 'lucide-react'
 import { questionBankApi, type Filters, type ImportResult, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
@@ -53,6 +53,7 @@ export default function QuestionListPage() {
         description={admin ? 'Soạn bản nháp, kích hoạt để dùng.' : 'Soạn bản nháp, kích hoạt, gom thành bộ và lưu trữ. Để đăng câu hoặc bộ lên cộng đồng, dùng nút + ở Ngân hàng công khai.'}
         actions={!admin && <>
           <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> Nhập CSV</button>
+          <Link to="/questions/imports" className="btn btn-secondary"><FileUp size={16} aria-hidden /> Nhập tài liệu</Link>
           <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> Tạo câu hỏi</button>
         </>} />
 

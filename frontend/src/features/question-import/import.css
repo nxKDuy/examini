@@ -1,0 +1,15 @@
+/* Document import review: ruled, flat at rest; an item that must be reviewed carries the 6px inset bar. */
+.imp-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.imp-layout[data-panel="open"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+@media (max-width: 1023px) { .imp-layout[data-panel="open"] { grid-template-columns: minmax(0, 1fr); } }
+.imp-list { list-style: none; margin: 0; padding: 0; }
+.imp-row { display: grid; gap: 4px; width: 100%; text-align: left; padding: 12px 16px; background: #fff; border: 0; border-bottom: 1px solid #000; cursor: pointer; color: inherit; font: inherit; }
+.imp-row:hover { background: var(--color-subtle); }
+.imp-row[data-attention] { box-shadow: inset 6px 0 0 #000; padding-left: 22px; }
+.imp-row[aria-current="true"] { background: var(--color-subtle); box-shadow: inset 6px 0 0 var(--color-accent); padding-left: 22px; }
+.imp-panel { border: 1px solid #000; background: #fff; position: sticky; top: 80px; max-height: calc(100dvh - 96px); overflow-y: auto; }
+@media (max-width: 1023px) { .imp-panel { position: static; max-height: none; } }
+.imp-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #000; }
+.imp-panel-body { padding: 16px; }
+.imp-errors { margin: 0; padding-left: 18px; }
+.imp-raw { white-space: pre-wrap; font-size: 0.85rem; background: var(--color-subtle); padding: 10px 12px; margin: 8px 0 0; max-height: 240px; overflow: auto; }
