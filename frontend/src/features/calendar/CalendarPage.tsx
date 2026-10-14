@@ -13,12 +13,12 @@ import { ErrorState, LoadingState, Notice, PageHeader } from '../../components/u
 import { useAuthStore } from '../../store/authStore'
 import { instantToDay, zoneLabel } from '../../lib/zone'
 import { PushPrompt } from '../notifications/PushControls'
-import { t, useT } from '../../lib/i18n'
+import { t, useT, locale } from '../../lib/i18n'
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
 function monthLabel(anchor: string) {
-  return new Intl.DateTimeFormat('vi-VN', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${anchor.slice(0, 7)}-15T12:00:00Z`)).toUpperCase()
+  return new Intl.DateTimeFormat(locale(), { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${anchor.slice(0, 7)}-15T12:00:00Z`)).toUpperCase()
 }
 
 /** One month calendar. A day opens a popup with that day's Exams; an Exam opens the detail panel. */

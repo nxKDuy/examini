@@ -1,3 +1,4 @@
+import { locale } from './i18n'
 // Time zone arithmetic on top of Intl, with no date library. Server instants are UTC;
 // Exams carry their own IANA zone and the schedule API wants an offset that is valid
 // for the wall-clock time in that zone (DST gap rejected, overlap needs a choice).
@@ -121,9 +122,9 @@ export function zoneOptions(extra: string[] = []): string[] {
 
 const fmtCache = new Map<string, Intl.DateTimeFormat>()
 function fmt(tz: string, key: string, opts: Intl.DateTimeFormatOptions) {
-  const k = `${tz}|${key}`
+  const k = `${locale()}|${tz}|${key}`
   let f = fmtCache.get(k)
-  if (!f) { f = new Intl.DateTimeFormat('vi-VN', { timeZone: tz, ...opts }); fmtCache.set(k, f) }
+  if (!f) { f = new Intl.DateTimeFormat(locale(), { timeZone: tz, ...opts }); fmtCache.set(k, f) }
   return f
 }
 export const formatTimeIn = (ms: number, tz: string) => fmt(tz, 't', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms))

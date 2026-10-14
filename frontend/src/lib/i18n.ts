@@ -63,3 +63,6 @@ export function i18nMap<T extends object>(source: T): T {
     },
   }) as T
 }
+
+/** Intl locale for dates and numbers in the UI language. */
+export const locale = () => (useLangStore.getState().lang === 'en' ? 'en-GB' : 'vi-VN')

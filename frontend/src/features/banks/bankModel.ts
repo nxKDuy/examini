@@ -1,7 +1,7 @@
 import { parseUtc } from '../../lib/format'
 import type { Contribution, ContributionStatus, Lineage, PublicQuestion, PublicViewResponse, QuestionSet } from './bankApi'
 import type { Organization } from '../organizations/orgApi'
-import { t as tt, i18nMap } from '../../lib/i18n'
+import { t as tt, i18nMap, locale } from '../../lib/i18n'
 
 /** Pure Bank UI rules. They mirror what the server enforces so the UI does not offer actions in vain; the server stays the authority. */
 
@@ -62,7 +62,7 @@ export function copiedBadge(p: Pick<PublicQuestion, 'isCopied' | 'postType' | 'i
 /** Card date: when the snapshot's CONTENT was last edited at the source; older rows fall back to the publish date (the backend does the same). */
 export function updatedDate(p: Pick<PublicQuestion, 'contentUpdatedAt' | 'publishedAt'>): string | null {
   const d = parseUtc(p.contentUpdatedAt ?? p.publishedAt)
-  return d ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : null
+  return d ? new Intl.DateTimeFormat(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : null
 }
 /** The broadest taxonomy a card can state: subjects first, else the top-level category, else the snapshot's category name. `more` counts the ones not named. */
 export function broadTopic(p: Pick<PublicQuestion, 'subjects' | 'categories' | 'question'>): { text: string; more: number } | null {
@@ -130,7 +130,7 @@ export function provenanceChain(l: Lineage | null): ChainLink[] {
   const links: ChainLink[] = [{ key: 'source', label: tt('Câu gốc {0}', { 0: shortId(l.sourceQuestionId) }), detail: tt('Phiên bản {0} · {1}', { 0: l.sourceQuestionVersion, 1: bank }), tone: 'source' }]
   if (l.sourcePublicQuestionId) links.push({ key: 'public', label: tt('Bản xuất bản công khai'), detail: tt('Mã {0}', { 0: shortId(l.sourcePublicQuestionId) }), tone: 'bridge' })
   if (l.sourceOrganizationQuestionId) links.push({ key: 'org', label: tt('Bản đã duyệt của tổ chức'), detail: tt('Mã {0}', { 0: shortId(l.sourceOrganizationQuestionId) }), tone: 'bridge' })
-  links.push({ key: 'here', label: tt('Bản sao này'), detail: l.copiedAt ? tt('Sao chép {0}', { 0: new Date(l.copiedAt).toLocaleDateString('vi-VN') }) : tt('Bản sao độc lập'), tone: 'here' })
+  links.push({ key: 'here', label: tt('Bản sao này'), detail: l.copiedAt ? tt('Sao chép {0}', { 0: new Date(l.copiedAt).toLocaleDateString(locale()) }) : tt('Bản sao độc lập'), tone: 'here' })
   return links
 }
 

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import BlockingOverlay from '../integrity/BlockingOverlay'
 import { exitFullscreen } from '../../lib/fullscreen'
-import { useT, t as tt } from '../../lib/i18n'
+import { useT, t as tt, locale } from '../../lib/i18n'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
@@ -403,7 +403,7 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
       <label className="field-label" htmlFor={name}>{tt('Bài làm')}</label>
       <textarea id={name} className="input" rows={10} value={value} disabled={disabled} maxLength={20000}
         onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
-      <span className="field-hint">{value.length.toLocaleString('vi-VN')}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
+      <span className="field-hint">{value.length.toLocaleString(locale())}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
     </div>
   )
 }

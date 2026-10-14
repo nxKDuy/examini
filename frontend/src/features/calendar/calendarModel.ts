@@ -1,6 +1,6 @@
 import { addDays, dayStart, formatDateIn, formatDateTimeIn, formatTimeIn, instantToDay, offsetMinutes, wallParts, weekdayIndex, zoneLabel } from '../../lib/zone'
 import type { CalendarItem, DeadlineRule } from './calendarApi'
-import { t as tt, i18nMap } from '../../lib/i18n'
+import { t as tt, i18nMap, locale } from '../../lib/i18n'
 
 export type CalendarView = 'agenda' | 'month' | 'week' | 'day'
 export const VIEW_LABEL: Record<CalendarView, string> = i18nMap({ agenda: 'Agenda', month: 'Tháng', week: 'Tuần', day: 'Ngày' })
@@ -310,4 +310,4 @@ export function cardMetrics(item: CalendarItem, nowMs: number): string[] {
 export const isManager = (item: Pick<CalendarItem, 'relation'>) => item.relation === 'OWNER' || item.relation === 'MANAGER'
 
 export const dayNumber = (day: string) => String(Number(day.slice(8, 10)))
-export const dayHeading = (day: string) => new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`))
+export const dayHeading = (day: string) => new Intl.DateTimeFormat(locale(), { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`))

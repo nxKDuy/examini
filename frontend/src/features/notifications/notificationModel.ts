@@ -1,5 +1,5 @@
 import type { AppNotification } from './notificationApi'
-import { t } from '../../lib/i18n'
+import { t, locale } from '../../lib/i18n'
 
 export type NotificationIcon = 'calendar-plus' | 'calendar-clock' | 'calendar-x' | 'play' | 'lock' | 'bell' | 'result' | 'send' | 'approved' | 'rejected' | 'member' | 'assigned'
 
@@ -30,7 +30,7 @@ export function relativeTime(iso: string, nowMs: number): string {
   if (s < 3600) return rtf.format(Math.round(diff / 60), 'minute')
   if (s < 86400) return rtf.format(Math.round(diff / 3600), 'hour')
   if (s < 7 * 86400) return rtf.format(Math.round(diff / 86400), 'day')
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
+  return new Intl.DateTimeFormat(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso))
 }
 
 export const unreadLabel = (count: number) => (count > 99 ? '99+' : String(count))

@@ -1,8 +1,16 @@
-import { t, i18nMap } from './i18n'
+import { t, i18nMap, locale } from './i18n'
 // Display helpers. Exam schedules are UTC LocalDateTime values without an offset.
 
-const dateTime = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })
-const timeOnly = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+// Formatters follow the UI language; one per locale, created on first use.
+const cache = new Map<string, Intl.DateTimeFormat>()
+const intl = (key: string, opts: Intl.DateTimeFormatOptions) => {
+  const k = `${locale()}|${key}`
+  let f = cache.get(k)
+  if (!f) { f = new Intl.DateTimeFormat(locale(), opts); cache.set(k, f) }
+  return f
+}
+const dateTime = { format: (d: Date) => intl('dateTime', { dateStyle: 'medium', timeStyle: 'short' }).format(d) }
+const timeOnly = { format: (d: Date) => intl('time', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(d) }
 
 /** Parse a server UTC LocalDateTime ("2026-10-05T08:00:00") or ISO instant. */
 export function parseUtc(value: string | null | undefined): Date | null {
