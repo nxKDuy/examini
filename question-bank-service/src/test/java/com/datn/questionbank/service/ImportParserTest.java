@@ -118,4 +118,128 @@ class ImportParserTest {
         assertEquals(List.of("Câu 1:", "A."), lines.stream().map(Line::text).toList());
         assertEquals(80.0, lines.getFirst().confidence()); assertEquals(2, lines.getFirst().page());
     }
+
+    static List<ImportParser.Parsed> ocr(String document) {
+        var lines = new ArrayList<Line>();
+        for (String l : document.split("\n")) if (!l.isBlank()) lines.add(new Line(l.strip(), 1, SourceMethod.OCR, 92.0));
+        return ImportParser.parse(lines, DifficultyLevel.MEDIUM);
+    }
+    static List<String> contents(List<ImportParser.Parsed> items) { return items.stream().map(ImportParser.Parsed::content).toList(); }
+
+    @Test void splitsQuestionsMergedOnOneOcrLine() {
+        var items = ocr("""
+                Câu 1: 2 + 2 = ? A. 3 B. 4 C. 5 D. 6 Đáp án: B Câu 2: Thủ đô Việt Nam? A. Huế B. Hà Nội Đáp án: B
+                Giải thích: Hà Nội. Câu 3. Nước sôi ở bao nhiêu độ?
+                A. 90 B. 100
+                Đáp án: B
+                """);
+        assertEquals(List.of("2 + 2 = ?", "Thủ đô Việt Nam?", "Nước sôi ở bao nhiêu độ?"), contents(items));
+        assertEquals(List.of("3", "4", "5", "6"), items.get(0).options().stream().map(ImportParser.Option::content).toList());
+        assertTrue(items.get(0).options().get(1).correct());
+        assertTrue(items.get(1).options().get(1).correct()); assertEquals("Hà Nội.", items.get(1).explanation());
+        assertTrue(items.get(2).options().get(1).correct());
+        for (var item : items) assertFalse(item.flags().contains(Flag.POSSIBLE_MERGED_QUESTIONS), item.flags().toString());
+    }
+
+    @Test void toleratesOcrVariantsOfTheQuestionKeyword() {
+        var items = ocr("""
+                Cau 1: Một
+                A. x
+                B. y
+                Đáp án: A
+                CÂU 2. Hai
+                A. x
+                B. y
+                Đáp án: B
+                Câu3: Ba
+                A. x
+                B. y
+                Đáp án: A
+                Càu 4) Bốn
+                A. x
+                B. y
+                Đáp án: B
+                """);
+        assertEquals(List.of("Một", "Hai", "Ba", "Bốn"), contents(items));
+        for (var item : items) { assertFalse(item.flags().contains(Flag.NUMBERING_GAP)); assertFalse(item.flags().contains(Flag.QUESTION_SPLIT_UNCERTAIN)); }
+    }
+
+    @Test void numericStartsSplitOnlyInSequenceAndOtherwiseFlag() {
+        var items = ocr("""
+                1. Sắp xếp các bước:
+                A. Rửa B. Nấu
+                Đáp án: A 2. Tính 3 + 3
+                A. 5 B. 6
+                Đáp án: B
+                5. bước phụ
+                """);
+        assertEquals(List.of("Sắp xếp các bước:", "Tính 3 + 3"), contents(items));
+        assertTrue(items.get(0).options().get(0).correct()); assertTrue(items.get(1).options().get(1).correct());
+        assertTrue(items.get(1).flags().contains(Flag.QUESTION_SPLIT_UNCERTAIN), "out-of-sequence 5. stays text but is flagged");
+        assertTrue(items.get(1).reviewRequired());
+
+        var keyworded = ocr("""
+                Câu 1: Đề bài
+                A. x B. y
+                Đáp án: A 2. Câu tiếp theo bị mất chữ Câu
+                A. m B. n
+                Đáp án: B
+                """);
+        assertEquals(List.of("Đề bài", "Câu tiếp theo bị mất chữ Câu"), contents(keyworded));
+        assertTrue(keyworded.get(1).flags().contains(Flag.QUESTION_SPLIT_UNCERTAIN), "a split resting only on N. is never silent");
+    }
+
+    @Test void lostHeaderIsFlaggedNotGuessed() {
+        var items = ocr("""
+                Câu 1: Một cộng một?
+                A. 1
+                B. 2
+                Đáp án: B
+                Hai cộng hai?
+                A. 3
+                B. 4
+                Đáp án: B
+                """);
+        assertEquals(1, items.size());
+        var item = items.getFirst();
+        assertTrue(item.flags().contains(Flag.POSSIBLE_MERGED_QUESTIONS));
+        assertTrue(item.reviewRequired()); assertTrue(item.confidence() < ImportParser.REVIEW_THRESHOLD);
+        assertEquals(List.of(false, true), item.options().stream().limit(2).map(ImportParser.Option::correct).toList(), "first answer kept, second not applied");
+    }
+
+    @Test void numberingGapsAndLetterForDigitAreFlagged() {
+        var items = ocr("""
+                Câu l: Chữ l thay cho số 1
+                A. x
+                B. y
+                Đáp án: A
+                Câu 3: Thiếu câu 2
+                A. x
+                B. y
+                Đáp án: B
+                """);
+        assertEquals(2, items.size());
+        assertTrue(items.get(0).flags().contains(Flag.QUESTION_SPLIT_UNCERTAIN));
+        assertTrue(items.get(1).flags().contains(Flag.NUMBERING_GAP));
+    }
+
+    @Test void proseMentionOfAQuestionNumberIsNotASplit() {
+        var items = ocr("""
+                Câu 1: Dựa vào kết quả câu 2: hãy chọn
+                A. x
+                B. y
+                Đáp án: A
+                """);
+        assertEquals(List.of("Dựa vào kết quả câu 2: hãy chọn"), contents(items));
+    }
+
+    @Test void ocrMarkerSpacingAndTrailingJunkDoNotBreakOptionsOrAnswer() {
+        var item = ocr("""
+                Câu 1: Nước sôi ở bao nhiêu độ?
+                A.90 B.100
+                Đáp án:B_
+                """).getFirst();
+        assertEquals(List.of("90", "100"), item.options().stream().map(ImportParser.Option::content).toList());
+        assertTrue(item.options().get(1).correct()); assertFalse(item.flags().contains(Flag.ANSWER_NOT_IN_OPTIONS));
+    }
 }

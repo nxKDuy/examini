@@ -59,6 +59,13 @@ Tất cả event được ghi cùng transaction vào outbox, dùng event ID ổn
 - `examini.events` / `grading.result.regraded`: `{sessionId, examId, examTitle, studentUserId, resultRevision}`.
 - Notification chỉ phát Student event khi một revision được công bố; không phát cho draft. Notification consumer commit `0650a55` đã được MAIN review nhưng chưa thuộc patch này.
 
+Relay retry (V6, 2026-10-14):
+- Publish is `mandatory` with confirms. An attempt fails on a broker error, a nack, a 5s confirm timeout, or `UNROUTABLE` (the broker returned the message because no queue is bound to that exchange/routing key).
+- Each failure stores `last_error` and `next_attempt_at`. Backoff is `retry-base-ms·2^(n-1)`, capped at `retry-max-ms` (defaults `grading.events.retry-base-ms=2000`, `grading.events.retry-max-ms=900000`). Every failure is logged as WARN with eventId, exchange, routingKey, attempt, nextAttemptAt and the reason.
+- After `grading.events.max-attempts` (default 200, about 2 days at the cap) the row is `parked=true` and logged as ERROR.
+- To replay a parked row: `UPDATE grading_event_outbox SET parked=false, next_attempt_at=NULL WHERE event_id=…`.
+- Event contracts and payloads are unchanged.
+
 ## Frontend contract cần tích hợp sau review backend
 
 - UI chấm bài phải gửi `expectedRevision` ở mọi draft/finalize/release/regrade và xử lý `409 STALE_RESULT_REVISION` bằng tải lại dữ liệu.
