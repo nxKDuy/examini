@@ -45,9 +45,9 @@ export function limitError(value: number) {
 }
 
 export function policySummary(p: IntegrityPolicy | null | undefined) {
-  if (!monitored(p)) return 'Tắt'
-  const on = MONITORS.filter(m => p![m.key]).map(m => m.label.toLowerCase())
-  return `${on.join(', ')}${counts(p) ? ` · tự nộp khi vượt ${p!.warningEventLimit} tín hiệu` : ''}`
+  if (!monitored(p)) return t('Tắt')
+  const on = MONITORS.filter(m => p![m.key]).map(m => t(m.label).toLowerCase())
+  return `${on.join(', ')}${counts(p) ? t(' · tự nộp khi vượt {n} tín hiệu', { n: p!.warningEventLimit }) : ''}`
 }
 
 /** What the Student sees after a receipt. Never says "gian lận". */
