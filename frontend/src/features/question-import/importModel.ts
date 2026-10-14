@@ -9,6 +9,7 @@ export const FLAG_LABEL: Record<string, string> = i18nMap({
   OCR: 'Nhận dạng ảnh (OCR)', LOW_CONFIDENCE: 'Độ tin cậy thấp', MISSING_CORRECT_ANSWER: 'Chưa có đáp án đúng',
   ANSWER_NOT_IN_OPTIONS: 'Đáp án không khớp phương án', MULTIPLE_ANSWERS: 'Nhiều đáp án', DUPLICATE_OPTION: 'Phương án trùng',
   OPTION_SEQUENCE_GAP: 'Thiếu phương án trong dãy', NO_ANSWER_ESSAY: 'Tự luận chưa có đáp án', CONTENT_TRUNCATED: 'Nội dung bị cắt',
+  QUESTION_SPLIT_UNCERTAIN: 'Có thể bị tách câu sai', NUMBERING_GAP: 'Số câu bị nhảy', POSSIBLE_MERGED_QUESTIONS: 'Có thể dồn nhiều câu',
 })
 
 export const FILTERS: { value: ItemFilter; label: string; count: (s: ImportSummary) => number }[] = i18nMap([
@@ -21,8 +22,11 @@ export const FILTERS: { value: ItemFilter; label: string; count: (s: ImportSumma
 ])
 
 /** OCR or low confidence must stand out and be reviewed (contract C). */
-export const mustReview = (i: Pick<ImportItem, 'reviewRequired' | 'reviewed' | 'excluded' | 'importedQuestionId'>) =>
-  i.reviewRequired && !i.reviewed && !i.excluded && !i.importedQuestionId
+export const mustReview = (i: Pick<ImportItem, 'reviewRequired' | 'reviewed' | 'excluded' | 'importedQuestionId'> & { flags?: string[] }) =>
+  (i.reviewRequired || hasUnknownFlag(i.flags ?? [])) && !i.reviewed && !i.excluded && !i.importedQuestionId
+/** A flag this client does not know yet is still shown and treated as needing review. */
+export const hasUnknownFlag = (flags: string[]) => flags.some(f => !(f in FLAG_LABEL))
+export const flagLabel = (f: string) => (f in FLAG_LABEL ? FLAG_LABEL[f] : t('Cần xem lại ({0})', { 0: f }))
 export const isOcr = (i: Pick<ImportItem, 'source' | 'flags'>) => i.source.method === 'OCR' || i.flags.includes('OCR')
 export const lowConfidence = (i: Pick<ImportItem, 'confidence'>) => i.confidence < LOW_CONFIDENCE
 

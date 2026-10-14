@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, CheckCircle2, Plus, ScanText, Trash2 } from 'lucide-react'
 import { importApi, type ImportItem, type ImportResult, type ItemFilter } from './importApi'
-import { FILTERS, FLAG_LABEL, dirty, draftOf, isOcr, itemState, lowConfidence, mustReview, optionLetter, patchOf, type Draft } from './importModel'
+import { FILTERS, flagLabel, dirty, draftOf, isOcr, itemState, lowConfidence, mustReview, optionLetter, patchOf, type Draft } from './importModel'
 import SubjectCategoryFields from '../question-bank/SubjectCategoryFields'
 import { ConfirmDialog } from '../../components/Dialog'
 import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Spinner } from '../../components/ui'
@@ -127,7 +127,7 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
         {attention && <Notice tone="warning" title={t('Bắt buộc xem lại')}>{isOcr(item) ? t('Câu được nhận dạng từ ảnh (OCR) nên có thể sai chữ. ') : ''}{lowConfidence(item) ? t('Độ tin cậy {0}%. ', { 0: Math.round(item.confidence * 100) }) : ''}{t('So với nội dung gốc bên dưới, sửa nếu cần rồi bấm “Lưu và đánh dấu đã xem”.')}</Notice>}
         {item.importedQuestionId && <Notice tone="success">{t('Đã nhập thành câu bản nháp trong Kho cá nhân.')} <Link to={`/questions?q=${item.importedQuestionId}`}>{t('Mở câu hỏi')}</Link></Notice>}
         {notice && <Notice tone={notice.tone} live>{notice.text}</Notice>}
-        {item.flags.length > 0 && <div className="row" style={{ gap: 6 }}>{item.flags.map(f => <Badge key={f} tone="warning">{FLAG_LABEL[f] ?? f}</Badge>)}</div>}
+        {item.flags.length > 0 && <div className="row" style={{ gap: 6 }}>{item.flags.map(f => <Badge key={f} tone="warning">{flagLabel(f)}</Badge>)}</div>}
         {item.errors.length > 0 && <ul className="imp-errors">{item.errors.map(e => <li key={e.code} className="field-error">{e.message}</li>)}</ul>}
         <fieldset className="stack" disabled={!editable || save.isPending} style={{ border: 0, padding: 0, margin: 0 }}>
           <Field label={t('Nội dung câu hỏi')} htmlFor="imp-content" required><textarea id="imp-content" className="input" rows={4} value={d.content} onChange={e => setD({ ...d, content: e.target.value })} /></Field>

@@ -1708,4 +1708,8 @@ export const EN_UI: Record<string, string> = {
   'Analytics chưa trả khối chỉ số chính cho kỳ thi này.': 'Analytics has not returned the key figures for this exam yet.',
   'Nhận thông báo đặt/đổi lịch, mở/đóng kỳ thi và nhắc giờ ngay cả khi không mở EXAMINI. Trình duyệt chỉ hỏi quyền khi bạn bấm Bật.': 'Get schedule changes, exam open/close and reminders even when EXAMINI is not open. The browser asks for permission only when you press Turn on.',
   'Chưa có dữ liệu': 'No data yet',
+  'Có thể bị tách câu sai': 'Question split may be wrong',
+  'Số câu bị nhảy': 'Question numbering skips',
+  'Có thể dồn nhiều câu': 'Several questions may be merged',
+  'Cần xem lại ({0})': 'Needs review ({0})',
 }
