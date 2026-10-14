@@ -119,4 +119,10 @@ export const EN: Record<string, string> = {
   'Bỏ tất cả câu khỏi đề?': 'Remove every question from the exam?', 'Bỏ {n} câu': 'Remove {n} questions',
   'Chỉ bỏ khỏi bản nháp đang sửa; câu hỏi trong ngân hàng không bị ảnh hưởng. Chưa lưu cho đến khi bạn bấm Lưu.': 'Only removed from this draft; bank questions are unaffected. Nothing is saved until you press Save.',
   'Tắt': 'Off', ' · tự nộp khi vượt {n} tín hiệu': ' · auto-submit above {n} signals',
+  // Notifications (chrome; message text comes from the server)
+  'Đặt/đổi/gỡ lịch, mở và đóng kỳ thi, nhắc giờ và các cập nhật khác. Bấm một thông báo để mở nội dung liên quan.': 'Schedule set/changed/removed, exams opened and closed, reminders and other updates. Click a notification to open it.',
+  'Đánh dấu tất cả đã đọc': 'Mark all as read', 'Lọc thông báo': 'Filter notifications', 'Tất cả': 'All', 'Chưa đọc': 'Unread',
+  'Không còn thông báo chưa đọc': 'No unread notifications', 'Chưa có thông báo': 'No notifications yet', 'Thông báo mới sẽ hiện ở đây và ở chuông trên thanh đầu trang.': 'New notifications appear here and on the bell in the top bar.',
+  'Phân trang thông báo': 'Notification pages', 'Thông báo, {n} chưa đọc': 'Notifications, {n} unread', 'Đọc tất cả': 'Read all',
+  'Thông báo đặt/đổi lịch, mở/đóng kỳ thi và nhắc giờ sẽ hiện ở đây.': 'Schedule changes, exam open/close and reminders appear here.', 'Xem tất cả thông báo': 'See all notifications',
 }
