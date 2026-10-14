@@ -21,6 +21,7 @@ const store = new Map()
 globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) }
 const i = await import('../src/lib/i18n.ts')
 const { EN } = await import('../src/lib/i18n-en.ts')
+const { EN_UI } = await import('../src/lib/i18n-en-ui.ts')
 
 test('Vietnamese is the default and the key; English falls back to Vietnamese when untranslated', () => {
   assert.equal(i.useLangStore.getState().lang, 'vi')
@@ -44,6 +45,18 @@ test('the choice is kept per browser and per account; the account choice wins at
 
 test('every English entry keeps the same {placeholders} as its Vietnamese key', () => {
   const ph = s => (s.match(/\{\w+\}/g) ?? []).sort().join()
-  const bad = Object.entries(EN).filter(([vi, en]) => ph(vi) !== ph(en) || !en.trim())
+  const bad = [...Object.entries(EN), ...Object.entries(EN_UI)].filter(([vi, en]) => ph(vi) !== ph(en) || !en.trim())
   assert.deepEqual(bad, [])
+})
+
+test('i18nMap translates string values when read and keeps keys, nesting and arrays working', () => {
+  i.useLangStore.getState().setLang('vi')
+  const m = i.i18nMap({ A: 'Hủy', nested: { label: 'Đăng xuất' }, list: [{ label: 'Hủy' }] })
+  assert.equal(m.A, 'Hủy')
+  i.useLangStore.getState().setLang('en')
+  assert.equal(m.A, 'Cancel')
+  assert.equal(m.nested.label, 'Sign out')
+  assert.deepEqual(m.list.map(x => x.label), ['Cancel'])
+  assert.deepEqual(Object.entries(m).filter(([, v]) => typeof v === 'string'), [['A', 'Cancel']])
+  i.useLangStore.getState().setLang('vi')
 })

@@ -2,11 +2,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bell, BellOff } from 'lucide-react'
 import { calendarApi } from './calendarApi'
 import { errorText } from '../../lib/errors'
+import { t, useT } from '../../lib/i18n'
 
 /** PUBLIC Exam follow: adds it to My Calendar and to notifications. It never joins the Exam or grants Start. */
 export default function FollowButton({ examId, followed, size = 'sm', onError, onChanged }: {
   examId: string; followed: boolean; size?: 'sm' | 'md'; onError?: (message: string) => void; onChanged?: (followed: boolean) => void
 }) {
+  useT()
   const qc = useQueryClient()
   const m = useMutation({
     mutationFn: () => (followed ? calendarApi.unfollow(examId) : calendarApi.follow(examId)),
@@ -19,8 +21,8 @@ export default function FollowButton({ examId, followed, size = 'sm', onError, o
   const Icon = followed ? BellOff : Bell
   return (
     <button type="button" className={`btn ${size === 'sm' ? 'btn-sm' : ''} ${followed ? 'btn-secondary' : 'btn-primary'}`} aria-pressed={followed} disabled={m.isPending} onClick={() => m.mutate()}
-      title={followed ? 'Bỏ theo dõi: gỡ khỏi Lịch và ngừng nhận thông báo (nếu bạn chưa được giao/tham gia)' : 'Theo dõi: thêm vào Lịch của tôi và nhận thông báo; không tự tham gia kỳ thi'}>
-      <Icon size={14} aria-hidden /> {m.isPending ? 'Đang lưu…' : followed ? 'Đang theo dõi' : 'Theo dõi'}
+      title={followed ? t('Bỏ theo dõi: gỡ khỏi Lịch và ngừng nhận thông báo (nếu bạn chưa được giao/tham gia)') : t('Theo dõi: thêm vào Lịch của tôi và nhận thông báo; không tự tham gia kỳ thi')}>
+      <Icon size={14} aria-hidden /> {m.isPending ? t('Đang lưu…') : followed ? t('Đang theo dõi') : t('Theo dõi')}
     </button>
   )
 }

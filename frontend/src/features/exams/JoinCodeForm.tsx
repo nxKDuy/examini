@@ -9,8 +9,10 @@ import { StateBadge } from '../calendar/ExamCard'
 import { useViewerZone } from '../calendar/useCalendar'
 import { Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
+import { t, useT } from '../../lib/i18n'
 
 export default function JoinCodeForm({ compact }: { compact?: boolean }) {
+  useT()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const viewerTz = useViewerZone()
@@ -39,24 +41,24 @@ export default function JoinCodeForm({ compact }: { compact?: boolean }) {
   function onPreview() { if (!code.trim()) return; setError(''); setPreview(null); look.mutate() }
 
   return (
-    <form onSubmit={submit} className="stack-sm" aria-label="Tham gia bằng mã">
-      <label htmlFor={id} className="field-label">Mã tham gia</label>
+    <form onSubmit={submit} className="stack-sm" aria-label={t('Tham gia bằng mã')}>
+      <label htmlFor={id} className="field-label">{t('Mã tham gia')}</label>
       <div className="row" style={{ flexWrap: 'nowrap' }}>
         <input id={id} className="input" value={code} maxLength={50} autoComplete="off" spellCheck={false}
           onChange={e => { setCode(e.target.value); setPreview(null) }} aria-invalid={!!error} aria-describedby={error ? 'join-code-error' : undefined} style={{ flex: 1 }} />
-        <button type="button" className="btn btn-secondary" disabled={busy || !code.trim()} onClick={onPreview}><Eye size={16} aria-hidden /> {look.isPending ? 'Đang xem…' : 'Xem trước'}</button>
-        <button type="submit" className="btn btn-primary" disabled={busy || !code.trim() || blocked} aria-describedby={blocked ? 'join-code-blocked' : undefined}><KeyRound size={16} aria-hidden /> {join.isPending ? 'Đang kiểm tra…' : 'Tham gia'}</button>
+        <button type="button" className="btn btn-secondary" disabled={busy || !code.trim()} onClick={onPreview}><Eye size={16} aria-hidden /> {look.isPending ? t('Đang xem…') : t('Xem trước')}</button>
+        <button type="submit" className="btn btn-primary" disabled={busy || !code.trim() || blocked} aria-describedby={blocked ? 'join-code-blocked' : undefined}><KeyRound size={16} aria-hidden /> {join.isPending ? t('Đang kiểm tra…') : 'Tham gia'}</button>
       </div>
       {error ? <span id="join-code-error" className="field-error" role="alert">{error}</span>
-        : <span className="field-hint">Nhập mã giáo viên cung cấp. "Xem trước" chỉ hiện lịch và điều kiện, không tham gia hay giữ chỗ.</span>}
+        : <span className="field-hint">{t('Nhập mã giáo viên cung cấp. "Xem trước" chỉ hiện lịch và điều kiện, không tham gia hay giữ chỗ.')}</span>}
       {preview && w && (
         <Notice tone="info" title={preview.examTitle} live>
           <div className="stack-sm">
             <span className="row"><StateBadge state={preview.calendarState} /></span>
             <span>{w.primary}{w.zone && <> · {w.zone}</>}</span>
             {w.mine && <span>{w.mine}</span>}
-            <span>{preview.durationMinutes} phút · {ruleLabel(preview.deadlineRule)}</span>
-            {blocked && <span id="join-code-blocked"><strong>Chưa tham gia được:</strong> {reasonText(preview.reasonCode) ?? 'Chưa tham gia được lúc này.'}</span>}
+            <span>{preview.durationMinutes} {t('phút ·')} {ruleLabel(preview.deadlineRule)}</span>
+            {blocked && <span id="join-code-blocked"><strong>{t('Chưa tham gia được:')}</strong> {reasonText(preview.reasonCode) ?? t('Chưa tham gia được lúc này.')}</span>}
           </div>
         </Notice>
       )}

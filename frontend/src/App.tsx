@@ -23,11 +23,13 @@ import MyExamsPage from './features/exams/MyExamsPage'
 import ExamLobbyPage from './features/exams/ExamLobbyPage'
 import StudentExamPage from './features/exams/StudentExamPage'
 import ExamResultPage from './features/exams/ExamResultPage'
+import { t, useT } from './lib/i18n'
 
 function AppRoutes() {
+  useT()
   return (
     <>
-      <Suspense fallback={<LoadingState rows={4} label="Đang tải trang…" />}>
+      <Suspense fallback={<LoadingState rows={4} label={t('Đang tải trang…')} />}>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<LoginPage />} />

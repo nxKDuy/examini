@@ -13,15 +13,17 @@ import { ErrorState, LoadingState, Notice, PageHeader } from '../../components/u
 import { useAuthStore } from '../../store/authStore'
 import { instantToDay, zoneLabel } from '../../lib/zone'
 import { PushPrompt } from '../notifications/PushControls'
+import { t, useT, locale } from '../../lib/i18n'
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
 function monthLabel(anchor: string) {
-  return new Intl.DateTimeFormat('vi-VN', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${anchor.slice(0, 7)}-15T12:00:00Z`)).toUpperCase()
+  return new Intl.DateTimeFormat(locale(), { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${anchor.slice(0, 7)}-15T12:00:00Z`)).toUpperCase()
 }
 
 /** One month calendar. A day opens a popup with that day's Exams; an Exam opens the detail panel. */
 export default function CalendarPage() {
+  useT()
   const user = useAuthStore(s => s.user)
   const teacher = audienceOf(user) !== 'STUDENT'
   const tz = useViewerZone()
@@ -38,7 +40,7 @@ export default function CalendarPage() {
   const items = data.items
   const unscheduled = useMemo(() => items.filter(i => !i.startAt && !i.endAt), [items])
   const selected = useMemo(() => items.find(i => i.examId === selectedId) ?? null, [items, selectedId])
-  const title = teacher ? 'Lịch thi' : 'Lịch của tôi'
+  const title = teacher ? t('Lịch thi') : t('Lịch của tôi')
 
   useEffect(() => { document.title = `${title} - EXAMINI` }, [title])
   const goTo = useCallback((date: string | null) => {
@@ -61,34 +63,34 @@ export default function CalendarPage() {
   return (
     <div className="stack">
       <PageHeader title={title}
-        description={teacher ? 'Đề thi bạn sở hữu hoặc cộng tác. Bấm vào một ngày để xem chi tiết.' : 'Kỳ thi được giao, đã tham gia hoặc bạn theo dõi. Bấm vào một ngày để xem chi tiết.'}
-        actions={teacher && <button type="button" className="btn btn-primary" onClick={() => setScheduling(true)}><CalendarPlus size={16} aria-hidden /> Đặt lịch cho đề</button>} />
+        description={teacher ? t('Đề thi bạn sở hữu hoặc cộng tác. Bấm vào một ngày để xem chi tiết.') : t('Kỳ thi được giao, đã tham gia hoặc bạn theo dõi. Bấm vào một ngày để xem chi tiết.')}
+        actions={teacher && <button type="button" className="btn btn-primary" onClick={() => setScheduling(true)}><CalendarPlus size={16} aria-hidden /> {t('Đặt lịch cho đề')}</button>} />
 
       <PushPrompt />
 
       <div className="cal-layout" data-panel={selected ? 'open' : 'closed'}>
         <div style={{ minWidth: 0 }} className="stack-sm">
           <div className="cal-head">
-            <button type="button" className="cal-arrow" aria-label="Tháng trước" onClick={() => go(-1)}><ArrowLeft size={26} /></button>
+            <button type="button" className="cal-arrow" aria-label={t('Tháng trước')} onClick={() => go(-1)}><ArrowLeft size={26} /></button>
             <div className="cal-head-title">
               <h2 className="cal-range" aria-live="polite">{monthLabel(anchor)}</h2>
-              <button type="button" className="cal-today" onClick={() => goTo(null)} disabled={anchor.slice(0, 7) === today.slice(0, 7)}>Hôm nay</button>
+              <button type="button" className="cal-today" onClick={() => goTo(null)} disabled={anchor.slice(0, 7) === today.slice(0, 7)}>{t('Hôm nay')}</button>
             </div>
-            <button type="button" className="cal-arrow" aria-label="Tháng sau" onClick={() => go(1)}><ArrowRight size={26} /></button>
+            <button type="button" className="cal-arrow" aria-label={t('Tháng sau')} onClick={() => go(1)}><ArrowRight size={26} /></button>
           </div>
 
-          {data.truncated && <Notice tone="warning">Có quá nhiều kỳ thi trong tháng này nên chỉ hiển thị một phần.</Notice>}
-          {data.isLoading ? <div className="card"><LoadingState rows={6} label="Đang tải lịch…" /></div>
+          {data.truncated && <Notice tone="warning">{t('Có quá nhiều kỳ thi trong tháng này nên chỉ hiển thị một phần.')}</Notice>}
+          {data.isLoading ? <div className="card"><LoadingState rows={6} label={t('Đang tải lịch…')} /></div>
             : data.isError ? <div className="card"><ErrorState error={data.error} onRetry={() => void data.refetch()} /></div>
             : <MonthView days={data.days} anchor={anchor} items={items} tz={tz} nowMs={nowMs} selectedId={selectedId} onSelect={i => setSelectedId(i.examId)} narrow={narrowGrid} onOpenDay={setOpenDay} />}
-          {data.isFetching && !data.isLoading && <p className="xsmall muted" role="status">Đang cập nhật…</p>}
+          {data.isFetching && !data.isLoading && <p className="xsmall muted" role="status">{t('Đang cập nhật…')}</p>}
 
           <Legend />
-          <p className="xsmall muted">Lưới theo múi giờ máy bạn: {zoneLabel(nowMs, tz)} ({tz}). Mỗi kỳ thi ghi giờ theo múi giờ của kỳ thi.</p>
+          <p className="xsmall muted">{t('Lưới theo múi giờ máy bạn:')} {zoneLabel(nowMs, tz)} ({tz}{t('). Mỗi kỳ thi ghi giờ theo múi giờ của kỳ thi.')}</p>
 
           {unscheduled.length > 0 && (
             <section className="card cal-group" aria-labelledby="unscheduled-h">
-              <h2 id="unscheduled-h">Chưa có lịch<small>{unscheduled.length} kỳ thi</small></h2>
+              <h2 id="unscheduled-h">{t('Chưa có lịch')}<small>{unscheduled.length} {t('kỳ thi')}</small></h2>
               {unscheduled.map(i => <AgendaRow key={i.examId} item={i} nowMs={nowMs} viewerTz={tz} selected={selectedId === i.examId} onSelect={() => setSelectedId(i.examId)} />)}
             </section>
           )}

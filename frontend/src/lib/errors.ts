@@ -1,3 +1,4 @@
+import { t, i18nMap } from './i18n'
 // Turns backend ProblemDetail/axios errors into actionable Vietnamese messages.
 // Backend messages stay authoritative: unknown details are shown verbatim.
 
@@ -11,7 +12,7 @@ export interface ApiErrorInfo { status: number; message: string; detail?: string
 // Exam/Grading wrap provider failures in one generic detail; the HTTP status then carries the meaning.
 export const UPSTREAM_GENERIC = /^Required service rejected (this )?request or (is )?unavailable$/
 
-const KNOWN: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
+const KNOWN: [RegExp, string | ((m: RegExpMatchArray) => string)][] = i18nMap([
   [/^Exam is not OPEN$/, 'Kỳ thi hiện không mở. Chỉ có thể bắt đầu khi kỳ thi ở trạng thái Đang mở.'],
   [/^Outside exam schedule$/, 'Hiện không nằm trong khung giờ làm bài của kỳ thi.'],
   [/^Attempt limit reached$/, 'Bạn đã dùng hết số lượt làm bài cho kỳ thi này.'],
@@ -95,16 +96,16 @@ const KNOWN: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/^PUBLIC_EXAM_NOT_AVAILABLE$/, 'Chỉ kỳ thi công khai đã xuất bản mới theo dõi hoặc xem trước được.'],
   [/^EXAM_NOT_AVAILABLE$/, 'Không tìm thấy kỳ thi hoặc bạn không có quyền xem.'],
   [/integration not configured$/, 'Hệ thống chưa cấu hình đầy đủ để thực hiện thao tác này. Liên hệ quản trị viên.'],
-]
+])
 
-const BY_STATUS: Record<number, string> = {
+const BY_STATUS: Record<number, string> = i18nMap({
   400: 'Dữ liệu gửi lên chưa hợp lệ. Kiểm tra lại các trường.',
   401: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
   403: 'Bạn không có quyền thực hiện thao tác này.',
   404: 'Không tìm thấy dữ liệu yêu cầu.',
   409: 'Dữ liệu đã thay đổi hoặc xung đột với trạng thái hiện tại. Tải lại rồi thử lại.',
   503: 'Dịch vụ tạm thời không khả dụng. Thử lại sau ít phút.',
-}
+})
 
 export function errorInfo(error: unknown): ApiErrorInfo {
   const e = error as ErrorShape
@@ -112,10 +113,10 @@ export function errorInfo(error: unknown): ApiErrorInfo {
   const data = e?.response?.data
   const detail = data?.detail || data?.message
   if (!e?.response) {
-    return { status: 0, message: 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.' }
+    return { status: 0, message: t('Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.') }
   }
   if (detail && UPSTREAM_GENERIC.test(detail)) {
-    return { status, detail, message: status >= 500 ? 'Một dịch vụ liên quan đang không khả dụng. Thử lại sau ít phút.' : BY_STATUS[status] ?? 'Một dịch vụ liên quan đã từ chối yêu cầu.' }
+    return { status, detail, message: status >= 500 ? t('Một dịch vụ liên quan đang không khả dụng. Thử lại sau ít phút.') : BY_STATUS[status] ?? t('Một dịch vụ liên quan đã từ chối yêu cầu.') }
   }
   if (detail) {
     for (const [pattern, text] of KNOWN) {
@@ -124,7 +125,7 @@ export function errorInfo(error: unknown): ApiErrorInfo {
     }
     if (status < 500) return { status, detail, message: detail, fields: data?.errors }
   }
-  return { status, message: BY_STATUS[status] ?? 'Máy chủ gặp lỗi khi xử lý yêu cầu. Thử lại sau.', fields: data?.errors }
+  return { status, message: BY_STATUS[status] ?? t('Máy chủ gặp lỗi khi xử lý yêu cầu. Thử lại sau.'), fields: data?.errors }
 }
 
 export const errorText = (error: unknown) => errorInfo(error).message

@@ -7,9 +7,11 @@ import { useAgendaCalendar, useNow } from './useCalendar'
 import { EmptyState, ErrorState, LoadingState, Section } from '../../components/ui'
 import { formatTimeIn } from '../../lib/zone'
 import { itemSpan } from './calendarModel'
+import { t, useT } from '../../lib/i18n'
 
 /** Dashboard block shared by Teacher and Student: today's Exams and the next 7 days, straight from the calendar API. */
 export default function TodayUpcoming() {
+  useT()
   const q = useAgendaCalendar()
   const nowMs = useNow(q.clockOffset, 30_000)
   const groups = agendaGroups(q.items, nowMs, q.tz)
@@ -30,14 +32,14 @@ export default function TodayUpcoming() {
   }
   return (
     <div className="grid-2">
-      <Section title="Hôm nay" description={q.data ? `${today.length} kỳ thi` : undefined}
-        actions={<Link to="/calendar" className="btn btn-ghost btn-sm">Mở Lịch <ArrowRight size={14} aria-hidden /></Link>} bodyClassName="">
+      <Section title={t('Hôm nay')} description={q.data ? t('{0} kỳ thi', { 0: today.length }) : undefined}
+        actions={<Link to="/calendar" className="btn btn-ghost btn-sm">{t('Mở Lịch')} <ArrowRight size={14} aria-hidden /></Link>} bodyClassName="">
         {q.isLoading ? <LoadingState rows={2} /> : q.isError ? <ErrorState error={q.error} onRetry={() => void q.refetch()} />
-          : today.length === 0 ? <EmptyState title="Hôm nay không có kỳ thi" description="Kỳ thi có lịch trong ngày sẽ hiện ở đây." /> : today.slice(0, 5).map(row)}
+          : today.length === 0 ? <EmptyState title={t('Hôm nay không có kỳ thi')} description={t('Kỳ thi có lịch trong ngày sẽ hiện ở đây.')} /> : today.slice(0, 5).map(row)}
       </Section>
-      <Section title="Sắp tới" description="7 ngày tới" actions={<Link to="/calendar" className="btn btn-ghost btn-sm">Xem tất cả <ArrowRight size={14} aria-hidden /></Link>} bodyClassName="">
+      <Section title={t('Sắp tới')} description={t('7 ngày tới')} actions={<Link to="/calendar" className="btn btn-ghost btn-sm">{t('Xem tất cả')} <ArrowRight size={14} aria-hidden /></Link>} bodyClassName="">
         {q.isLoading ? <LoadingState rows={2} /> : q.isError ? <ErrorState error={q.error} onRetry={() => void q.refetch()} />
-          : upcoming.length === 0 ? <EmptyState title="Chưa có kỳ thi sắp tới" description="Không có kỳ thi nào trong 7 ngày tới." /> : upcoming.slice(0, 5).map(row)}
+          : upcoming.length === 0 ? <EmptyState title={t('Chưa có kỳ thi sắp tới')} description={t('Không có kỳ thi nào trong 7 ngày tới.')} /> : upcoming.slice(0, 5).map(row)}
       </Section>
     </div>
   )

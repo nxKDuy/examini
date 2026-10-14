@@ -113,3 +113,13 @@ test('legacy editor fields: stored schedule values pass through verbatim; create
   assert.equal(none.startTime, null); assert.equal(none.endTime, null) // null is sent as null, never dropped
   assert.equal(JSON.stringify(none), '{"startTime":null,"endTime":null}')
 })
+
+test('import review: new and unknown flags are labelled and still need review', async () => {
+  const m = await import('../src/features/question-import/importModel.ts')
+  assert.equal(m.flagLabel('NUMBERING_GAP'), 'Số câu bị nhảy')
+  assert.equal(m.flagLabel('SOMETHING_NEW'), 'Cần xem lại (SOMETHING_NEW)')
+  const base = { reviewRequired: false, reviewed: false, excluded: false, importedQuestionId: null }
+  assert.equal(m.mustReview({ ...base, flags: ['POSSIBLE_MERGED_QUESTIONS'] }), false, 'known flag: server decides')
+  assert.equal(m.mustReview({ ...base, flags: ['SOMETHING_NEW'] }), true)
+  assert.equal(m.mustReview({ ...base, flags: ['SOMETHING_NEW'], reviewed: true }), false)
+})

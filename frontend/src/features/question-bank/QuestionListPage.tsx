@@ -14,11 +14,13 @@ import SubjectCategoryFields from './SubjectCategoryFields'
 import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
 import PersonalQuestionSets from '../banks/PersonalQuestionSets'
+import { t as tt, useT, i18nMap } from '../../lib/i18n'
 
-const VIEWS = [{ value: 'questions', label: 'Câu hỏi lẻ' }, { value: 'sets', label: 'Bộ câu hỏi' }] as const
-const TABS = [{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }]
+const VIEWS = i18nMap([{ value: 'questions', label: 'Câu hỏi lẻ' }, { value: 'sets', label: 'Bộ câu hỏi' }] as const)
+const TABS = i18nMap([{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }])
 
 export default function QuestionListPage() {
+  useT()
   const user = useAuthStore(s => s.user)
   const admin = audienceOf(user) === 'ADMIN'
   const [subjectId, setSubjectId] = useState('')
@@ -49,15 +51,15 @@ export default function QuestionListPage() {
   return (
     <div className="stack">
       <PageHeader
-        title={admin ? 'Câu hỏi' : 'Kho cá nhân'}
-        description={admin ? 'Soạn bản nháp, kích hoạt để dùng.' : 'Soạn bản nháp, kích hoạt, gom thành bộ và lưu trữ. Để đăng câu hoặc bộ lên cộng đồng, dùng nút + ở Ngân hàng công khai.'}
+        title={admin ? tt('Câu hỏi') : tt('Kho cá nhân')}
+        description={admin ? tt('Soạn bản nháp, kích hoạt để dùng.') : tt('Soạn bản nháp, kích hoạt, gom thành bộ và lưu trữ. Để đăng câu hoặc bộ lên cộng đồng, dùng nút + ở Ngân hàng công khai.')}
         actions={!admin && <>
-          <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> Nhập CSV</button>
-          <Link to="/questions/imports" className="btn btn-secondary"><FileUp size={16} aria-hidden /> Nhập tài liệu</Link>
-          <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> Tạo câu hỏi</button>
+          <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> {tt('Nhập CSV')}</button>
+          <Link to="/questions/imports" className="btn btn-secondary"><FileUp size={16} aria-hidden /> {tt('Nhập tài liệu')}</Link>
+          <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> {tt('Tạo câu hỏi')}</button>
         </>} />
 
-      {!admin && <div className="tabs" role="tablist" aria-label="Nội dung kho cá nhân">
+      {!admin && <div className="tabs" role="tablist" aria-label={tt('Nội dung kho cá nhân')}>
         {VIEWS.map(v => (
           <button key={v.value} type="button" role="tab" className="tab" aria-selected={view === v.value}
             onClick={() => setParams(v.value === 'sets' ? { view: 'sets' } : {}, { replace: true })}>{v.label}</button>
@@ -65,8 +67,8 @@ export default function QuestionListPage() {
       </div>}
 
       {view === 'sets' ? <PersonalQuestionSets /> : <>
-      <section className="card" aria-label="Bộ lọc câu hỏi">
-        <div className="tabs" role="tablist" aria-label="Trạng thái">
+      <section className="card" aria-label={tt('Bộ lọc câu hỏi')}>
+        <div className="tabs" role="tablist" aria-label={tt('Trạng thái')}>
           {TABS.map(t => (
             <button key={t.value} type="button" role="tab" className="tab" aria-selected={(filters.status ?? '') === t.value} onClick={() => set('status', t.value)}>{t.label}</button>
           ))}
@@ -74,35 +76,35 @@ export default function QuestionListPage() {
         <div className="card-body" style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', paddingTop: 16, paddingBottom: 16 }}>
           <SubjectCategoryFields allowAll subjectId={subjectId} categoryId={filters.categoryId ?? ''} onSubject={setSubjectId} onCategory={v => set('categoryId', v)} />
           <div className="field">
-            <label className="field-label" htmlFor="f-type">Loại</label>
+            <label className="field-label" htmlFor="f-type">{tt('Loại')}</label>
             <select id="f-type" className="input" value={filters.questionType ?? ''} onChange={e => set('questionType', e.target.value)}>
-              <option value="">Tất cả loại</option>
+              <option value="">{tt('Tất cả loại')}</option>
               {Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="f-diff">Độ khó</label>
+            <label className="field-label" htmlFor="f-diff">{tt('Độ khó')}</label>
             <select id="f-diff" className="input" value={filters.difficulty ?? ''} onChange={e => set('difficulty', e.target.value)}>
-              <option value="">Tất cả độ khó</option>
+              <option value="">{tt('Tất cả độ khó')}</option>
               {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="f-text">Tìm trong nội dung</label>
+            <label className="field-label" htmlFor="f-text">{tt('Tìm trong nội dung')}</label>
             <input id="f-text" type="search" className="input" maxLength={200} value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
       </section>
 
       <div className="split">
-        <section className="card" aria-label="Danh sách câu hỏi" style={{ overflow: 'hidden' }}>
-          <div className="card-header"><h2 className="small" style={{ fontSize: '0.9375rem' }}>{list.data ? `${list.data.totalElements} câu hỏi` : 'Câu hỏi'}</h2>
-            {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">Đang cập nhật…</span>}</div>
+        <section className="card" aria-label={tt('Danh sách câu hỏi')} style={{ overflow: 'hidden' }}>
+          <div className="card-header"><h2 className="small" style={{ fontSize: '0.9375rem' }}>{list.data ? tt('{0} câu hỏi', { 0: list.data.totalElements }) : tt('Câu hỏi')}</h2>
+            {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">{tt('Đang cập nhật…')}</span>}</div>
           {list.isLoading ? <LoadingState rows={6} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
             : list.data!.content.length === 0
-              ? <EmptyState icon={<BookOpenCheck size={30} />} title={'Không có câu hỏi phù hợp'}
-                  description={'Đổi bộ lọc hoặc tạo câu hỏi mới.'}
-                  action={!admin && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><Plus size={14} aria-hidden /> Tạo câu hỏi</button>} />
+              ? <EmptyState icon={<BookOpenCheck size={30} />} title={tt('Không có câu hỏi phù hợp')}
+                  description={tt('Đổi bộ lọc hoặc tạo câu hỏi mới.')}
+                  action={!admin && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><Plus size={14} aria-hidden /> {tt('Tạo câu hỏi')}</button>} />
               : <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {list.data!.content.map(item => (
                     <li key={item.id}><button type="button" className="list-item" aria-current={selectedId === item.id} onClick={() => select(item.id)}>
@@ -112,17 +114,17 @@ export default function QuestionListPage() {
                       </div>
                       <div className="truncate-2 small" style={{ color: 'var(--color-ink)' }}>{item.content}</div>
                       <div className="xsmall muted" style={{ marginTop: 4 }}>
-                        {item.createdBy === user?.id ? 'Của bạn' : `Tác giả ${shortId(item.createdBy)}`} · {formatDateTime(item.updatedAt)}
+                        {item.createdBy === user?.id ? tt('Của bạn') : tt('Tác giả {0}', { 0: shortId(item.createdBy) })} · {formatDateTime(item.updatedAt)}
                       </div>
                     </button></li>
                   ))}
                 </ul>}
-          {list.data && <Pagination label="Phân trang câu hỏi" page={filters.page ?? 0} totalPages={list.data.totalPages} onChange={p => setFilters(f => ({ ...f, page: p }))} />}
+          {list.data && <Pagination label={tt('Phân trang câu hỏi')} page={filters.page ?? 0} totalPages={list.data.totalPages} onChange={p => setFilters(f => ({ ...f, page: p }))} />}
         </section>
 
-        <section ref={detailRef} className="card card-body sticky-pane" aria-label="Chi tiết câu hỏi" style={{ minHeight: 200 }}>
+        <section ref={detailRef} className="card card-body sticky-pane" aria-label={tt('Chi tiết câu hỏi')} style={{ minHeight: 200 }}>
           {selectedId ? <QuestionDetail key={selectedId} id={selectedId} onEdit={q => setEditing(q)} />
-            : <EmptyState title="Chọn một câu hỏi" description="Chi tiết, đáp án, nguồn gốc và lịch sử phiên bản sẽ hiển thị ở đây." />}
+            : <EmptyState title={tt('Chọn một câu hỏi')} description={tt('Chi tiết, đáp án, nguồn gốc và lịch sử phiên bản sẽ hiển thị ở đây.')} />}
         </section>
       </div>
       </>}
@@ -135,6 +137,7 @@ export default function QuestionListPage() {
 }
 
 function ImportDialog({ onClose }: { onClose: () => void }) {
+  useT()
   const qc = useQueryClient()
   const [subjectId, setSubjectId] = useState('')
   const [categoryId, setCategoryId] = useState('')
@@ -145,22 +148,22 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
     onSuccess: async r => { setResult(r); await qc.invalidateQueries({ queryKey: ['questions'] }) },
   })
   return (
-    <Dialog title="Nhập câu hỏi từ CSV" onClose={onClose} busy={run.isPending}
-      description="Câu hỏi nhập vào ở trạng thái Bản nháp. Tối đa 1000 dòng, 10MB."
+    <Dialog title={tt('Nhập câu hỏi từ CSV')} onClose={onClose} busy={run.isPending}
+      description={tt('Câu hỏi nhập vào ở trạng thái Bản nháp. Tối đa 1000 dòng, 10MB.')}
       footer={<>
-        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={run.isPending}>{result ? 'Đóng' : 'Hủy'}</button>
-        <button type="button" className="btn btn-primary" disabled={!file || !categoryId || run.isPending} onClick={() => run.mutate()}>{run.isPending ? 'Đang nhập…' : 'Nhập'}</button>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={run.isPending}>{result ? tt('Đóng') : tt('Hủy')}</button>
+        <button type="button" className="btn btn-primary" disabled={!file || !categoryId || run.isPending} onClick={() => run.mutate()}>{run.isPending ? tt('Đang nhập…') : tt('Nhập')}</button>
       </>}>
       <div className="stack">
         <div className="grid-2"><SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={setSubjectId} onCategory={setCategoryId} required /></div>
         <div className="field">
-          <label className="field-label" htmlFor="csv-file">Tệp CSV</label>
+          <label className="field-label" htmlFor="csv-file">{tt('Tệp CSV')}</label>
           <input id="csv-file" type="file" accept=".csv,text/csv" className="input" onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }} />
-          <span className="field-hint">Cột bắt buộc: content, type, difficulty. Lựa chọn: option1, correct1, option2, correct2… (true/false). Trả lời ngắn và tự luận dùng cột expectedAnswer.</span>
+          <span className="field-hint">{tt('Cột bắt buộc: content, type, difficulty. Lựa chọn: option1, correct1, option2, correct2… (true/false). Trả lời ngắn và tự luận dùng cột expectedAnswer.')}</span>
         </div>
         {run.isError && <Notice tone="danger" live>{errorText(run.error)}</Notice>}
         {result && (
-          <Notice tone={result.failed ? 'warning' : 'success'} live title={`Đã nhập ${result.imported}/${result.totalRows} dòng${result.failed ? `, ${result.failed} dòng lỗi` : ''}`}>
+          <Notice tone={result.failed ? 'warning' : 'success'} live title={`${tt('Đã nhập {0}/{1} dòng', { 0: result.imported, 1: result.totalRows })}${result.failed ? tt(', {0} dòng lỗi', { 0: result.failed }) : ''}`}>
             {result.errors.length > 0 && <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{result.errors.slice(0, 20).map((e, i) => <li key={i}>{e}</li>)}</ul>}
           </Notice>
         )}

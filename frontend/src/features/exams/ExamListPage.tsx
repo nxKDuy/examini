@@ -8,13 +8,15 @@ import { ExamStatusBadge } from '../../components/status'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, formatDateTime, formatScore } from '../../lib/format'
+import { t, useT, i18nMap } from '../../lib/i18n'
 
-const FILTERS: { value: '' | ExamStatus; label: string }[] = [
+const FILTERS: { value: '' | ExamStatus; label: string }[] = i18nMap([
   { value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'PUBLISHED', label: 'Đã xuất bản' },
   { value: 'OPEN', label: 'Đang mở' }, { value: 'CLOSED', label: 'Đã đóng' },
-]
+])
 
 export default function ExamListPage() {
+  useT()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
@@ -30,24 +32,24 @@ export default function ExamListPage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Đề thi" description="Đề thi bạn sở hữu hoặc được mời cộng tác. Soạn bản nháp, xuất bản để cố định nội dung, rồi mở cho thí sinh."
-        actions={<Link to="/exams/create" className="btn btn-primary"><FilePlus2 size={16} aria-hidden /> Tạo đề thi</Link>} />
+      <PageHeader title={t('Đề thi')} description={t('Đề thi bạn sở hữu hoặc được mời cộng tác. Soạn bản nháp, xuất bản để cố định nội dung, rồi mở cho thí sinh.')}
+        actions={<Link to="/exams/create" className="btn btn-primary"><FilePlus2 size={16} aria-hidden /> {t('Tạo đề thi')}</Link>} />
 
       {accept.isError && <Notice tone="danger" live>{errorText(accept.error)}</Notice>}
       {(invites.data?.length ?? 0) > 0 && (
-        <section className="card" aria-label="Lời mời cộng tác">
-          <div className="card-header"><h2 className="row"><MailCheck size={18} aria-hidden /> Lời mời cộng tác</h2></div>
+        <section className="card" aria-label={t('Lời mời cộng tác')}>
+          <div className="card-header"><h2 className="row"><MailCheck size={18} aria-hidden /> {t('Lời mời cộng tác')}</h2></div>
           {invites.data!.map(e => (
             <div key={e.id} className="spread" style={{ padding: '12px 20px', borderBottom: '1px solid var(--color-border)' }}>
               <div><strong style={{ color: 'var(--color-ink)' }}>{e.title}</strong> <ExamStatusBadge status={e.status} /></div>
-              <button type="button" className="btn btn-primary btn-sm" disabled={accept.isPending} onClick={() => accept.mutate(e.id)}>Chấp nhận</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={accept.isPending} onClick={() => accept.mutate(e.id)}>{t('Chấp nhận')}</button>
             </div>
           ))}
         </section>
       )}
 
       <section className="card" style={{ overflow: 'hidden' }}>
-        <div className="tabs" role="tablist" aria-label="Lọc theo trạng thái">
+        <div className="tabs" role="tablist" aria-label={t('Lọc theo trạng thái')}>
           {FILTERS.map(f => (
             <button key={f.value} type="button" role="tab" className="tab" aria-selected={status === f.value} onClick={() => setStatus(f.value)}>
               {f.label}{list.data && <span className="count">{f.value ? list.data.content.filter(e => e.status === f.value).length : list.data.content.length}</span>}
@@ -55,30 +57,30 @@ export default function ExamListPage() {
           ))}
         </div>
         {list.isLoading ? <LoadingState rows={5} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-          : exams.length === 0 ? <EmptyState icon={<FilePlus2 size={30} />} title={status ? 'Không có đề thi ở trạng thái này' : 'Chưa có đề thi'}
-              description="Tạo đề thi từ các câu hỏi đã được duyệt trong Ngân hàng câu hỏi."
-              action={!status && <Link to="/exams/create" className="btn btn-primary btn-sm">Tạo đề thi</Link>} />
+          : exams.length === 0 ? <EmptyState icon={<FilePlus2 size={30} />} title={status ? t('Không có đề thi ở trạng thái này') : t('Chưa có đề thi')}
+              description={t('Tạo đề thi từ các câu hỏi đã được duyệt trong Ngân hàng câu hỏi.')}
+              action={!status && <Link to="/exams/create" className="btn btn-primary btn-sm">{t('Tạo đề thi')}</Link>} />
           : <div className="table-wrap"><table className="table">
               <thead><tr>
-                <th scope="col">Đề thi</th><th scope="col">Trạng thái</th><th scope="col">Vai trò</th><th scope="col">Khung giờ</th>
-                <th scope="col">Tham gia</th><th scope="col" style={{ textAlign: 'right' }}>Câu / điểm</th>
+                <th scope="col">{t('Đề thi')}</th><th scope="col">{t('Trạng thái')}</th><th scope="col">{t('Vai trò')}</th><th scope="col">{t('Khung giờ')}</th>
+                <th scope="col">Tham gia</th><th scope="col" style={{ textAlign: 'right' }}>{t('Câu / điểm')}</th>
               </tr></thead>
               <tbody>{exams.map(e => (
                 <tr key={e.id} className="clickable" onClick={() => navigate(`/exams/${e.id}`)}>
                   <td style={{ minWidth: 220 }}>
                     <Link to={`/exams/${e.id}`} onClick={ev => ev.stopPropagation()} style={{ color: 'var(--color-ink)', textDecoration: 'none' }}>{e.title}</Link>
-                    <div className="xsmall muted">{e.durationMinutes} phút · Mã <span className="mono">{e.code}</span></div>
+                    <div className="xsmall muted">{e.durationMinutes} {t('phút · Mã')} <span className="mono">{e.code}</span></div>
                   </td>
                   <td><ExamStatusBadge status={e.status} /></td>
-                  <td className="small">{e.ownerUserId === user?.id ? 'Chủ sở hữu' : 'Cộng tác'}</td>
-                  <td className="xsmall" style={{ minWidth: 170 }}>{e.startTime || e.endTime ? <>{formatDateTime(e.startTime, 'Không giới hạn')}<br />đến {formatDateTime(e.endTime, 'không giới hạn')}</> : <span className="muted">Không giới hạn</span>}</td>
+                  <td className="small">{e.ownerUserId === user?.id ? t('Chủ sở hữu') : t('Cộng tác')}</td>
+                  <td className="xsmall" style={{ minWidth: 170 }}>{e.startTime || e.endTime ? <>{formatDateTime(e.startTime, t('Không giới hạn'))}<br />{t('đến')} {formatDateTime(e.endTime, t('không giới hạn'))}</> : <span className="muted">{t('Không giới hạn')}</span>}</td>
                   <td className="small">{ACCESS_MODE_LABEL[e.accessMode]}</td>
                   <td className="mono small" style={{ textAlign: 'right' }}>{e.questionIds.length} / {formatScore(e.totalScore)}</td>
                 </tr>
               ))}</tbody>
             </table></div>}
-        {list.data && <Pagination label="Phân trang đề thi" page={page} totalPages={list.data.totalPages} onChange={setPage} />}
-        {status && list.data && list.data.totalPages > 1 && <p className="xsmall muted" style={{ padding: '0 20px 12px' }}>Bộ lọc trạng thái áp dụng trên trang hiện tại.</p>}
+        {list.data && <Pagination label={t('Phân trang đề thi')} page={page} totalPages={list.data.totalPages} onChange={setPage} />}
+        {status && list.data && list.data.totalPages > 1 && <p className="xsmall muted" style={{ padding: '0 20px 12px' }}>{t('Bộ lọc trạng thái áp dụng trên trang hiện tại.')}</p>}
       </section>
     </div>
   )

@@ -1,12 +1,13 @@
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, shortId } from '../../lib/format'
 import type { FieldChange, OrderEntry, QuestionSyncPreview, SetSyncPreview, SyncApplyBody, SyncChoice } from './copySyncApi'
+import { t, i18nMap } from '../../lib/i18n'
 
-export const SYNC_FIELD_LABEL: Record<string, string> = {
+export const SYNC_FIELD_LABEL: Record<string, string> = i18nMap({
   CATEGORY: 'Chủ đề', CONTENT: 'Nội dung câu hỏi', QUESTION_TYPE: 'Loại câu hỏi', DIFFICULTY: 'Độ khó',
   OPTIONS: 'Phương án', EXPECTED_ANSWER: 'Đáp án chuẩn', EXPLANATION: 'Giải thích', TITLE: 'Tên bộ', DESCRIPTION: 'Mô tả',
-}
-export const SYNC_CHOICE_LABEL: Record<SyncChoice, string> = { KEEP_LOCAL: 'Giữ bản của tôi', TAKE_SOURCE: 'Lấy từ nguồn' }
-export const ITEM_KIND_LABEL: Record<string, string> = { ADDED: 'Thêm', UPDATED: 'Cập nhật', REMOVED: 'Xóa' }
+})
+export const SYNC_CHOICE_LABEL: Record<SyncChoice, string> = i18nMap({ KEEP_LOCAL: 'Giữ bản của tôi', TAKE_SOURCE: 'Lấy từ nguồn' })
+export const ITEM_KIND_LABEL: Record<string, string> = i18nMap({ ADDED: 'Thêm', UPDATED: 'Cập nhật', REMOVED: 'Xóa' })
 
 export type SyncTab = 'info' | 'items' | 'order'
 export interface SyncRow { key: string; tab: SyncTab; conflict: boolean }
@@ -67,8 +68,8 @@ export function parseActions(actions: string): { key: string; choice: string }[]
 }
 
 export function decisionLabel(key: string) {
-  if (key === 'ORDER') return 'Thứ tự câu'
-  if (key.startsWith('ITEM:')) return `Câu ${key.slice(5, 13)}`
+  if (key === 'ORDER') return t('Thứ tự câu')
+  if (key.startsWith('ITEM:')) return t('Câu {0}', { 0: key.slice(5, 13) })
   return SYNC_FIELD_LABEL[key] ?? key
 }
 
@@ -79,7 +80,7 @@ export function syncValue(field: string, value: unknown): string | null {
   if (field === 'QUESTION_TYPE') return QUESTION_TYPE_LABEL[text] ?? text
   if (field === 'DIFFICULTY') return DIFFICULTY_LABEL[text] ?? text
   // The provider compares category ids; names are not part of the sync contract.
-  if (field === 'CATEGORY') return `Chủ đề mã ${shortId(text)}`
+  if (field === 'CATEGORY') return t('Chủ đề mã {0}', { 0: shortId(text) })
   return text
 }
 

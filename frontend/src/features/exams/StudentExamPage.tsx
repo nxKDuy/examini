@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import BlockingOverlay from '../integrity/BlockingOverlay'
 import { exitFullscreen } from '../../lib/fullscreen'
-import { useT } from '../../lib/i18n'
+import { useT, t as tt, locale } from '../../lib/i18n'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
@@ -103,7 +103,7 @@ export default function StudentExamPage() {
     const next = signalState(r)
     setSignals(next)
     if (next.stage === 'submitted') { autoSubmittedRef.current = true; setAutoSubmitted(true); setConfirming(false); return }
-    if (r.warningRecommended) setAnnouncement(`Đã ghi nhận ${next.count}/${next.limit} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.`)
+    if (r.warningRecommended) setAnnouncement(tt('Đã ghi nhận {0}/{1} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.', { 0: next.count, 1: next.limit }))
   })
   if (integrity.fullscreen) wasFullscreen.current = true
   // Leaving the attempt (result, auto-submit, navigation) gives the screen back.
@@ -134,7 +134,7 @@ export default function StudentExamPage() {
     for (const mark of [300, 60]) {
       if (remaining > 0 && remaining <= mark && !announced.current.has(mark)) {
         announced.current.add(mark)
-        setAnnouncement(mark === 300 ? 'Còn 5 phút làm bài.' : 'Còn 1 phút làm bài.')
+        setAnnouncement(mark === 300 ? tt('Còn 5 phút làm bài.') : tt('Còn 1 phút làm bài.'))
       }
     }
   }, [remaining])
@@ -194,7 +194,7 @@ export default function StudentExamPage() {
     setSubmitting(true); setActionError('')
     try {
       const unsaved = await flush()
-      if (unsaved.length) { setActionError(`Còn ${unsaved.length} câu chưa lưu được. Hãy thử lưu lại trước khi nộp.`); setConfirming(false); return }
+      if (unsaved.length) { setActionError(tt('Còn {0} câu chưa lưu được. Hãy thử lưu lại trước khi nộp.', { 0: unsaved.length })); setConfirming(false); return }
       await examApi.submit(id!)
       goResult()
     } catch (e) {
@@ -251,13 +251,13 @@ export default function StudentExamPage() {
       <header className="take-bar">
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</div>
-          <div className="xsmall muted">Lượt {session.attemptNumber} · Đã trả lời {answeredCount}/{questions.length}{integrity.policy && ' · Có ghi nhận tín hiệu trình duyệt'}</div>
+          <div className="xsmall muted">{tt('Lượt')} {session.attemptNumber} {tt('· Đã trả lời')} {answeredCount}/{questions.length}{integrity.policy && tt(' · Có ghi nhận tín hiệu trình duyệt')}</div>
         </div>
         <SaveIndicator online={online} errors={errors} busy={busy} lastSavedAt={lastSavedAt} />
-        <span className="timer" role="timer" aria-label={`Thời gian còn lại ${formatDuration(remaining)}`} data-level={level}>
+        <span className="timer" role="timer" aria-label={tt('Thời gian còn lại {0}', { 0: formatDuration(remaining) })} data-level={level}>
           <Timer size={16} aria-hidden /> {formatDuration(remaining)}
         </span>
-        <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}><Send size={16} aria-hidden /> Nộp bài</button>
+        <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}><Send size={16} aria-hidden /> {tt('Nộp bài')}</button>
       </header>
 
       {/* Questions render only while not blocked (fullscreen active, leave acknowledged): contract A. */}
@@ -273,39 +273,39 @@ export default function StudentExamPage() {
 
           <section className="card card-body stack-lg" aria-labelledby="question-heading">
             <div className="spread">
-              <h1 id="question-heading" ref={headingRef} tabIndex={-1} style={{ fontSize: '1rem' }}>Câu {index + 1} / {questions.length}</h1>
-              <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} điểm</span>
+              <h1 id="question-heading" ref={headingRef} tabIndex={-1} style={{ fontSize: '1rem' }}>{tt('Câu')} {index + 1} / {questions.length}</h1>
+              <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} {tt('điểm')}</span>
             </div>
             <p className="question-text">{q.content}</p>
             <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
               onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
             {saveState[q.questionId] === 'error' && (
-              <div className="row"><span className="field-error">Câu này chưa lưu được.</span>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => void persist(q.questionId)}>Thử lưu lại</button></div>
+              <div className="row"><span className="field-error">{tt('Câu này chưa lưu được.')}</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => void persist(q.questionId)}>{tt('Thử lưu lại')}</button></div>
             )}
           </section>
 
-          <nav className="take-nav" aria-label="Chuyển câu">
-            <button type="button" className="btn btn-secondary" disabled={index === 0} onClick={() => goTo(index - 1)}><ChevronLeft size={16} aria-hidden /> Câu trước</button>
-            <button type="button" className="btn btn-ghost hide-desktop" aria-expanded={showPalette} onClick={() => setShowPalette(v => !v)}><LayoutGrid size={16} aria-hidden /> Các câu</button>
+          <nav className="take-nav" aria-label={tt('Chuyển câu')}>
+            <button type="button" className="btn btn-secondary" disabled={index === 0} onClick={() => goTo(index - 1)}><ChevronLeft size={16} aria-hidden /> {tt('Câu trước')}</button>
+            <button type="button" className="btn btn-ghost hide-desktop" aria-expanded={showPalette} onClick={() => setShowPalette(v => !v)}><LayoutGrid size={16} aria-hidden /> {tt('Các câu')}</button>
             {index < questions.length - 1
-              ? <button type="button" className="btn btn-secondary" onClick={() => goTo(index + 1)}>Câu sau <ChevronRight size={16} aria-hidden /></button>
-              : <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}>Xem lại và nộp</button>}
+              ? <button type="button" className="btn btn-secondary" onClick={() => goTo(index + 1)}>{tt('Câu sau')} <ChevronRight size={16} aria-hidden /></button>
+              : <button type="button" className="btn btn-primary" disabled={locked} onClick={() => setConfirming(true)}>{tt('Xem lại và nộp')}</button>}
           </nav>
         </main>
 
-        <aside className={`card card-body stack sticky-pane palette-pane ${showPalette ? 'open' : ''}`} aria-label="Danh sách câu hỏi" style={{ top: 76 }}>
-          <div className="spread"><h2 style={{ fontSize: '0.9375rem' }}>Câu hỏi</h2><span className="xsmall muted">{answeredCount}/{questions.length} đã trả lời</span></div>
+        <aside className={`card card-body stack sticky-pane palette-pane ${showPalette ? 'open' : ''}`} aria-label={tt('Danh sách câu hỏi')} style={{ top: 76 }}>
+          <div className="spread"><h2 style={{ fontSize: '0.9375rem' }}>{tt('Câu hỏi')}</h2><span className="xsmall muted">{answeredCount}/{questions.length} {tt('đã trả lời')}</span></div>
           <div className="palette">
             {questions.map((qq, i) => (
               <button key={qq.questionId} type="button" data-answered={answered(qq)} aria-current={i === index}
-                aria-label={`Câu ${i + 1}, ${answered(qq) ? 'đã trả lời' : 'chưa trả lời'}${saveState[qq.questionId] === 'error' ? ', chưa lưu được' : ''}`}
+                aria-label={tt('Câu {0}, {1}{2}', { 0: i + 1, 1: answered(qq) ? 'đã trả lời' : 'chưa trả lời', 2: saveState[qq.questionId] === 'error' ? ', chưa lưu được' : '' })}
                 onClick={() => goTo(i)}>{i + 1}</button>
             ))}
           </div>
           <div className="xsmall muted stack-sm" style={{ gap: 4 }}>
-            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, background: 'var(--color-accent)', border: '1px solid var(--color-accent)' }} /> Đã trả lời</span>
-            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, border: '1px solid #000' }} /> Chưa trả lời</span>
+            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, background: 'var(--color-accent)', border: '1px solid var(--color-accent)' }} /> {tt('Đã trả lời')}</span>
+            <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, border: '1px solid #000' }} /> {tt('Chưa trả lời')}</span>
           </div>
         </aside>
       </div>
@@ -335,21 +335,21 @@ export default function StudentExamPage() {
         </BlockingOverlay>
       )}
       {confirming && (
-        <ConfirmDialog title="Nộp bài?" confirmLabel="Nộp bài" busy={submitting} cancelLabel="Tiếp tục làm bài"
+        <ConfirmDialog title={tt('Nộp bài?')} confirmLabel={tt('Nộp bài')} busy={submitting} cancelLabel={tt('Tiếp tục làm bài')}
           onConfirm={() => void submit()} onCancel={() => setConfirming(false)}>
           <div className="stack">
             <div className="grid-stats">
-              <div className="card stat"><div className="stat-label">Đã trả lời</div><div className="stat-value">{answeredCount}</div></div>
-              <div className="card stat"><div className="stat-label">Chưa trả lời</div><div className="stat-value">{unanswered.length}</div></div>
+              <div className="card stat"><div className="stat-label">{tt('Đã trả lời')}</div><div className="stat-value">{answeredCount}</div></div>
+              <div className="card stat"><div className="stat-label">{tt('Chưa trả lời')}</div><div className="stat-value">{unanswered.length}</div></div>
             </div>
             {unanswered.length > 0 && (
               <div className="stack-sm">
-                <span className="small">Câu chưa trả lời:</span>
-                <div className="row">{unanswered.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}>Câu {i + 1}</button>)}</div>
+                <span className="small">{tt('Câu chưa trả lời:')}</span>
+                <div className="row">{unanswered.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}>{tt('Câu')} {i + 1}</button>)}</div>
               </div>
             )}
-            {busy && <p className="small muted">Đang lưu các thay đổi cuối; hệ thống sẽ hoàn tất lưu trước khi nộp.</p>}
-            <Notice tone="warning">Sau khi nộp, bạn không thể thay đổi câu trả lời.</Notice>
+            {busy && <p className="small muted">{tt('Đang lưu các thay đổi cuối; hệ thống sẽ hoàn tất lưu trước khi nộp.')}</p>}
+            <Notice tone="warning">{tt('Sau khi nộp, bạn không thể thay đổi câu trả lời.')}</Notice>
           </div>
         </ConfirmDialog>
       )}
@@ -358,23 +358,25 @@ export default function StudentExamPage() {
 }
 
 function SaveIndicator({ online, errors, busy, lastSavedAt }: { online: boolean; errors: number; busy: boolean; lastSavedAt: Date | null }) {
+  useT()
   let content
-  if (!online) content = <><CloudOff size={16} aria-hidden /> Mất mạng</>
-  else if (errors) content = <span style={{ color: 'var(--color-danger)' }} className="row"><AlertCircle size={16} aria-hidden /> {errors} câu chưa lưu</span>
-  else if (busy) content = <><Spinner size={14} /> Đang lưu…</>
-  else if (lastSavedAt) content = <><CheckCircle2 size={16} aria-hidden style={{ color: 'var(--color-success)' }} /> Đã lưu {formatClock(lastSavedAt)}</>
-  else content = <>Câu trả lời được lưu tự động</>
+  if (!online) content = <><CloudOff size={16} aria-hidden /> {tt('Mất mạng')}</>
+  else if (errors) content = <span style={{ color: 'var(--color-danger)' }} className="row"><AlertCircle size={16} aria-hidden /> {errors} {tt('câu chưa lưu')}</span>
+  else if (busy) content = <><Spinner size={14} /> {tt('Đang lưu…')}</>
+  else if (lastSavedAt) content = <><CheckCircle2 size={16} aria-hidden style={{ color: 'var(--color-success)' }} /> {tt('Đã lưu')} {formatClock(lastSavedAt)}</>
+  else content = <>{tt('Câu trả lời được lưu tự động')}</>
   return <span role="status" className="row xsmall muted" style={{ gap: 6 }}>{content}</span>
 }
 
 function Answer({ question, value, disabled, onChange, onBlur }: {
   question: SafeQuestion; value: string; disabled: boolean; onChange: (v: string, immediate: boolean) => void; onBlur: () => void
 }) {
+  useT()
   const name = `answer-${question.questionId}`
   if (question.questionType === 'MULTIPLE_CHOICE' || question.questionType === 'TRUE_FALSE') {
     return (
       <fieldset className="stack-sm">
-        <legend className="sr-only">Chọn một đáp án</legend>
+        <legend className="sr-only">{tt('Chọn một đáp án')}</legend>
         {question.options.map((o, i) => (
           <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
             <input type="radio" name={name} value={o.id} checked={value === o.id} disabled={disabled} onChange={() => onChange(o.id, true)} className="sr-only" />
@@ -382,26 +384,26 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
             <span className="prewrap" style={{ flex: 1 }}>{o.content}</span>
           </label>
         ))}
-        {value && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>Bỏ chọn</button></div>}
+        {value && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Bỏ chọn')}</button></div>}
       </fieldset>
     )
   }
   if (question.questionType === 'SHORT_ANSWER') {
     return (
       <div className="field">
-        <label className="field-label" htmlFor={name}>Câu trả lời</label>
+        <label className="field-label" htmlFor={name}>{tt('Câu trả lời')}</label>
         <input id={name} className="input" value={value} disabled={disabled} maxLength={20000} autoComplete="off"
           onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
-        <span className="field-hint">Nhập chính xác câu trả lời ngắn gọn.</span>
+        <span className="field-hint">{tt('Nhập chính xác câu trả lời ngắn gọn.')}</span>
       </div>
     )
   }
   return (
     <div className="field">
-      <label className="field-label" htmlFor={name}>Bài làm</label>
+      <label className="field-label" htmlFor={name}>{tt('Bài làm')}</label>
       <textarea id={name} className="input" rows={10} value={value} disabled={disabled} maxLength={20000}
         onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
-      <span className="field-hint">{value.length.toLocaleString('vi-VN')}/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.</span>
+      <span className="field-hint">{value.length.toLocaleString(locale())}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
     </div>
   )
 }

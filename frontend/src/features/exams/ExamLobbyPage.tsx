@@ -14,7 +14,7 @@ import StudentAttempts, { RevokedNotice } from '../participants/StudentAttempts'
 import { monitored, policySummary } from '../integrity/integrityModel'
 import { integrityApi } from '../integrity/integrityApi'
 import { exitFullscreen, fullscreenSupported, requestFullscreen } from '../../lib/fullscreen'
-import { useT } from '../../lib/i18n'
+import { useT, t as tt } from '../../lib/i18n'
 import { useParticipation } from '../participants/useParticipation'
 import { ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { errorStatus, errorText } from '../../lib/errors'
@@ -57,7 +57,7 @@ export default function ExamLobbyPage() {
   if (avail.isError || !a) {
     return <div className="stack">
       <ErrorState error={avail.error} onRetry={() => void avail.refetch()} />
-      <div style={{ textAlign: 'center' }}><Link to="/my-exams" className="btn btn-secondary">Về Kỳ thi của tôi</Link></div>
+      <div style={{ textAlign: 'center' }}><Link to="/my-exams" className="btn btn-secondary">{tt('Về Kỳ thi của tôi')}</Link></div>
     </div>
   }
   const exam = lobby.data
@@ -98,72 +98,72 @@ export default function ExamLobbyPage() {
 
   return (
     <div className="stack-lg" style={{ maxWidth: 880 }}>
-      <PageHeader title={a.examTitle} crumbs={[{ label: 'Kỳ thi của tôi', to: '/my-exams' }, { label: preview ? 'Xem trước' : 'Phòng chờ' }]}
+      <PageHeader title={a.examTitle} crumbs={[{ label: tt('Kỳ thi của tôi'), to: '/my-exams' }, { label: preview ? tt('Xem trước') : tt('Phòng chờ') }]}
         description={<span className="row"><StateBadge state={a.calendarState} />{exam && <span>{EXAM_TYPE_LABEL[exam.type]}</span>}</span>} />
 
       {preview && (
-        <Notice tone="info" title="Xem trước">
-          Bạn chưa tham gia kỳ thi này nên chỉ thấy lịch và điều kiện. Nội dung đề chỉ hiện sau khi tham gia và đến giờ bắt đầu.
+        <Notice tone="info" title={tt('Xem trước')}>
+          {tt('Bạn chưa tham gia kỳ thi này nên chỉ thấy lịch và điều kiện. Nội dung đề chỉ hiện sau khi tham gia và đến giờ bắt đầu.')}
           <div className="row" style={{ marginTop: 10 }}>
-            <button type="button" className="btn btn-primary btn-sm" disabled={!a.canJoin || join.isPending} onClick={() => join.mutate()}>{join.isPending ? 'Đang tham gia…' : 'Tham gia kỳ thi'}</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={!a.canJoin || join.isPending} onClick={() => join.mutate()}>{join.isPending ? tt('Đang tham gia…') : tt('Tham gia kỳ thi')}</button>
             <FollowButton examId={a.examId} followed={a.followed} onError={setError} />
           </div>
-          {!a.canJoin && <p className="small" style={{ marginTop: 8 }}>{reasonText(a.reasonCode) ?? 'Chưa thể tham gia lúc này.'}</p>}
+          {!a.canJoin && <p className="small" style={{ marginTop: 8 }}>{reasonText(a.reasonCode) ?? tt('Chưa thể tham gia lúc này.')}</p>}
         </Notice>
       )}
 
       {resumeId && (
-        <Notice tone="info" title="Bạn có lượt làm bài đang dở" action={<Link to={`/exam/take/${resumeId}`} className="btn btn-primary" onClick={() => { if (needsFullscreen && !fsUnsupported) void requestFullscreen() }}><PlayCircle size={16} aria-hidden /> Tiếp tục làm bài</Link>}>
-          {countdown ?? 'Thời gian vẫn tiếp tục chạy trên máy chủ.'}
+        <Notice tone="info" title={tt('Bạn có lượt làm bài đang dở')} action={<Link to={`/exam/take/${resumeId}`} className="btn btn-primary" onClick={() => { if (needsFullscreen && !fsUnsupported) void requestFullscreen() }}><PlayCircle size={16} aria-hidden /> {tt('Tiếp tục làm bài')}</Link>}>
+          {countdown ?? tt('Thời gian vẫn tiếp tục chạy trên máy chủ.')}
         </Notice>
       )}
 
       {mine && revoked && <RevokedNotice mine={mine} />}
       {mine && <StudentAttempts examId={id!} mine={mine} />}
 
-      <Section title="Lịch và thời gian làm bài">
+      <Section title={tt('Lịch và thời gian làm bài')}>
         <dl className="meta">
-          <div><dt>Cửa sổ làm bài</dt><dd style={{ fontSize: '1rem' }}>{w.primary}{w.zone && <><br /><span className="muted">{w.zone}</span></>}</dd></div>
-          {w.mineText && <div><dt>Giờ của bạn</dt><dd style={{ fontSize: '1rem' }}>{w.mineText}<br /><span className="muted">{w.mineZone} · {viewerTz}</span></dd></div>}
-          {countdown && !resumeId && <div><dt>Đếm ngược</dt><dd>{countdown}</dd></div>}
-          <div><dt>Thời lượng làm bài</dt><dd>{a.durationMinutes} phút (tính từ lúc bạn bắt đầu)</dd></div>
-          <div><dt>Cách tính hạn nộp</dt><dd style={{ fontSize: '1rem' }}>{ruleLabel(a.deadlineRule)}<br /><span className="xsmall muted">{RULE_HELP[a.deadlineRule]}</span></dd></div>
-          {a.attemptsRemaining !== null && <div><dt>Lượt còn lại</dt><dd>{a.attemptsRemaining}</dd></div>}
+          <div><dt>{tt('Cửa sổ làm bài')}</dt><dd style={{ fontSize: '1rem' }}>{w.primary}{w.zone && <><br /><span className="muted">{w.zone}</span></>}</dd></div>
+          {w.mineText && <div><dt>{tt('Giờ của bạn')}</dt><dd style={{ fontSize: '1rem' }}>{w.mineText}<br /><span className="muted">{w.mineZone} · {viewerTz}</span></dd></div>}
+          {countdown && !resumeId && <div><dt>{tt('Đếm ngược')}</dt><dd>{countdown}</dd></div>}
+          <div><dt>{tt('Thời lượng làm bài')}</dt><dd>{a.durationMinutes} {tt('phút (tính từ lúc bạn bắt đầu)')}</dd></div>
+          <div><dt>{tt('Cách tính hạn nộp')}</dt><dd style={{ fontSize: '1rem' }}>{ruleLabel(a.deadlineRule)}<br /><span className="xsmall muted">{RULE_HELP[a.deadlineRule]}</span></dd></div>
+          {a.attemptsRemaining !== null && <div><dt>{tt('Lượt còn lại')}</dt><dd>{a.attemptsRemaining}</dd></div>}
         </dl>
       </Section>
 
       {exam && (
-        <Section title="Thông tin bài thi">
+        <Section title={tt('Thông tin bài thi')}>
           <dl className="meta">
-            <div><dt>Số câu hỏi</dt><dd>{exam.questionIds.length}</dd></div>
-            <div><dt>Tổng điểm</dt><dd>{formatScore(exam.totalScore)}</dd></div>
-            <div><dt>Điểm đạt</dt><dd>{exam.passingScore === null ? 'Không đặt' : formatScore(exam.passingScore)}</dd></div>
-            <div><dt>Số lượt được làm</dt><dd>{exam.attemptLimit}</dd></div>
+            <div><dt>{tt('Số câu hỏi')}</dt><dd>{exam.questionIds.length}</dd></div>
+            <div><dt>{tt('Tổng điểm')}</dt><dd>{formatScore(exam.totalScore)}</dd></div>
+            <div><dt>{tt('Điểm đạt')}</dt><dd>{exam.passingScore === null ? tt('Không đặt') : formatScore(exam.passingScore)}</dd></div>
+            <div><dt>{tt('Số lượt được làm')}</dt><dd>{exam.attemptLimit}</dd></div>
           </dl>
         </Section>
       )}
-      {exam?.description && <Section title="Hướng dẫn của giáo viên"><p className="prewrap">{exam.description}</p></Section>}
+      {exam?.description && <Section title={tt('Hướng dẫn của giáo viên')}><p className="prewrap">{exam.description}</p></Section>}
 
-      <Section title="Quy định làm bài">
+      <Section title={tt('Quy định làm bài')}>
         <ul className="stack-sm small" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Thời gian bắt đầu tính khi bạn bấm Bắt đầu và do máy chủ kiểm soát; tải lại trang không làm dừng đồng hồ.</li>
-          <li>Câu trả lời được lưu tự động. Tải lại trang hoặc mở lại sẽ khôi phục lượt đang làm và các câu đã lưu.</li>
-          <li>Hết giờ, hệ thống tự động nộp những câu trả lời đã lưu.</li>
-          <li>Sau khi nộp, không thể thay đổi câu trả lời.</li>
-          {monitored(exam?.integrityPolicy) && <li>Kỳ thi có ghi nhận tín hiệu trình duyệt: {policySummary(exam!.integrityPolicy)}. Tín hiệu là dữ liệu ghi nhận, không phải kết luận gian lận.</li>}
+          <li>{tt('Thời gian bắt đầu tính khi bạn bấm Bắt đầu và do máy chủ kiểm soát; tải lại trang không làm dừng đồng hồ.')}</li>
+          <li>{tt('Câu trả lời được lưu tự động. Tải lại trang hoặc mở lại sẽ khôi phục lượt đang làm và các câu đã lưu.')}</li>
+          <li>{tt('Hết giờ, hệ thống tự động nộp những câu trả lời đã lưu.')}</li>
+          <li>{tt('Sau khi nộp, không thể thay đổi câu trả lời.')}</li>
+          {monitored(exam?.integrityPolicy) && <li>{tt('Kỳ thi có ghi nhận tín hiệu trình duyệt:')} {policySummary(exam!.integrityPolicy)}{tt('. Tín hiệu là dữ liệu ghi nhận, không phải kết luận gian lận.')}</li>}
         </ul>
       </Section>
 
       {finishedId && (
-        <Notice tone="success" title="Lượt gần nhất đã kết thúc" action={<Link to={`/exam/result/${finishedId}`} className="btn btn-secondary btn-sm"><FileCheck2 size={16} aria-hidden /> Xem kết quả</Link>}>
-          Lượt gần nhất của bạn đã được nộp.
+        <Notice tone="success" title={tt('Lượt gần nhất đã kết thúc')} action={<Link to={`/exam/result/${finishedId}`} className="btn btn-secondary btn-sm"><FileCheck2 size={16} aria-hidden /> {tt('Xem kết quả')}</Link>}>
+          {tt('Lượt gần nhất của bạn đã được nộp.')}
         </Notice>
       )}
 
       {!preview && !resumeId && !revoked && (
         <section className="card card-body stack">
-          {why ? <Notice tone="info" title="Chưa bắt đầu được">{why}</Notice> : <p className="small">Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.</p>}
-          {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.</span></label>}
+          {why ? <Notice tone="info" title={tt('Chưa bắt đầu được')}>{why}</Notice> : <p className="small">{tt('Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.')}</p>}
+          {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>{tt('Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.')}</span></label>}
           {needsFullscreen && !fsUnsupported && a.canStart && <p className="small">{t('Kỳ thi yêu cầu toàn màn hình: bấm Bắt đầu sẽ bật toàn màn hình rồi mới tạo lượt làm bài.')}</p>}
           {fsUnsupported && <Notice tone="warning" title={t('Trình duyệt không hỗ trợ toàn màn hình')}>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy dùng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari). Lượt làm bài chưa được tạo.')}</Notice>}
           {fsProblem && <Notice tone="danger" live title={t('Chưa bật được toàn màn hình')}
@@ -172,9 +172,9 @@ export default function ExamLobbyPage() {
           {error && <Notice tone="danger" live>{error}</Notice>}
           <div className="row">
             <button type="button" className="btn btn-primary btn-lg" disabled={!a.canStart || !ready || starting || fsUnsupported} aria-busy={starting} onClick={() => void start()}>
-              <PlayCircle size={18} aria-hidden /> {starting ? 'Đang kiểm tra điều kiện…' : finishedId ? 'Bắt đầu lượt mới' : 'Bắt đầu làm bài'}
+              <PlayCircle size={18} aria-hidden /> {starting ? tt('Đang kiểm tra điều kiện…') : finishedId ? tt('Bắt đầu lượt mới') : tt('Bắt đầu làm bài')}
             </button>
-            {!a.canStart && <button type="button" className="btn btn-ghost" onClick={() => void avail.refetch()}><RotateCcw size={16} aria-hidden /> Kiểm tra lại</button>}
+            {!a.canStart && <button type="button" className="btn btn-ghost" onClick={() => void avail.refetch()}><RotateCcw size={16} aria-hidden /> {tt('Kiểm tra lại')}</button>}
           </div>
         </section>
       )}

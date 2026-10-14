@@ -1,13 +1,13 @@
 import type { AccessMode, Policy } from './examApi'
 import { PLATFORM_CONCURRENCY_LIMIT } from './policy'
 import { Field } from '../../components/ui'
-import { useT } from '../../lib/i18n'
+import { useT, i18nMap } from '../../lib/i18n'
 
-const MODES: { value: AccessMode; title: string; description: string }[] = [
+const MODES: { value: AccessMode; title: string; description: string }[] = i18nMap([
   { value: 'ASSIGNED', title: 'Được phân công', description: 'Chỉ thí sinh được giáo viên phân công mới vào được kỳ thi.' },
   { value: 'JOIN_CODE', title: 'Mã tham gia', description: 'Người dùng EXAMINI đã đăng nhập nhập đúng mã sẽ tham gia được.' },
   { value: 'PUBLIC', title: 'Công khai', description: 'Mọi người dùng EXAMINI đã đăng nhập đều thấy và tham gia được. Không cho phép truy cập ẩn danh.' },
-]
+])
 
 export default function PolicyFields({ value, onChange, disabled }: { value: Policy; onChange: (p: Policy) => void; disabled?: boolean }) {
   const t = useT()

@@ -1,7 +1,16 @@
+import { t, i18nMap, locale } from './i18n'
 // Display helpers. Exam schedules are UTC LocalDateTime values without an offset.
 
-const dateTime = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })
-const timeOnly = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+// Formatters follow the UI language; one per locale, created on first use.
+const cache = new Map<string, Intl.DateTimeFormat>()
+const intl = (key: string, opts: Intl.DateTimeFormatOptions) => {
+  const k = `${locale()}|${key}`
+  let f = cache.get(k)
+  if (!f) { f = new Intl.DateTimeFormat(locale(), opts); cache.set(k, f) }
+  return f
+}
+const dateTime = { format: (d: Date) => intl('dateTime', { dateStyle: 'medium', timeStyle: 'short' }).format(d) }
+const timeOnly = { format: (d: Date) => intl('time', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(d) }
 
 /** Parse a server UTC LocalDateTime ("2026-10-05T08:00:00") or ISO instant. */
 export function parseUtc(value: string | null | undefined): Date | null {
@@ -11,7 +20,7 @@ export function parseUtc(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-export function formatDateTime(value: string | null | undefined, fallback = 'Chưa đặt') {
+export function formatDateTime(value: string | null | undefined, fallback = t('Chưa đặt')) {
   const date = parseUtc(value)
   return date ? dateTime.format(date) : fallback
 }
@@ -47,12 +56,12 @@ export function formatScore(value: number | null | undefined) {
 
 export const shortId = (id: string | null | undefined) => (id ? id.slice(0, 8) : '-')
 
-export const QUESTION_TYPE_LABEL: Record<string, string> = {
+export const QUESTION_TYPE_LABEL: Record<string, string> = i18nMap({
   MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận',
-}
-export const DIFFICULTY_LABEL: Record<string, string> = { EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' }
-export const ACCESS_MODE_LABEL: Record<string, string> = {
+})
+export const DIFFICULTY_LABEL: Record<string, string> = i18nMap({ EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' })
+export const ACCESS_MODE_LABEL: Record<string, string> = i18nMap({
   ASSIGNED: 'Được phân công', JOIN_CODE: 'Mã tham gia', PUBLIC: 'Công khai (người dùng EXAMINI)',
-}
-export const EXAM_TYPE_LABEL: Record<string, string> = { PRACTICE: 'Luyện tập', EXAM: 'Thi chính thức' }
-export const MEMBER_ROLE_LABEL: Record<string, string> = { OWNER: 'Chủ sở hữu', MANAGER: 'Quản lý', PROCTOR: 'Giám thị' }
+})
+export const EXAM_TYPE_LABEL: Record<string, string> = i18nMap({ PRACTICE: 'Luyện tập', EXAM: 'Thi chính thức' })
+export const MEMBER_ROLE_LABEL: Record<string, string> = i18nMap({ OWNER: 'Chủ sở hữu', MANAGER: 'Quản lý', PROCTOR: 'Giám thị' })

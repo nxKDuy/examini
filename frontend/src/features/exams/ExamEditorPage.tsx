@@ -12,7 +12,7 @@ import QuestionPicker from './QuestionPicker'
 import BlueprintDialog from './BlueprintDialog'
 import { setAllPoints } from './builderModel'
 import { ConfirmDialog } from '../../components/Dialog'
-import { t, useT } from '../../lib/i18n'
+import { t, useT, i18nMap } from '../../lib/i18n'
 import IntegrityFields from '../integrity/IntegrityFields'
 import { integrityApi, type IntegrityPolicy } from '../integrity/integrityApi'
 import { DISABLED_POLICY, NEW_EXAM_POLICY, counts, limitError, policySummary } from '../integrity/integrityModel'
@@ -25,7 +25,7 @@ interface Info {
   shuffleQuestions: boolean; shuffleOptions: boolean
 }
 interface Item { questionId: string; weight: number }
-const STEPS = ['Thông tin chung', 'Câu hỏi và điểm', 'Tham gia và giới hạn', 'Xem lại và lưu']
+const STEPS = i18nMap(['Thông tin chung', 'Câu hỏi và điểm', 'Tham gia và giới hạn', 'Xem lại và lưu'])
 const EMPTY_INFO: Info = { title: '', description: '', type: 'EXAM', durationMinutes: 45, passingScore: '', shuffleQuestions: false, shuffleOptions: false }
 
 export default function ExamEditorPage() {
@@ -119,7 +119,7 @@ function Editor({ exam }: { exam?: Exam }) {
     try {
       await integrityApi.savePolicy(saved.id, integrity)
     } catch (e) {
-      warning = `${warning ? `${warning} ` : ''}${t('Chưa lưu được cấu hình giám sát trình duyệt: {error}', { error: errorText(e) })}`
+      warning = t('{0}{1}', { 0: warning ? `${warning} ` : '', 1: t('Chưa lưu được cấu hình giám sát trình duyệt: {error}', { error: errorText(e) }) })
     }
     await qc.invalidateQueries({ queryKey: ['exams'] })
     await qc.invalidateQueries({ queryKey: ['exam', saved.id] })
@@ -204,7 +204,7 @@ function Editor({ exam }: { exam?: Exam }) {
                     <span className="mono muted small" style={{ width: 28, paddingTop: 2 }}>{i + 1}.</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="truncate-2 small" style={{ color: 'var(--color-ink)' }}>{q ? q.content : t('Câu hỏi {id}', { id: shortId(item.questionId) })}</div>
-                      <div className="xsmall muted">{q ? `${t(QUESTION_TYPE_LABEL[q.questionType] ?? '')} · ${t(DIFFICULTY_LABEL[q.difficultyLevel] ?? '')} · v${q.questionVersion}${q.eligible !== true ? t(' · Cần kiểm tra lại điều kiện trước khi xuất bản') : ''}` : t('Không đọc được nội dung câu hỏi (có thể không thuộc quyền của bạn).')}</div>
+                      <div className="xsmall muted">{q ? t('{0} · {1} · v{2}{3}', { 0: t(QUESTION_TYPE_LABEL[q.questionType] ?? ''), 1: t(DIFFICULTY_LABEL[q.difficultyLevel] ?? ''), 2: q.questionVersion, 3: q.eligible !== true ? t(' · Cần kiểm tra lại điều kiện trước khi xuất bản') : '' }) : t('Không đọc được nội dung câu hỏi (có thể không thuộc quyền của bạn).')}</div>
                     </div>
                     <label className="row xsmall" style={{ flexWrap: 'nowrap', gap: 6 }}>{t('Điểm')}
                       <input type="number" min={0.25} step={0.25} className="input" style={{ width: 84, minHeight: 34 }} value={Number.isFinite(item.weight) ? item.weight : ''}

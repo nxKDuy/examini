@@ -1,5 +1,6 @@
 import { instantToWall, rawToOffsetIso, resolveWall, toIsoWithOffset, isValidZone, type WallOption } from '../../lib/zone'
 import type { DeadlineRule, Schedule, ScheduleInput } from './calendarApi'
+import { t } from '../../lib/i18n'
 
 // ---- reminders ------------------------------------------------------------------------
 export const DEFAULT_REMINDERS = [1440, 15]
@@ -7,16 +8,16 @@ export const MAX_REMINDERS = 10, MIN_OFFSET = 1, MAX_OFFSET = 43200
 export const REMINDER_PRESETS = [10080, 2880, 1440, 180, 60, 15]
 
 export function offsetLabel(min: number): string {
-  if (min >= 2880 && min % 1440 === 0) return `${min / 1440} ngày`
-  if (min >= 60 && min % 60 === 0) return `${min / 60} giờ`
-  return `${min} phút`
+  if (min >= 2880 && min % 1440 === 0) return t('{0} ngày', { 0: min / 1440 })
+  if (min >= 60 && min % 60 === 0) return t('{0} giờ', { 0: min / 60 })
+  return t('{0} phút', { 0: min })
 }
 export const customToMinutes = (value: number, unit: 'minute' | 'hour' | 'day') => Math.round(value * (unit === 'day' ? 1440 : unit === 'hour' ? 60 : 1))
 export const normalizeReminders = (list: number[]) => [...new Set(list)].sort((a, b) => b - a)
 export function reminderIssue(list: number[]): string | null {
-  if (list.length > MAX_REMINDERS) return `Tối đa ${MAX_REMINDERS} mốc nhắc.`
-  if (list.some(n => !Number.isInteger(n) || n < MIN_OFFSET || n > MAX_OFFSET)) return `Mỗi mốc nhắc từ ${MIN_OFFSET} phút đến 30 ngày (${MAX_OFFSET} phút).`
-  if (new Set(list).size !== list.length) return 'Các mốc nhắc không được trùng nhau.'
+  if (list.length > MAX_REMINDERS) return t('Tối đa {0} mốc nhắc.', { 0: MAX_REMINDERS })
+  if (list.some(n => !Number.isInteger(n) || n < MIN_OFFSET || n > MAX_OFFSET)) return t('Mỗi mốc nhắc từ {0} phút đến 30 ngày ({1} phút).', { 0: MIN_OFFSET, 1: MAX_OFFSET })
+  if (new Set(list).size !== list.length) return t('Các mốc nhắc không được trùng nhau.')
   return null
 }
 /** When a reminder would be sent, and whether it is already behind us (those are never sent late). */
@@ -77,24 +78,24 @@ export function isChanged(state: FormState, s: Schedule): boolean {
 /** Messages that block saving. The backend still has the last word (revision, lock after Start, state rules). */
 export function validateForm(state: FormState, s: Schedule, status: Status): string[] {
   const out: string[] = []
-  if (!isValidZone(state.tz)) out.push('Chọn múi giờ IANA hợp lệ.')
-  for (const [label, f] of [['bắt đầu', state.start], ['kết thúc', state.end]] as const) {
+  if (!isValidZone(state.tz)) out.push(t('Chọn múi giờ IANA hợp lệ.'))
+  for (const [label, f] of [[t('bắt đầu'), state.start], [t('kết thúc'), state.end]] as const) {
     const issue = fieldIssue(f, state.tz)
-    if (issue?.kind === 'invalid') out.push(`Giờ ${label} chưa hợp lệ.`)
-    if (issue?.kind === 'gap') out.push(`Giờ ${label} không tồn tại ở ${state.tz} do chuyển giờ mùa hè. Hãy chọn giờ khác.`)
-    if (issue?.kind === 'overlap') out.push(`Giờ ${label} xuất hiện hai lần ở ${state.tz} (chuyển giờ). Hãy chọn một trong hai độ lệch.`)
+    if (issue?.kind === 'invalid') out.push(t('Giờ {0} chưa hợp lệ.', { 0: label }))
+    if (issue?.kind === 'gap') out.push(t('Giờ {0} không tồn tại ở {1} do chuyển giờ mùa hè. Hãy chọn giờ khác.', { 0: label, 1: state.tz }))
+    if (issue?.kind === 'overlap') out.push(t('Giờ {0} xuất hiện hai lần ở {1} (chuyển giờ). Hãy chọn một trong hai độ lệch.', { 0: label, 1: state.tz }))
   }
-  if (state.start.ms !== null && state.end.ms !== null && state.end.ms <= state.start.ms) out.push('Giờ kết thúc phải sau giờ bắt đầu.')
-  if (state.rule !== 'FULL_DURATION' && state.end.ms === null) out.push('Cách tính hạn nộp này cần có giờ kết thúc.')
+  if (state.start.ms !== null && state.end.ms !== null && state.end.ms <= state.start.ms) out.push(t('Giờ kết thúc phải sau giờ bắt đầu.'))
+  if (state.rule !== 'FULL_DURATION' && state.end.ms === null) out.push(t('Cách tính hạn nộp này cần có giờ kết thúc.'))
   const rem = state.remindersOff ? null : reminderIssue(state.reminders)
   if (rem) out.push(rem)
   if (status === 'OPEN') {
     const was = s.endAt ? Date.parse(s.endAt) : null
-    if (was === null && state.end.ms !== null) out.push('Đề đang mở và chưa có giờ kết thúc nên không thêm giờ kết thúc mới được.')
-    if (was !== null && state.end.ms !== null && state.end.ms < was) out.push('Khi đề đang mở chỉ được kéo dài giờ kết thúc, không rút ngắn.')
-    if (was !== null && state.end.ms === null) out.push('Không gỡ được giờ kết thúc khi đề đang mở.')
+    if (was === null && state.end.ms !== null) out.push(t('Đề đang mở và chưa có giờ kết thúc nên không thêm giờ kết thúc mới được.'))
+    if (was !== null && state.end.ms !== null && state.end.ms < was) out.push(t('Khi đề đang mở chỉ được kéo dài giờ kết thúc, không rút ngắn.'))
+    if (was !== null && state.end.ms === null) out.push(t('Không gỡ được giờ kết thúc khi đề đang mở.'))
   }
-  if (status !== 'DRAFT' && isChanged(state, s) && !state.reason.trim()) out.push('Nhập lý do thay đổi lịch (bắt buộc sau khi đã xuất bản).')
+  if (status !== 'DRAFT' && isChanged(state, s) && !state.reason.trim()) out.push(t('Nhập lý do thay đổi lịch (bắt buộc sau khi đã xuất bản).'))
   return out
 }
 
