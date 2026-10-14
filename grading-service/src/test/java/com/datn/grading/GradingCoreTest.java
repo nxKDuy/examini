@@ -21,6 +21,7 @@ import io.jsonwebtoken.security.Keys;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -29,7 +30,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/grading_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","spring.rabbitmq.listener.simple.auto-startup=false","grading.events.outbox-initial-delay-ms=3600000","grading.events.outbox-poll-ms=3600000"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/grading_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","spring.rabbitmq.listener.simple.auto-startup=false","grading.events.outbox-initial-delay-ms=3600000","grading.events.outbox-poll-ms=3600000","grading.events.max-attempts=4","grading.events.retry-base-ms=1000","grading.events.retry-max-ms=3000"})
 @AutoConfigureMockMvc
 class GradingCoreTest {
     @Autowired GradingService service;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
@@ -186,9 +187,38 @@ class GradingCoreTest {
         var objective=question("TRUE_FALSE",null,0);submitted(List.of(objective),List.of());
         var target=outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.recorded.v1")).findFirst().orElseThrow();UUID eventId=target.getEventId();
         outbox.findAll().stream().filter(e->!e.getEventId().equals(eventId)).forEach(outbox::delete);outbox.flush();
-        doThrow(new RuntimeException("broker unavailable")).when(rabbit).send(anyString(),anyString(),any(Message.class),any(CorrelationData.class));relay.relay();
+        Instant now=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        doThrow(new RuntimeException("broker unavailable")).when(rabbit).send(anyString(),anyString(),any(Message.class),any(CorrelationData.class));relay.relay(now);
         var pending=outbox.findById(eventId).orElseThrow();assertFalse(pending.isDelivered());assertEquals(1,pending.getAttemptCount());
-        reset(rabbit);doAnswer(call->{CorrelationData correlation=call.getArgument(3);correlation.getFuture().complete(new CorrelationData.Confirm(true,null));return null;}).when(rabbit).send(anyString(),anyString(),any(Message.class),any(CorrelationData.class));relay.relay();
+        assertEquals(now.plusMillis(1000),pending.getNextAttemptAt());assertTrue(pending.getLastError().contains("broker unavailable"));
+        reset(rabbit);doAnswer(call->{CorrelationData correlation=call.getArgument(3);correlation.getFuture().complete(new CorrelationData.Confirm(true,null));return null;}).when(rabbit).send(anyString(),anyString(),any(Message.class),any(CorrelationData.class));
+        relay.relay(now.plusMillis(500)); // still backing off
+        assertEquals(1,outbox.findById(eventId).orElseThrow().getAttemptCount());
+        relay.relay(now.plusMillis(1000));
         var delivered=outbox.findById(eventId).orElseThrow();assertTrue(delivered.isDelivered());assertEquals(eventId,delivered.getEventId());assertEquals(2,delivered.getAttemptCount());
+        assertNull(delivered.getNextAttemptAt());assertNull(delivered.getLastError());
+    }
+    @Test void unroutableEventBacksOffExponentiallyThenParks(){
+        var objective=question("TRUE_FALSE",null,0);submitted(List.of(objective),List.of());
+        var target=outbox.findAll().stream().filter(e->e.getRoutingKey().equals("grading.result.recorded.v1")).findFirst().orElseThrow();UUID eventId=target.getEventId();
+        outbox.findAll().stream().filter(e->!e.getEventId().equals(eventId)).forEach(outbox::delete);outbox.flush();
+        // Broker acks a mandatory publish but returns it: nothing is bound to the routing key.
+        doAnswer(call->{CorrelationData correlation=call.getArgument(3);
+            correlation.setReturned(new org.springframework.amqp.core.ReturnedMessage(call.getArgument(2),312,"NO_ROUTE",call.getArgument(0),call.getArgument(1)));
+            correlation.getFuture().complete(new CorrelationData.Confirm(true,null));return null;}).when(rabbit).send(anyString(),anyString(),any(Message.class),any(CorrelationData.class));
+        Instant t=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);var delays=new ArrayList<Long>();
+        for(int attempt=1;attempt<=4;attempt++){
+            relay.relay(t);var row=outbox.findById(eventId).orElseThrow();
+            assertEquals(attempt,row.getAttemptCount());assertFalse(row.isDelivered());
+            assertTrue(row.getLastError().startsWith("UNROUTABLE: 312 NO_ROUTE"),row.getLastError());
+            relay.relay(t); // a poll before the backoff elapses never re-sends
+            assertEquals(attempt,outbox.findById(eventId).orElseThrow().getAttemptCount());
+            if(row.isParked())break;
+            delays.add(java.time.Duration.between(t,row.getNextAttemptAt()).toMillis());t=row.getNextAttemptAt();
+        }
+        assertEquals(List.of(1000L,2000L,3000L),delays); // exponential, capped at retry-max-ms
+        var parked=outbox.findById(eventId).orElseThrow();assertTrue(parked.isParked());assertNull(parked.getNextAttemptAt());
+        relay.relay(t.plusSeconds(3600));assertEquals(4,outbox.findById(eventId).orElseThrow().getAttemptCount());
+        verify(rabbit,times(4)).send(anyString(),anyString(),any(Message.class),any(CorrelationData.class));
     }
 }
