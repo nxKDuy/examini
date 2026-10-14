@@ -90,7 +90,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
       const info = errorInfo(e)
       const providerRejected = kind === 'publish' && info.status === 409 && UPSTREAM_GENERIC.test(info.detail ?? '')
       setMessage({ tone: 'danger', text: providerRejected
-        ? `Ngân hàng câu hỏi từ chối xuất bản: có câu hỏi không còn đủ điều kiện hoặc không còn quyền sử dụng.${ineligibleText ? ` Kiểm tra: ${ineligibleText}.` : ''} Kiểm tra ngân hàng và quyền sử dụng hoặc thay câu hỏi rồi xuất bản lại.`
+        ? `${t('Ngân hàng câu hỏi từ chối xuất bản: có câu hỏi không còn đủ điều kiện hoặc không còn quyền sử dụng.')}${ineligibleText ? t(' Kiểm tra: {0}.', { 0: ineligibleText }) : ''} ${t('Kiểm tra ngân hàng và quyền sử dụng hoặc thay câu hỏi rồi xuất bản lại.')}`
         : info.message })
       void qc.invalidateQueries({ queryKey: ['questions', 'draft-resources'] })
     },

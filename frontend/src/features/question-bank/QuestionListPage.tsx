@@ -16,7 +16,7 @@ import QuestionEditor from './QuestionEditor'
 import PersonalQuestionSets from '../banks/PersonalQuestionSets'
 import { t as tt, useT, i18nMap } from '../../lib/i18n'
 
-const VIEWS = [{ value: 'questions', label: 'Câu hỏi lẻ' }, { value: 'sets', label: 'Bộ câu hỏi' }] as const
+const VIEWS = i18nMap([{ value: 'questions', label: 'Câu hỏi lẻ' }, { value: 'sets', label: 'Bộ câu hỏi' }] as const)
 const TABS = i18nMap([{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }])
 
 export default function QuestionListPage() {
@@ -163,7 +163,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
         </div>
         {run.isError && <Notice tone="danger" live>{errorText(run.error)}</Notice>}
         {result && (
-          <Notice tone={result.failed ? 'warning' : 'success'} live title={`Đã nhập ${result.imported}/${result.totalRows} dòng${result.failed ? `, ${result.failed} dòng lỗi` : ''}`}>
+          <Notice tone={result.failed ? 'warning' : 'success'} live title={`${tt('Đã nhập {0}/{1} dòng', { 0: result.imported, 1: result.totalRows })}${result.failed ? tt(', {0} dòng lỗi', { 0: result.failed }) : ''}`}>
             {result.errors.length > 0 && <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{result.errors.slice(0, 20).map((e, i) => <li key={i}>{e}</li>)}</ul>}
           </Notice>
         )}

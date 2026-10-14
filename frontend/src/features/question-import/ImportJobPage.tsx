@@ -10,9 +10,9 @@ import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader,
 import { errorStatus, errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib/format'
 import './import.css'
-import { t, useT } from '../../lib/i18n'
+import { t, useT, i18nMap } from '../../lib/i18n'
 
-const KIND_LABEL = { DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh' } as const
+const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh' } as const)
 
 /** Review → edit → validate → import (Personal DRAFT). Nothing is activated or published. */
 export default function ImportJobPage() {
@@ -42,7 +42,7 @@ export default function ImportJobPage() {
   return (
     <div className="stack-lg">
       <PageHeader title={j.fileName} crumbs={[{ label: t('Kho cá nhân'), to: '/questions' }, { label: t('Nhập tài liệu'), to: '/questions/imports' }, { label: j.fileName }]}
-        description={`${KIND_LABEL[j.fileKind]} · ${j.pageCount} trang${j.ocrPageCount ? ` · ${j.ocrPageCount} trang nhận dạng ảnh (OCR)` : ''} · tải lên ${formatDateTime(j.createdAt)}`}
+        description={[KIND_LABEL[j.fileKind], t('{0} trang', { 0: j.pageCount }), j.ocrPageCount ? t('{0} trang nhận dạng ảnh (OCR)', { 0: j.ocrPageCount }) : '', t('tải lên {0}', { 0: formatDateTime(j.createdAt) })].filter(Boolean).join(' · ')}
         actions={ready && <>
           <button type="button" className="btn btn-danger-ghost" onClick={() => setDiscarding(true)}><Trash2 size={16} aria-hidden /> {t('Hủy lô')}</button>
           <button type="button" className="btn btn-secondary" disabled={validate.isPending} onClick={() => validate.mutate()}><CheckCircle2 size={16} aria-hidden /> {t('Kiểm tra lại')}</button>

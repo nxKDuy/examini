@@ -19,7 +19,7 @@ export function PushCard() {
         {status === 'on' && <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void disable()}>{busy ? t('Đang tắt…') : t('Tắt trên trình duyệt này')}</button>}
       </div>
       {status === 'checking' && <p className="small muted" role="status">{t('Đang kiểm tra…')}</p>}
-      {status === 'off' && <p className="small">{WHAT}</p>}
+      {status === 'off' && <p className="small">{t(WHAT)}</p>}
       {status === 'on' && <p className="small" role="status">{t('Đã bật trên trình duyệt này. Thông báo vẫn luôn có trong chuông của EXAMINI.')}</p>}
       {status === 'blocked' && <p className="small">{t('Bạn đã chặn thông báo cho trang này. Mở cài đặt trang của trình duyệt (biểu tượng ổ khóa cạnh địa chỉ) để cho phép lại, rồi tải lại trang.')}</p>}
       {status === 'unsupported' && <p className="small muted">{t('Trình duyệt này không hỗ trợ thông báo đẩy (hoặc trang không chạy trên HTTPS/localhost). Thông báo vẫn có trong chuông của EXAMINI.')}</p>}
@@ -42,7 +42,7 @@ export function PushPrompt() {
     <Notice tone="info" title={t('Nhận nhắc lịch thi ngay trên trình duyệt?')} action={
       <span className="row"><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void enable()}>{t('Bật thông báo')}</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={close}>{t('Để sau')}</button></span>}>
-      {WHAT}{error && <><br /><span style={{ color: 'var(--color-danger)' }}>{error}</span></>}
+      {t(WHAT)}{error && <><br /><span style={{ color: 'var(--color-danger)' }}>{error}</span></>}
     </Notice>
   )
 }

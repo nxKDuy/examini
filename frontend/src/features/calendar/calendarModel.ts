@@ -237,8 +237,8 @@ export const relationLabel = (r: string) => RELATION_LABEL[r] ?? r
 export function describeCountdown(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
-  if (d >= 1) return `${d} ngày${h ? ` ${h} giờ` : ''}`
-  if (h >= 1) return `${h} giờ${m ? ` ${m} phút` : ''}`
+  if (d >= 1) return h ? tt('{0} ngày {1} giờ', { 0: d, 1: h }) : tt('{0} ngày', { 0: d })
+  if (h >= 1) return m ? tt('{0} giờ {1} phút', { 0: h, 1: m }) : tt('{0} giờ', { 0: h })
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 

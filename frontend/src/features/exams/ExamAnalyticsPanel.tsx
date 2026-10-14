@@ -32,7 +32,7 @@ export default function ExamAnalyticsPanel({ examId, actorId }: { examId: string
         <h3 className="analytics-sub">{t('Lượt làm bài')}</h3>
         <div className="analytics-kpis analytics-kpis-sm" aria-label={t('Chỉ số lượt làm bài')}>{attemptMetrics(s).map(k => <Metric key={k.key} kpi={k} />)}</div>
         <h3 className="analytics-sub">{t('Phổ điểm')}</h3>
-        <p className="analytics-nodata"><strong>{NO_DATA}.</strong> {t('Phổ điểm chỉ vẽ theo điểm đã công bố mới nhất của mỗi Student; Analytics chưa nhận sự kiện công bố từ Grading nên không dựng biểu đồ từ điểm chấm tạm thời.')}</p>
+        <p className="analytics-nodata"><strong>{t(NO_DATA)}.</strong> {t('Phổ điểm chỉ vẽ theo điểm đã công bố mới nhất của mỗi Student; Analytics chưa nhận sự kiện công bố từ Grading nên không dựng biểu đồ từ điểm chấm tạm thời.')}</p>
       </> : <EmptyState title={t('Chưa có dữ liệu tổng hợp')} description={t('Analytics chưa nhận được kết quả cho kỳ thi này.')} />}
     </Section>
 
@@ -41,7 +41,7 @@ export default function ExamAnalyticsPanel({ examId, actorId }: { examId: string
         <thead><tr><th scope="col">{t('Câu')}</th><th scope="col">{t('Loại')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Đúng')}</th><th scope="col">{t('Một phần')}</th><th scope="col">Sai</th><th scope="col">{t('Bỏ trống')}</th><th scope="col">{t('Chờ chấm')}</th><th scope="col">{t('Tỷ lệ đúng')}</th><th scope="col">{t('Điểm TB')}</th></tr></thead>
         <tbody>{questions.data.map(q => <tr key={`${q.questionId}:${q.questionVersion}`}>
           <td><strong>{t('Câu')} {q.position}</strong><div className="small muted">v{q.questionVersion} · {shortId(q.questionId)}</div></td><td>{questionType(q.questionType)}</td><td>{q.attempts}</td><td>{q.correct}</td><td>{q.partial}</td><td>{q.incorrect}</td><td>{q.unanswered}</td><td>{q.pendingReview}</td>
-          <td>{q.correctRate === null ? NO_DATA : `${(q.correctRate * 100).toFixed(1)}%`}</td><td>{q.averageAwardedPoints === null ? NO_DATA : `${formatScore(q.averageAwardedPoints)} / ${formatScore(q.pointValue)}`}</td>
+          <td>{q.correctRate === null ? t(NO_DATA) : `${(q.correctRate * 100).toFixed(1)}%`}</td><td>{q.averageAwardedPoints === null ? t(NO_DATA) : `${formatScore(q.averageAwardedPoints)} / ${formatScore(q.pointValue)}`}</td>
         </tr>)}</tbody>
       </table></div>}
     </Section>
@@ -72,7 +72,7 @@ export default function ExamAnalyticsPanel({ examId, actorId }: { examId: string
 
 function Metric({ kpi }: { kpi: Kpi }) {
   return <div className="analytics-metric"><span className="small muted">{kpi.label}</span>
-    {kpi.value === null ? <><strong className="analytics-na">{NO_DATA}</strong><small className="muted">{kpi.reason}</small></> : <><strong>{kpi.value}</strong>{kpi.detail && <small className="muted">{kpi.detail}</small>}</>}</div>
+    {kpi.value === null ? <><strong className="analytics-na">{t(NO_DATA)}</strong><small className="muted">{kpi.reason}</small></> : <><strong>{kpi.value}</strong>{kpi.detail && <small className="muted">{kpi.detail}</small>}</>}</div>
 }
 
 function questionType(value: string) {

@@ -30,7 +30,7 @@ export function AddParticipantsDialog({ examId, onClose, onChanged }: { examId: 
       </>}>
       <form id="pt-add-form" onSubmit={submit} className="stack">
         {add.isError && <Notice tone="danger" live title={t('Chưa thêm được')}>{errorText(add.error)} {t('Danh sách bạn nhập vẫn được giữ lại; thử lại khi sẵn sàng.')}</Notice>}
-        <Field label={t('Danh sách')} htmlFor="pt-add-text" hint={parsed.ok ? `${parsed.count} dòng hợp lệ (${parsed.kind === 'ids' ? 'mã người dùng' : 'email'})${parsed.duplicates ? `, bỏ ${parsed.duplicates} dòng trùng` : ''}.` : text.trim() ? undefined : t('Ví dụ: một mã UUID hoặc một email trên mỗi dòng.')}
+        <Field label={t('Danh sách')} htmlFor="pt-add-text" hint={parsed.ok ? `${t('{0} dòng hợp lệ ({1})', { 0: parsed.count, 1: parsed.kind === 'ids' ? t('mã người dùng') : 'email' })}${parsed.duplicates ? t(', bỏ {0} dòng trùng', { 0: parsed.duplicates }) : ''}.` : text.trim() ? undefined : t('Ví dụ: một mã UUID hoặc một email trên mỗi dòng.')}
           error={touched && !parsed.ok ? parsed.error : undefined}>
           <textarea id="pt-add-text" className="input mono" rows={8} value={text} spellCheck={false} aria-invalid={touched && !parsed.ok} onChange={e => setText(e.target.value)} data-autofocus />
         </Field>

@@ -23,7 +23,7 @@ const NO_KPI = 'Analytics chưa trả khối chỉ số chính cho kỳ thi này
 /** Four headline KPIs in the locked order, read only from `summary.kpi`; null fields carry the server reason, never 0. */
 export function headlineKpis(s: ExamSummary): Kpi[] {
   const k = s.kpi
-  const why = (field: string) => k?.unavailable?.[field] ?? (k ? NO_DATA : NO_KPI)
+  const why = (field: string) => k?.unavailable?.[field] ?? t(k ? NO_DATA : NO_KPI)
   return [
     { key: 'students', label: 'Student tham gia', value: k?.participatedStudents == null ? null : String(k.participatedStudents), reason: why('participatedStudents') },
     { key: 'completion', label: t('Tỷ lệ hoàn thành'), value: percent(k?.completionRate), reason: why('completionRate'),

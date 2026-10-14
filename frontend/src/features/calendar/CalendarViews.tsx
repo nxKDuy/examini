@@ -28,7 +28,7 @@ export function MonthView({ days, anchor, items, tz, nowMs, selectedId, onSelect
         const shown = narrow ? [] : list.slice(0, CHIPS_PER_CELL)
         return (
           <div key={day} role="gridcell" className="cal-cell" data-today={day === today} data-outside={day.slice(0, 7) !== month} data-weekend={isWeekend(day)}>
-            <button type="button" className="cal-daynum" aria-label={`${dayHeading(day)}${list.length ? `, ${list.length} kỳ thi` : ''}. Xem chi tiết ngày`} onClick={() => onOpenDay(day)}>{dayNumber(day)}</button>
+            <button type="button" className="cal-daynum" aria-label={`${dayHeading(day)}${list.length ? t(', {0} kỳ thi', { 0: list.length }) : ''}. ${t('Xem chi tiết ngày')}`} onClick={() => onOpenDay(day)}>{dayNumber(day)}</button>
             {narrow
               ? list.length > 0 && <div className="cal-dots" aria-hidden>{list.slice(0, 4).map(i => <span key={i.examId} className="cal-dot" data-tone={stateInfo(i.calendarState).tone} />)}</div>
               : <>
