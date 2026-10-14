@@ -34,3 +34,65 @@ export function relativeTime(iso: string, nowMs: number): string {
 }
 
 export const unreadLabel = (count: number) => (count > 99 ? '99+' : String(count))
+
+// ---- Client-side wording for server notices (scope: i18n) -------------------------------------
+// The server stores Vietnamese title/message. In another language the text is rebuilt from type +
+// metadata using the same facts the server used; anything unknown or incomplete keeps the server text.
+const quote = (s: string) => `“${s}”`
+
+function zoned(iso: string | undefined, zone: string | undefined) {
+  if (!iso || !zone) return null
+  try {
+    const f = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false, timeZoneName: 'shortOffset' })
+    return `${f.format(new Date(iso))}, ${zone}`
+  } catch { return null }
+}
+
+const DEADLINE_EN: Record<string, string> = {
+  CAPPED_AT_END: 'The attempt ends at the latest at the scheduled end.',
+  REQUIRE_FULL_WINDOW: 'You can start only while the full duration still fits before the end.',
+}
+
+function windowEn(m: Record<string, string>) {
+  const parts: string[] = []
+  const start = zoned(m.startAt, m.timezone), end = zoned(m.endAt, m.timezone)
+  if (m.startAt && !start) return null
+  if (m.endAt && !end) return null
+  if (start) parts.push(`Starts: ${start}.`)
+  if (end) parts.push(`Ends: ${end}.`)
+  parts.push(DEADLINE_EN[m.deadlineRule ?? ''] ?? 'The duration counts from when you start.')
+  return parts.join(' ')
+}
+
+/** English title/message for a known notice type; null keeps the server's own text. */
+export function englishNotice(n: Pick<AppNotification, 'type' | 'metadata' | 'createdAt'>): { title: string; message: string } | null {
+  const m = n.metadata ?? {}
+  const title = m.examTitle ? quote(m.examTitle) : null
+  const needTitle = (fn: (q: string) => { title: string; message: string } | null) => (title ? fn(title) : null)
+  switch (n.type) {
+    case 'EXAM_SCHEDULED': return needTitle(q => { const w = windowEn(m); return w ? { title: 'Exam scheduled', message: `Exam ${q} has been scheduled. ${w}` } : null })
+    case 'EXAM_RESCHEDULED': return needTitle(q => { const w = windowEn(m); return w ? { title: 'Exam schedule changed', message: `Exam ${q} has a new schedule. ${w}` } : null })
+    case 'EXAM_UNSCHEDULED': return needTitle(q => ({ title: 'Exam schedule removed', message: `Exam ${q} no longer has a fixed schedule. Watch for the teacher's next notice.` }))
+    case 'EXAM_REMINDER': return needTitle(q => { const w = windowEn(m); return w ? { title: 'Exam starting soon', message: `Reminder: exam ${q} is about to start. ${w}` } : null })
+    case 'EXAM_OPENED': return needTitle(q => {
+      const start = m.startAt && Date.parse(m.startAt) > Date.parse(n.createdAt) ? zoned(m.startAt, m.timezone) : null
+      return { title: 'Exam opened', message: `Exam ${q} is open.${start ? ` You can start from ${start}.` : ''}` }
+    })
+    case 'EXAM_CLOSED': return needTitle(q => ({ title: 'Exam closed', message: `Exam ${q} is closed and accepts no new starts.` }))
+    case 'GRADING_REVIEW_REQUIRED': return needTitle(q => ({ title: 'Submissions need grading', message: `Exam ${q} has submissions waiting for teacher review and grading. Open the grading queue to handle them.` }))
+    case 'RESULT_AVAILABLE': return needTitle(q => ({ title: 'Exam result available', message: m.gradingMode === 'MANUAL' ? `The teacher has finished grading exam ${q}. View your result now.` : `The result of exam ${q} is ready. View your result now.` }))
+    case 'RESULT_REGRADED': return needTitle(q => ({ title: 'Exam result updated', message: `Your result for exam ${q} was updated after regrading. View the latest result.` }))
+    case 'EXAM_ASSIGNED': return needTitle(q => ({ title: 'New exam assigned', message: `You have been assigned exam ${q}.` }))
+    case 'EXAM_MEMBER_INVITED': return needTitle(q => m.role === 'MANAGER' || m.role === 'PROCTOR'
+      ? { title: 'Exam collaboration invite', message: `You are invited to be ${m.role === 'MANAGER' ? 'a Manager' : 'a Proctor'} of exam ${q}. Accept the invitation to join.` } : null)
+    case 'SUBMISSION_RECEIVED': return needTitle(q => ({ title: 'Submission received', message: m.submissionType === 'AUTO_SUBMITTED' ? `Time was up; your attempt for exam ${q} was submitted automatically.` : `Your attempt for exam ${q} was submitted successfully.` }))
+    case 'QUESTION_APPROVED': return m.questionVersion ? { title: 'Question approved', message: `Version ${m.questionVersion} of the question was approved.` } : null
+    case 'QUESTION_REJECTED': return m.questionVersion ? { title: 'Question rejected', message: `Version ${m.questionVersion} of the question was rejected. See the review note in the question bank.` } : null
+    default: return null
+  }
+}
+
+/** Title/message in the UI language: Vietnamese is the server text; English is rebuilt when the type is known. */
+export function localizedNotice(n: AppNotification, lang: 'vi' | 'en') {
+  return (lang === 'en' && englishNotice(n)) || { title: n.title, message: n.message }
+}

@@ -97,3 +97,16 @@ test('organization notification targets: invitations open the invitation block, 
   assert.equal(t({ entityType: 'ORGANIZATION_INVITATION', entityId: 'i1', metadata: {} }), '/organizations?tab=invitations')
   assert.equal(t({ entityType: 'ORGANIZATION', entityId: 'o1', metadata: { link: 'https://evil.example/' } }), '/organizations/o1')
 })
+
+test('English notices are rebuilt from type + metadata; unknown or incomplete ones keep the server text', () => {
+  const base = { id: '1', title: 'Đã có lịch thi', message: 'Kỳ thi "A" đã có lịch.', entityType: 'EXAM', entityId: 'e', createdAt: '2030-01-01T00:00:00Z', readAt: null, read: false }
+  const sched = { ...base, type: 'EXAM_SCHEDULED', metadata: { examTitle: 'A', timezone: 'Asia/Ho_Chi_Minh', deadlineRule: 'FULL_DURATION', startAt: '2030-01-02T01:00:00Z' } }
+  const en = m.localizedNotice(sched, 'en')
+  assert.equal(en.title, 'Exam scheduled')
+  assert.match(en.message, /^Exam “A” has been scheduled\. Starts: 02\/01\/2030, 08:00 GMT\+7, Asia\/Ho_Chi_Minh\. The duration counts from when you start\.$/)
+  assert.deepEqual(m.localizedNotice(sched, 'vi'), { title: base.title, message: base.message })
+  assert.deepEqual(m.localizedNotice({ ...base, type: 'SOMETHING_NEW', metadata: {} }, 'en'), { title: base.title, message: base.message })
+  assert.deepEqual(m.localizedNotice({ ...base, type: 'EXAM_CLOSED', metadata: null }, 'en'), { title: base.title, message: base.message }, 'no title in metadata')
+  assert.equal(m.localizedNotice({ ...base, type: 'RESULT_AVAILABLE', metadata: { examTitle: 'B', gradingMode: 'MANUAL' } }, 'en').message, 'The teacher has finished grading exam “B”. View your result now.')
+  assert.equal(m.localizedNotice({ ...base, type: 'SUBMISSION_RECEIVED', metadata: { examTitle: 'C', submissionType: 'AUTO_SUBMITTED' } }, 'en').title, 'Submission received')
+})
