@@ -1,3 +1,4 @@
+import { t } from '../../lib/i18n'
 import type { IntegrityAudit, IntegrityPolicy, Receipt, SignalMetadata, SignalType } from './integrityApi'
 
 export const DEFAULT_LIMIT = 5
@@ -6,6 +7,12 @@ export const MAX_LIMIT = 100
 export const DISABLED_POLICY: IntegrityPolicy = {
   monitorTabSwitch: false, monitorWindowBlur: false, requireFullscreen: false, monitorCopy: false, monitorPaste: false,
   monitorNetwork: false, warningPolicy: 'LOG_ONLY', warningEventLimit: DEFAULT_LIMIT,
+}
+
+/** Smart default for a NEW exam only (scope D): every monitor on, warnings shown, threshold 5. Saved exams are never changed. */
+export const NEW_EXAM_POLICY: IntegrityPolicy = {
+  monitorTabSwitch: true, monitorWindowBlur: true, requireFullscreen: true, monitorCopy: true, monitorPaste: true,
+  monitorNetwork: true, warningPolicy: 'WARN_ONLY', warningEventLimit: DEFAULT_LIMIT,
 }
 
 /** Signals that count toward the per-attempt budget (contract A): network, recovery and COPY/PASTE are audit only. */
@@ -34,13 +41,13 @@ export const counts = (p: IntegrityPolicy | null | undefined) =>
   !!p && (p.monitorTabSwitch || p.monitorWindowBlur || p.requireFullscreen)
 
 export function limitError(value: number) {
-  return Number.isInteger(value) && value >= MIN_LIMIT && value <= MAX_LIMIT ? null : `Ngưỡng phải là số nguyên từ ${MIN_LIMIT} đến ${MAX_LIMIT}.`
+  return Number.isInteger(value) && value >= MIN_LIMIT && value <= MAX_LIMIT ? null : t('Ngưỡng phải là số nguyên từ {min} đến {max}.', { min: MIN_LIMIT, max: MAX_LIMIT })
 }
 
 export function policySummary(p: IntegrityPolicy | null | undefined) {
-  if (!monitored(p)) return 'Tắt'
-  const on = MONITORS.filter(m => p![m.key]).map(m => m.label.toLowerCase())
-  return `${on.join(', ')}${counts(p) ? ` · tự nộp khi vượt ${p!.warningEventLimit} tín hiệu` : ''}`
+  if (!monitored(p)) return t('Tắt')
+  const on = MONITORS.filter(m => p![m.key]).map(m => t(m.label).toLowerCase())
+  return `${on.join(', ')}${counts(p) ? t(' · tự nộp khi vượt {n} tín hiệu', { n: p!.warningEventLimit }) : ''}`
 }
 
 /** What the Student sees after a receipt. Never says "gian lận". */

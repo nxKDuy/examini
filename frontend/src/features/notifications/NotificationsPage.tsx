@@ -9,8 +9,10 @@ import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../../components/ui'
 import { useAuthStore } from '../../store/authStore'
 import { useNow } from '../../lib/hooks'
+import { useT } from '../../lib/i18n'
 
 export default function NotificationsPage() {
+  const t = useT()
   const user = useAuthStore(s => s.user)
   const student = audienceOf(user) === 'STUDENT'
   const qc = useQueryClient()
@@ -28,18 +30,18 @@ export default function NotificationsPage() {
 
   return (
     <div className="stack-lg">
-      <PageHeader title="Thông báo" description="Đặt/đổi/gỡ lịch, mở và đóng kỳ thi, nhắc giờ và các cập nhật khác. Bấm một thông báo để mở nội dung liên quan."
-        actions={<button type="button" className="btn btn-secondary" disabled={(unread.data ?? 0) === 0 || readAll.isPending} onClick={() => readAll.mutate()}>Đánh dấu tất cả đã đọc</button>} />
+      <PageHeader title={t('Thông báo')} description={t('Đặt/đổi/gỡ lịch, mở và đóng kỳ thi, nhắc giờ và các cập nhật khác. Bấm một thông báo để mở nội dung liên quan.')}
+        actions={<button type="button" className="btn btn-secondary" disabled={(unread.data ?? 0) === 0 || readAll.isPending} onClick={() => readAll.mutate()}>{t('Đánh dấu tất cả đã đọc')}</button>} />
       <PushCard />
       <section className="card" style={{ overflow: 'hidden' }}>
-        <div className="tabs" role="tablist" aria-label="Lọc thông báo">
-          <button type="button" role="tab" className="tab" aria-selected={tab === 'all'} onClick={() => setTabAndReset('all')}>Tất cả</button>
-          <button type="button" role="tab" className="tab" aria-selected={tab === 'unread'} onClick={() => setTabAndReset('unread')}>Chưa đọc{unread.data ? <span className="count">{unread.data}</span> : null}</button>
+        <div className="tabs" role="tablist" aria-label={t('Lọc thông báo')}>
+          <button type="button" role="tab" className="tab" aria-selected={tab === 'all'} onClick={() => setTabAndReset('all')}>{t('Tất cả')}</button>
+          <button type="button" role="tab" className="tab" aria-selected={tab === 'unread'} onClick={() => setTabAndReset('unread')}>{t('Chưa đọc')}{unread.data ? <span className="count">{unread.data}</span> : null}</button>
         </div>
         {list.isLoading ? <LoadingState rows={4} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-          : list.data!.content.length === 0 ? <EmptyState title={tab === 'unread' ? 'Không còn thông báo chưa đọc' : 'Chưa có thông báo'} description="Thông báo mới sẽ hiện ở đây và ở chuông trên thanh đầu trang." />
+          : list.data!.content.length === 0 ? <EmptyState title={t(tab === 'unread' ? 'Không còn thông báo chưa đọc' : 'Chưa có thông báo')} description={t('Thông báo mới sẽ hiện ở đây và ở chuông trên thanh đầu trang.')} />
           : <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>{list.data!.content.map(n => <li key={n.id}><NotificationItem n={n} nowMs={nowMs} onOpen={open} /></li>)}</ul>}
-        {list.data && <Pagination label="Phân trang thông báo" page={page} totalPages={list.data.totalPages} onChange={setPage} />}
+        {list.data && <Pagination label={t('Phân trang thông báo')} page={page} totalPages={list.data.totalPages} onChange={setPage} />}
       </section>
     </div>
   )

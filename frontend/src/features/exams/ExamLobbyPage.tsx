@@ -14,6 +14,7 @@ import StudentAttempts, { RevokedNotice } from '../participants/StudentAttempts'
 import { monitored, policySummary } from '../integrity/integrityModel'
 import { integrityApi } from '../integrity/integrityApi'
 import { exitFullscreen, fullscreenSupported, requestFullscreen } from '../../lib/fullscreen'
+import { useT } from '../../lib/i18n'
 import { useParticipation } from '../participants/useParticipation'
 import { ErrorState, LoadingState, Notice, PageHeader, Section } from '../../components/ui'
 import { errorStatus, errorText } from '../../lib/errors'
@@ -32,6 +33,7 @@ export default function ExamLobbyPage() {
   // The frozen policy decides whether Start must enter fullscreen first (contract A).
   const integrityPolicy = useQuery({ queryKey: ['integrity-exam-policy', id], queryFn: () => integrityApi.examPolicy(id!), retry: false, enabled: lobby.isSuccess })
   const [fsProblem, setFsProblem] = useState<'denied' | null>(null)
+  const t = useT()
   // The backend decides who may join / start / resume and why not; this page only shows it.
   const avail = useQuery({
     queryKey: ['availability', id], queryFn: async () => { const a = await calendarApi.availability(id!); return { a, clockOffset: Date.parse(a.serverNow) - Date.now() } },
@@ -162,11 +164,11 @@ export default function ExamLobbyPage() {
         <section className="card card-body stack">
           {why ? <Notice tone="info" title="Chưa bắt đầu được">{why}</Notice> : <p className="small">Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.</p>}
           {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.</span></label>}
-          {needsFullscreen && !fsUnsupported && a.canStart && <p className="small">Kỳ thi yêu cầu toàn màn hình: bấm Bắt đầu sẽ bật toàn màn hình rồi mới tạo lượt làm bài.</p>}
-          {fsUnsupported && <Notice tone="warning" title="Trình duyệt không hỗ trợ toàn màn hình">Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy dùng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari). Lượt làm bài chưa được tạo.</Notice>}
-          {fsProblem && <Notice tone="danger" live title="Chưa bật được toàn màn hình"
-            action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void start()}>Thử lại</button>}>
-            Trình duyệt đã từ chối hoặc chặn chế độ toàn màn hình. Lượt làm bài chưa được tạo; bấm Thử lại và cho phép toàn màn hình.</Notice>}
+          {needsFullscreen && !fsUnsupported && a.canStart && <p className="small">{t('Kỳ thi yêu cầu toàn màn hình: bấm Bắt đầu sẽ bật toàn màn hình rồi mới tạo lượt làm bài.')}</p>}
+          {fsUnsupported && <Notice tone="warning" title={t('Trình duyệt không hỗ trợ toàn màn hình')}>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy dùng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari). Lượt làm bài chưa được tạo.')}</Notice>}
+          {fsProblem && <Notice tone="danger" live title={t('Chưa bật được toàn màn hình')}
+            action={<button type="button" className="btn btn-secondary btn-sm" onClick={() => void start()}>{t('Thử lại')}</button>}>
+            {t('Trình duyệt đã từ chối hoặc chặn chế độ toàn màn hình. Lượt làm bài chưa được tạo; bấm Thử lại và cho phép toàn màn hình.')}</Notice>}
           {error && <Notice tone="danger" live>{error}</Notice>}
           <div className="row">
             <button type="button" className="btn btn-primary btn-lg" disabled={!a.canStart || !ready || starting || fsUnsupported} aria-busy={starting} onClick={() => void start()}>
