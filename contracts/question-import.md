@@ -37,6 +37,10 @@ Giải thích: <giải thích, có thể nhiều dòng>  (also "Explanation:", "
 Mức độ: Dễ | Trung bình | Khó               (optional; also "Difficulty: EASY|MEDIUM|HARD")
 ```
 
+- **OCR line merges (additive, 2026-10-14, QB `0993a26`).** Boundaries found in the middle of one OCR line are split into separate items: a capitalised `Câu N:` (also the OCR variants `Cau`, `CÂU`, `Càu`, `Câu3`), `Đáp án:` / `Giải thích:`, and inline `A. … B. …`.
+  - A bare `N.` starts a question only when it is the next number in sequence and the previous question already has its answer or explanation. Such an item is flagged `QUESTION_SPLIT_UNCERTAIN`.
+  - When the provider is unsure, it does not guess; it flags the item for review. `NUMBERING_GAP` covers numbers that skip or go backwards. `QUESTION_SPLIT_UNCERTAIN` covers `Câu l` with a letter read in place of a digit, and an out-of-sequence `N.` that is kept as text. `POSSIBLE_MERGED_QUESTIONS` covers a second `Đáp án`, options restarting at `A`, or text after a complete letter answer (a lost header). In that last case the first answer is kept and nothing is re-split.
+  - Clients must treat unknown flag values as "needs review".
 - Options present → `MULTIPLE_CHOICE`; exactly two options "Đúng"/"Sai" (or True/False) → `TRUE_FALSE`.
 - No options and an `Đáp án:` text → `SHORT_ANSWER` with `expectedAnswer`.
 - No options and no answer → `ESSAY`, flagged `NO_ANSWER_ESSAY` (must be reviewed).
@@ -58,7 +62,8 @@ ImportItem {
   source: {fileName, page (1-based, null if unknown), method: TEXT|OCR},
   confidence: 0.00–1.00, rawText,
   flags: [OCR, LOW_CONFIDENCE, MISSING_CORRECT_ANSWER, ANSWER_NOT_IN_OPTIONS, MULTIPLE_ANSWERS,
-          DUPLICATE_OPTION, OPTION_SEQUENCE_GAP, NO_ANSWER_ESSAY, CONTENT_TRUNCATED],
+          DUPLICATE_OPTION, OPTION_SEQUENCE_GAP, NO_ANSWER_ESSAY, CONTENT_TRUNCATED,
+          QUESTION_SPLIT_UNCERTAIN, NUMBERING_GAP, POSSIBLE_MERGED_QUESTIONS],   // last three added 2026-10-14, additive
   reviewRequired,   // true if OCR, confidence < 0.80, or any flag other than MISSING_CORRECT_ANSWER
   reviewed,         // set only by the teacher (PUT reviewed=true)
   excluded,         // teacher can exclude an item from import
