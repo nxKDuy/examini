@@ -1,3 +1,5 @@
+import { t } from '../../lib/i18n'
+
 // Exam Builder selection rules (scope lock B). Pure so they are testable without the UI.
 export const MAX_EXAM_QUESTIONS = 200
 export const BATCH_CHUNK = 200
@@ -48,18 +50,18 @@ export const MAX_BLUEPRINT_ROWS = 50
 export const MAX_EXCLUDE = 1000
 
 export function rowError(r: BlueprintRowCfg) {
-  if (!Number.isInteger(r.count) || r.count < 1 || r.count > MAX_EXAM_QUESTIONS) return 'Số câu phải là số nguyên từ 1 đến 200.'
-  if (!(r.pointsPerQuestion > 0) || r.pointsPerQuestion > 1000) return 'Điểm mỗi câu phải lớn hơn 0 và không quá 1000.'
+  if (!Number.isInteger(r.count) || r.count < 1 || r.count > MAX_EXAM_QUESTIONS) return t('Số câu phải là số nguyên từ 1 đến 200.')
+  if (!(r.pointsPerQuestion > 0) || r.pointsPerQuestion > 1000) return t('Điểm mỗi câu phải lớn hơn 0 và không quá 1000.')
   return null
 }
 
 export function blueprintError(rows: BlueprintRowCfg[], alreadyInExam = 0) {
-  if (!rows.length) return 'Thêm ít nhất một dòng khung đề.'
-  if (rows.length > MAX_BLUEPRINT_ROWS) return `Tối đa ${MAX_BLUEPRINT_ROWS} dòng.`
+  if (!rows.length) return t('Thêm ít nhất một dòng khung đề.')
+  if (rows.length > MAX_BLUEPRINT_ROWS) return t('Tối đa {n} dòng.', { n: MAX_BLUEPRINT_ROWS })
   const bad = rows.findIndex(r => rowError(r))
-  if (bad >= 0) return `Dòng ${bad + 1}: ${rowError(rows[bad])}`
+  if (bad >= 0) return t('Dòng {n}: {error}', { n: bad + 1, error: rowError(rows[bad]) ?? '' })
   const sum = rows.reduce((s, r) => s + r.count, 0)
-  if (sum + alreadyInExam > MAX_EXAM_QUESTIONS) return `Tổng số câu (${sum}${alreadyInExam ? ` + ${alreadyInExam} câu đã có` : ''}) vượt quá ${MAX_EXAM_QUESTIONS}.`
+  if (sum + alreadyInExam > MAX_EXAM_QUESTIONS) return alreadyInExam ? t('Tổng số câu ({sum} + {existing} câu đã có) vượt quá {max}.', { sum, existing: alreadyInExam, max: MAX_EXAM_QUESTIONS }) : t('Tổng số câu ({sum}) vượt quá {max}.', { sum, max: MAX_EXAM_QUESTIONS })
   return null
 }
 
