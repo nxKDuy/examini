@@ -194,6 +194,39 @@ class QuestionImportPersistenceTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.imported.length()").value(1)).andExpect(jsonPath("$.skipped[0].reason").value("INVALID"));
         http.perform(get("/question-imports").header("Authorization",jwt(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.content[0].summary.imported").value(1));
     }
+    static final File FONT=new File("/System/Library/Fonts/Supplemental/Arial.ttf");
+    /** Text PDF drawn with PDFBox, rendered to a raster and re-wrapped as an image-only "scan". Rows: {x, y, text}. */
+    static byte[] renderedScan(Object[][] rows) throws IOException {
+        BufferedImage raster;
+        try(var doc=new PDDocument()){var page=new PDPage();doc.addPage(page);var font=PDType0Font.load(doc,FONT);
+            try(var cs=new PDPageContentStream(doc,page)){for(var row:rows){cs.beginText();cs.setFont(font,12);
+                cs.newLineAtOffset(((Number)row[0]).floatValue(),((Number)row[1]).floatValue());cs.showText((String)row[2]);cs.endText();}}
+            raster=new org.apache.pdfbox.rendering.PDFRenderer(doc).renderImageWithDPI(0,200,org.apache.pdfbox.rendering.ImageType.GRAY);}
+        try(var doc=new PDDocument();var out=new ByteArrayOutputStream()){var page=new PDPage();doc.addPage(page);
+            var image=LosslessFactory.createFromImage(doc,raster);
+            try(var cs=new PDPageContentStream(doc,page)){cs.drawImage(image,0,0,page.getMediaBox().getWidth(),page.getMediaBox().getHeight());}
+            doc.save(out);return out.toByteArray();}
+    }
+
+    @Test void ocrMergedQuestionLinesAreSplitIntoSeparateItems() throws Exception {
+        Assumptions.assumeTrue(tesseract()&&FONT.isFile(),"cần tesseract CLI và font Arial có dấu tiếng Việt");
+        // "Câu 2" shares a baseline with Q1's answer and the leading is tight, so OCR reads them as one line.
+        var job=run("dinh-dong.pdf",renderedScan(new Object[][]{
+                {40,740,"Câu 1: Thủ đô của Việt Nam là?"},{40,726,"A. Huế    B. Hà Nội"},
+                {40,712,"Đáp án: B"},{130,712,"Câu 2: Nước sôi ở bao nhiêu độ C?"},
+                {40,698,"A. 90    B. 100"},{40,684,"Đáp án: B   Câu 3. Số chẵn nhỏ nhất là?"},
+                {40,670,"A. 0    B. 2"},{40,656,"Đáp án: A"}}),category);
+        assertEquals(Status.READY,job.status(),job.failureReason()+" "+job.warnings());
+        var all=items(job.id(),ItemFilter.ALL);
+        var debug=all.stream().map(ImportItemResponse::rawText).toList().toString();
+        assertEquals(3,all.size(),debug);
+        assertTrue(all.get(0).content().contains("Việt Nam"),debug);assertTrue(all.get(1).content().contains("Nước sôi"),debug);
+        assertTrue(all.get(2).content().contains("nhỏ nhất"),debug);
+        assertEquals(List.of("90","100"),all.get(1).options().stream().map(ImportOption::content).toList(),debug);
+        assertEquals(List.of(1,1,0),all.stream().map(i->{for(int n=0;n<i.options().size();n++)if(i.options().get(n).correct())return n;return -1;}).toList(),debug);
+        for(var item:all){assertTrue(item.reviewRequired());assertFalse(item.flags().contains("POSSIBLE_MERGED_QUESTIONS"),debug);}
+    }
+
     @Test void scannedPdfPagesAreOcrdWithVietnameseAndAlwaysNeedReview() throws Exception {
         Assumptions.assumeTrue(tesseract(),"tesseract CLI không có trên máy test");
         var job=run("scan.pdf",scannedPdf("""
