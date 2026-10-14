@@ -125,4 +125,14 @@ export const EN: Record<string, string> = {
   'Không còn thông báo chưa đọc': 'No unread notifications', 'Chưa có thông báo': 'No notifications yet', 'Thông báo mới sẽ hiện ở đây và ở chuông trên thanh đầu trang.': 'New notifications appear here and on the bell in the top bar.',
   'Phân trang thông báo': 'Notification pages', 'Thông báo, {n} chưa đọc': 'Notifications, {n} unread', 'Đọc tất cả': 'Read all',
   'Thông báo đặt/đổi lịch, mở/đóng kỳ thi và nhắc giờ sẽ hiện ở đây.': 'Schedule changes, exam open/close and reminders appear here.', 'Xem tất cả thông báo': 'See all notifications',
+  // Access policy
+  'Cách thí sinh tham gia': 'How students join', 'Chỉ thí sinh được giáo viên phân công mới vào được kỳ thi.': 'Only students assigned by the teacher can enter.',
+  'Người dùng EXAMINI đã đăng nhập nhập đúng mã sẽ tham gia được.': 'Signed-in EXAMINI users who enter the right code can join.',
+  'Mọi người dùng EXAMINI đã đăng nhập đều thấy và tham gia được. Không cho phép truy cập ẩn danh.': 'Every signed-in EXAMINI user can see and join. No anonymous access.',
+  'Để trống để giữ mã hệ thống đã tạo. 4 đến 50 ký tự: chữ, số, _ hoặc -.': 'Leave empty to keep the generated code. 4 to 50 characters: letters, digits, _ or -.',
+  'Số người tham gia tối đa': 'Maximum participants', 'Tổng số thí sinh khác nhau được tham gia kỳ thi.': 'Total distinct students allowed to join.',
+  'Số phiên làm bài đồng thời': 'Concurrent attempts', 'Số lượt đang làm bài cùng lúc. Khi đạt giới hạn, thí sinh mới phải chờ. Đây là giới hạn nghiệp vụ, không phải cam kết tải hệ thống.': 'Attempts in progress at the same time. At the limit new students wait. This is a business limit, not a load guarantee.',
+  'Số lượt làm bài mỗi thí sinh': 'Attempts per student', 'Lượt đang làm dở được tiếp tục, không tính thêm lượt.': 'An unfinished attempt is resumed and does not use another one.',
+  'Các giới hạn phải là số nguyên từ 1 trở lên.': 'Limits must be whole numbers of at least 1.', 'Số phiên làm bài đồng thời không được lớn hơn số người tham gia tối đa.': 'Concurrent attempts cannot exceed maximum participants.',
+  'Số phiên làm bài đồng thời tối đa là {n}.': 'At most {n} concurrent attempts.', 'Mã tham gia gồm 4 đến 50 ký tự: chữ, số, gạch dưới hoặc gạch ngang.': 'A join code has 4 to 50 characters: letters, digits, underscore or hyphen.',
 }
