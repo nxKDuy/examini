@@ -1,3 +1,4 @@
+import { t } from '../../lib/i18n'
 import type { IntegrityAudit, IntegrityPolicy, Receipt, SignalMetadata, SignalType } from './integrityApi'
 
 export const DEFAULT_LIMIT = 5
@@ -40,7 +41,7 @@ export const counts = (p: IntegrityPolicy | null | undefined) =>
   !!p && (p.monitorTabSwitch || p.monitorWindowBlur || p.requireFullscreen)
 
 export function limitError(value: number) {
-  return Number.isInteger(value) && value >= MIN_LIMIT && value <= MAX_LIMIT ? null : `Ngưỡng phải là số nguyên từ ${MIN_LIMIT} đến ${MAX_LIMIT}.`
+  return Number.isInteger(value) && value >= MIN_LIMIT && value <= MAX_LIMIT ? null : t('Ngưỡng phải là số nguyên từ {min} đến {max}.', { min: MIN_LIMIT, max: MAX_LIMIT })
 }
 
 export function policySummary(p: IntegrityPolicy | null | undefined) {

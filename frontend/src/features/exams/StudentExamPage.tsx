@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import BlockingOverlay from '../integrity/BlockingOverlay'
 import { exitFullscreen } from '../../lib/fullscreen'
+import { useT } from '../../lib/i18n'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
@@ -36,6 +37,7 @@ export default function StudentExamPage() {
   const [announcement, setAnnouncement] = useState('')
   const [signals, setSignals] = useState<StudentSignalState | null>(null)
   const [fsRefused, setFsRefused] = useState(false)
+  const t = useT()
   const wasFullscreen = useRef(false)
   const [autoSubmitted, setAutoSubmitted] = useState(false)
   const autoSubmittedRef = useRef(false)
@@ -213,16 +215,16 @@ export default function StudentExamPage() {
   }
 
   if (loadError) return <main className="auth-shell"><div className="card" style={{ width: 'min(520px, 100%)' }}><ErrorState error={loadError} onRetry={() => { setLoadError(null); loadedFor.current = id ?? null; void sync(true) }} /></div></main>
-  if (!session) return <main className="auth-shell"><p role="status" className="row muted"><Spinner /> Đang tải bài thi…</p></main>
+  if (!session) return <main className="auth-shell"><p role="status" className="row muted"><Spinner /> {t('Đang tải bài thi…')}</p></main>
   if (autoSubmitted) return (
     <main className="auth-shell">
       <section className="card card-body stack" style={{ width: 'min(560px, 100%)' }} aria-labelledby="auto-submitted-title">
-        <h1 id="auto-submitted-title" className="row" style={{ fontSize: '1.4rem', gap: 10 }}><ShieldAlert size={22} aria-hidden /> Bài đã được tự động nộp</h1>
-        <p>Lượt làm bài này đã vượt ngưỡng {signals?.limit ?? ''} tín hiệu trình duyệt của kỳ thi nên hệ thống đã nộp các câu trả lời đã lưu.</p>
-        <p className="small muted">Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Nếu cần làm lại, hãy liên hệ giáo viên phụ trách kỳ thi.</p>
+        <h1 id="auto-submitted-title" className="row" style={{ fontSize: '1.4rem', gap: 10 }}><ShieldAlert size={22} aria-hidden /> {t('Bài đã được tự động nộp')}</h1>
+        <p>{t('Lượt làm bài này đã vượt ngưỡng {limit} tín hiệu trình duyệt của kỳ thi nên hệ thống đã nộp các câu trả lời đã lưu.', { limit: signals?.limit ?? '' })}</p>
+        <p className="small muted">{t('Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Nếu cần làm lại, hãy liên hệ giáo viên phụ trách kỳ thi.')}</p>
         <div className="row">
-          <button type="button" className="btn btn-primary" onClick={goResult}>Xem kết quả</button>
-          <button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`, { replace: true })}>Về phòng chờ</button>
+          <button type="button" className="btn btn-primary" onClick={goResult}>{t('Xem kết quả')}</button>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`, { replace: true })}>{t('Về phòng chờ')}</button>
         </div>
       </section>
     </main>
@@ -239,9 +241,9 @@ export default function StudentExamPage() {
   const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
   const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack
   const locked = expired || submitting || blocked
-  const lastLine = signals?.stage === 'last' ? <p><strong>Thêm một tín hiệu nữa, bài sẽ được tự động nộp.</strong></p> : null
-  const countLine = signals ? <p>Đã ghi nhận <strong>{signals.count}/{signals.limit}</strong> tín hiệu rời khỏi bài.</p> : null
-  const neutral = <p className="small muted">Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Đồng hồ vẫn chạy theo máy chủ; hết giờ bài được tự động nộp như bình thường.</p>
+  const lastLine = signals?.stage === 'last' ? <p><strong>{t('Thêm một tín hiệu nữa, bài sẽ được tự động nộp.')}</strong></p> : null
+  const countLine = signals ? <p><strong>{t('Đã ghi nhận {count}/{limit} tín hiệu rời khỏi bài.', { count: signals.count, limit: signals.limit })}</strong></p> : null
+  const neutral = <p className="small muted">{t('Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Đồng hồ vẫn chạy theo máy chủ; hết giờ bài được tự động nộp như bình thường.')}</p>
 
   return (
     <div className="take-shell">
@@ -262,12 +264,12 @@ export default function StudentExamPage() {
       {!blocked && <>
       <div className="take-body">
         <main className="stack">
-          {expired && <Notice tone="warning" live title="Đã hết giờ">Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.</Notice>}
-          {!online && <Notice tone="warning" live title="Mất kết nối">Câu trả lời sẽ được lưu khi có mạng lại. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở.</Notice>}
+          {expired && <Notice tone="warning" live title={t('Đã hết giờ')}>{t('Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.')}</Notice>}
+          {!online && <Notice tone="warning" live title={t('Mất kết nối')}>{t('Câu trả lời sẽ được lưu khi có mạng lại. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở.')}</Notice>}
           {actionError && <Notice tone="danger" live>{actionError}</Notice>}
           {signals && signals.stage !== 'none' && (signals.stage === 'last' || integrity.policy?.warningPolicy === 'WARN_ONLY') && (
-            <Notice tone="warning" live>Đã ghi nhận <strong>{signals.count}/{signals.limit}</strong> tín hiệu rời khỏi bài.{' '}
-              {signals.stage === 'last' ? 'Thêm một tín hiệu nữa, bài sẽ được tự động nộp.' : `Vượt quá ${signals.limit} tín hiệu, bài sẽ được tự động nộp.`}</Notice>)}
+            <Notice tone="warning" live><strong>{t('Đã ghi nhận {count}/{limit} tín hiệu rời khỏi bài.', { count: signals.count, limit: signals.limit })}</strong>{' '}
+              {signals.stage === 'last' ? t('Thêm một tín hiệu nữa, bài sẽ được tự động nộp.') : t('Vượt quá {limit} tín hiệu, bài sẽ được tự động nộp.', { limit: signals.limit })}</Notice>)}
 
           <section className="card card-body stack-lg" aria-labelledby="question-heading">
             <div className="spread">
@@ -310,25 +312,25 @@ export default function StudentExamPage() {
       </>}
 
       {integrity.needsFullscreen && !integrity.supported && (
-        <BlockingOverlay title="Trình duyệt không hỗ trợ toàn màn hình" remaining={remaining}
-          actions={<button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`)}>Về phòng chờ</button>}>
-          <p>Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy mở bài bằng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari).</p>
+        <BlockingOverlay title={t('Trình duyệt không hỗ trợ toàn màn hình')} remaining={remaining}
+          actions={<button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`)}>{t('Về phòng chờ')}</button>}>
+          <p>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy mở bài bằng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari).')}</p>
           {neutral}
         </BlockingOverlay>
       )}
       {integrity.needsFullscreen && integrity.supported && (
-        <BlockingOverlay title={wasFullscreen.current ? 'Bạn đã thoát toàn màn hình' : 'Bật toàn màn hình để làm bài'} remaining={remaining}
-          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={() => void backToFullscreen()}><Maximize size={16} aria-hidden /> Quay lại toàn màn hình</button>}>
-          <p>Kỳ thi yêu cầu làm bài ở chế độ toàn màn hình. Câu hỏi được ẩn và không sửa được câu trả lời cho đến khi bạn quay lại.</p>
+        <BlockingOverlay title={t(wasFullscreen.current ? 'Bạn đã thoát toàn màn hình' : 'Bật toàn màn hình để làm bài')} remaining={remaining}
+          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={() => void backToFullscreen()}><Maximize size={16} aria-hidden /> {t('Quay lại toàn màn hình')}</button>}>
+          <p>{t('Kỳ thi yêu cầu làm bài ở chế độ toàn màn hình. Câu hỏi được ẩn và không sửa được câu trả lời cho đến khi bạn quay lại.')}</p>
           {wasFullscreen.current && countLine}{lastLine}
-          {fsRefused && <Notice tone="danger" live>Trình duyệt chưa bật được toàn màn hình. Bấm “Quay lại toàn màn hình” để thử lại.</Notice>}
+          {fsRefused && <Notice tone="danger" live>{t('Trình duyệt chưa bật được toàn màn hình. Bấm “Quay lại toàn màn hình” để thử lại.')}</Notice>}
           {neutral}
         </BlockingOverlay>
       )}
       {!integrity.needsFullscreen && integrity.ack && (
-        <BlockingOverlay title="Bạn vừa rời khỏi trang làm bài" remaining={remaining}
-          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.acknowledge}>Tôi đã hiểu</button>}>
-          {countLine ?? <p>Đang ghi nhận tín hiệu…</p>}{lastLine}
+        <BlockingOverlay title={t('Bạn vừa rời khỏi trang làm bài')} remaining={remaining}
+          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.acknowledge}>{t('Tôi đã hiểu')}</button>}>
+          {countLine ?? <p>{t('Đang ghi nhận tín hiệu…')}</p>}{lastLine}
           {neutral}
         </BlockingOverlay>
       )}
