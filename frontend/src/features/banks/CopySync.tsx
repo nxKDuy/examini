@@ -236,7 +236,7 @@ function OrderPanel({ preview, local, decisions, onChoose }: { preview: SetSyncP
       {preview.sourceReordered ? <article className="sync-row" data-conflict={preview.reorderConflict && !decisions.ORDER ? 'open' : preview.reorderConflict ? 'done' : undefined}>
         <header className="row" style={{ justifyContent: 'space-between' }}><strong>{tt('Thứ tự câu')}</strong><ConflictMark conflict={preview.reorderConflict} decided={!!decisions.ORDER} /></header>
         <p className="xsmall muted">{tt('Nguồn đã sắp xếp lại các câu chung')}{preview.localReordered ? tt('; bạn cũng đã sắp xếp lại') : ''}.</p>
-        <Choice name="ORDER" value="thứ tự câu" decisions={decisions} conflict={preview.reorderConflict} labels={{ KEEP_LOCAL: tt('Giữ thứ tự của tôi'), TAKE_SOURCE: tt('Theo thứ tự nguồn') }} onChoose={onChoose} />
+        <Choice name="ORDER" value={tt('thứ tự câu')} decisions={decisions} conflict={preview.reorderConflict} labels={{ KEEP_LOCAL: tt('Giữ thứ tự của tôi'), TAKE_SOURCE: tt('Theo thứ tự nguồn') }} onChoose={onChoose} />
       </article> : <p className="small muted">{preview.localReordered ? tt('Nguồn không đổi thứ tự; bạn đã sắp xếp lại và thứ tự của bạn được giữ.') : tt('Nguồn không đổi thứ tự các câu chung.')}</p>}
       <div className="table-wrap"><table className="bk-table">
         <thead><tr><th scope="col">{tt('Của bạn')}</th><th scope="col">{tt('Câu')}</th><th scope="col">{tt('Nguồn mới nhất')}</th>{full && <th scope="col">{tt('Lần đồng bộ trước')}</th>}</tr></thead>
