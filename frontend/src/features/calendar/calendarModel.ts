@@ -1,8 +1,9 @@
 import { addDays, dayStart, formatDateIn, formatDateTimeIn, formatTimeIn, instantToDay, offsetMinutes, wallParts, weekdayIndex, zoneLabel } from '../../lib/zone'
 import type { CalendarItem, DeadlineRule } from './calendarApi'
+import { t as tt, i18nMap } from '../../lib/i18n'
 
 export type CalendarView = 'agenda' | 'month' | 'week' | 'day'
-export const VIEW_LABEL: Record<CalendarView, string> = { agenda: 'Agenda', month: 'Tháng', week: 'Tuần', day: 'Ngày' }
+export const VIEW_LABEL: Record<CalendarView, string> = i18nMap({ agenda: 'Agenda', month: 'Tháng', week: 'Tuần', day: 'Ngày' })
 const HOUR = 3600e3, MINUTE = 60e3
 
 export const toMs = (iso: string | null | undefined) => (iso ? Date.parse(iso) : null)
@@ -73,7 +74,7 @@ const TERMINAL = new Set(['CLOSED', 'EXAM_CLOSED', 'COMPLETED', 'SUBMITTED', 'AU
 export const isOpenEnded = (item: Pick<CalendarItem, 'startAt' | 'endAt' | 'calendarState'>) => !!item.startAt && !item.endAt && !TERMINAL.has(item.calendarState)
 
 export type AgendaKey = 'today' | 'upcoming' | 'later' | 'unscheduled' | 'past'
-export const AGENDA_LABEL: Record<AgendaKey, string> = { today: 'Hôm nay', upcoming: 'Sắp tới (7 ngày)', later: 'Sau đó', unscheduled: 'Chưa có lịch', past: 'Đã qua' }
+export const AGENDA_LABEL: Record<AgendaKey, string> = i18nMap({ today: 'Hôm nay', upcoming: 'Sắp tới (7 ngày)', later: 'Sau đó', unscheduled: 'Chưa có lịch', past: 'Đã qua' })
 export const AGENDA_ORDER: AgendaKey[] = ['today', 'upcoming', 'later', 'unscheduled', 'past']
 
 export function agendaGroups(items: CalendarItem[], nowMs: number, tz: string): { key: AgendaKey; label: string; items: CalendarItem[] }[] {
@@ -171,7 +172,7 @@ export function collapseCrowded(blocks: Block[], maxCols: number): { shown: Bloc
 export type StateTone = 'success' | 'neutral' | 'warning' | 'muted' | 'danger'
 export interface StateInfo { label: string; tone: StateTone; icon: 'play' | 'clock' | 'lock' | 'edit' | 'check' | 'alert' | 'send' | 'key' | 'ban' }
 
-const STATES: Record<string, StateInfo> = {
+const STATES: Record<string, StateInfo> = i18nMap({
   // Teacher lifecycle
   DRAFT: { label: 'Bản nháp', tone: 'warning', icon: 'edit' },
   PUBLISHED: { label: 'Đã xuất bản', tone: 'neutral', icon: 'lock' },
@@ -200,11 +201,11 @@ const STATES: Record<string, StateInfo> = {
   SNAPSHOT_UNAVAILABLE: { label: 'Tạm thời không khả dụng', tone: 'danger', icon: 'alert' },
   PARTICIPATION_REVOKED: { label: 'Đã bị gỡ', tone: 'muted', icon: 'ban' },
   EXAM_INTEGRITY_LOCKED: { label: 'Đang khóa', tone: 'warning', icon: 'lock' },
-}
+})
 export const stateInfo = (state: string | null | undefined): StateInfo =>
-  STATES[state ?? ''] ?? { label: state ?? 'Không rõ', tone: 'neutral', icon: 'clock' }
+  STATES[state ?? ''] ?? { label: state ?? tt('Không rõ'), tone: 'neutral', icon: 'clock' }
 
-export const REASON_TEXT: Record<string, string> = {
+export const REASON_TEXT: Record<string, string> = i18nMap({
   EXAM_NOT_PUBLISHED: 'Giáo viên chưa xuất bản kỳ thi.',
   EXAM_CLOSED: 'Kỳ thi đã đóng, không nhận lượt làm bài mới.',
   BEFORE_START_AT: 'Chưa đến giờ bắt đầu. Bạn có thể xem trước nhưng chưa tham gia hoặc bắt đầu được.',
@@ -217,20 +218,20 @@ export const REASON_TEXT: Record<string, string> = {
   SNAPSHOT_UNAVAILABLE: 'Nội dung đề tạm thời không khả dụng. Hãy thử lại sau.',
   PARTICIPATION_REVOKED: 'Bạn không còn trong danh sách của kỳ thi này nên không thể tham gia hoặc bắt đầu lượt mới.',
   EXAM_INTEGRITY_LOCKED: 'Giáo viên đang khóa kỳ thi nên chưa nhận lượt bắt đầu mới.',
-}
-export const reasonText = (code: string | null | undefined) => (code ? REASON_TEXT[code] ?? `Chưa thể bắt đầu (${code}).` : null)
+})
+export const reasonText = (code: string | null | undefined) => (code ? REASON_TEXT[code] ?? tt('Chưa thể bắt đầu ({0}).', { 0: code }) : null)
 
-export const RULE_LABEL: Record<DeadlineRule, string> = { FULL_DURATION: 'Đủ thời lượng', CAPPED_AT_END: 'Nộp đúng giờ kết thúc', REQUIRE_FULL_WINDOW: 'Phải còn đủ thời lượng' }
-export const RULE_HELP: Record<DeadlineRule, string> = {
+export const RULE_LABEL: Record<DeadlineRule, string> = i18nMap({ FULL_DURATION: 'Đủ thời lượng', CAPPED_AT_END: 'Nộp đúng giờ kết thúc', REQUIRE_FULL_WINDOW: 'Phải còn đủ thời lượng' })
+export const RULE_HELP: Record<DeadlineRule, string> = i18nMap({
   FULL_DURATION: 'Bắt đầu muộn vẫn được trong cửa sổ làm bài. Hạn nộp = lúc bắt đầu + thời lượng, kể cả khi vượt giờ kết thúc.',
   CAPPED_AT_END: 'Bắt đầu muộn vẫn được trong cửa sổ làm bài. Hạn nộp là mốc sớm hơn giữa (lúc bắt đầu + thời lượng) và giờ kết thúc.',
   REQUIRE_FULL_WINDOW: 'Không cho bắt đầu nếu thời gian còn lại ít hơn thời lượng. Hạn nộp = lúc bắt đầu + thời lượng.',
-}
+})
 export const ruleLabel = (rule: string) => RULE_LABEL[rule as DeadlineRule] ?? rule
 
-export const RELATION_LABEL: Record<string, string> = {
+export const RELATION_LABEL: Record<string, string> = i18nMap({
   OWNER: 'Chủ sở hữu', MANAGER: 'Quản lý', PROCTOR: 'Giám thị', ASSIGNED: 'Được giao', JOINED: 'Đã tham gia', FOLLOWER: 'Đang theo dõi', REVOKED: 'Đã bị gỡ',
-}
+})
 export const relationLabel = (r: string) => RELATION_LABEL[r] ?? r
 
 export function describeCountdown(ms: number): string {
@@ -244,10 +245,10 @@ export function describeCountdown(ms: number): string {
 /** One countdown line per Student item. Display only; the server decides what is allowed. */
 export function countdownLine(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'effectiveExpiresAt' | 'calendarState' | 'canStart' | 'canResume'>, nowMs: number): string | null {
   const start = toMs(item.startAt), end = toMs(item.endAt), expires = toMs(item.effectiveExpiresAt)
-  if (item.calendarState === 'IN_PROGRESS' && expires !== null) return expires > nowMs ? `Còn ${describeCountdown(expires - nowMs)} để nộp` : 'Đang hết giờ'
+  if (item.calendarState === 'IN_PROGRESS' && expires !== null) return expires > nowMs ? tt('Còn {0} để nộp', { 0: describeCountdown(expires - nowMs) }) : tt('Đang hết giờ')
   if (['SUBMITTED', 'AUTO_SUBMITTED', 'CANCELLED', 'MISSED', 'CLOSED', 'EXAM_CLOSED', 'AFTER_END_AT'].includes(item.calendarState)) return null
-  if (start !== null && start > nowMs) return `Mở sau ${describeCountdown(start - nowMs)}`
-  if (end !== null && end > nowMs && (item.canStart || item.canResume || item.calendarState === 'AVAILABLE')) return `Đóng sau ${describeCountdown(end - nowMs)}`
+  if (start !== null && start > nowMs) return tt('Mở sau {0}', { 0: describeCountdown(start - nowMs) })
+  if (end !== null && end > nowMs && (item.canStart || item.canResume || item.calendarState === 'AVAILABLE')) return tt('Đóng sau {0}', { 0: describeCountdown(end - nowMs) })
   return null
 }
 
@@ -255,8 +256,8 @@ export function countdownLine(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'ef
 export function blockRangeLabel(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>): string {
   const span = itemSpan(item), tz = item.timezone
   if (!span) return ''
-  if (span.kind === 'open-start') return `từ ${formatTimeIn(span.start, tz)} ${zoneLabel(span.start, tz)}`
-  if (span.kind === 'deadline') return `đóng ${formatTimeIn(span.end, tz)} ${zoneLabel(span.end, tz)}`
+  if (span.kind === 'open-start') return tt('từ {0} {1}', { 0: formatTimeIn(span.start, tz), 1: zoneLabel(span.start, tz) })
+  if (span.kind === 'deadline') return tt('đóng {0} {1}', { 0: formatTimeIn(span.end, tz), 1: zoneLabel(span.end, tz) })
   if (offsetMinutes(span.start, tz) !== offsetMinutes(span.end, tz)) return `${formatTimeIn(span.start, tz)} ${zoneLabel(span.start, tz)}–${formatTimeIn(span.end, tz)} ${zoneLabel(span.end, tz)}`
   return `${formatTimeIn(span.start, tz)}–${formatTimeIn(span.end, tz)} ${zoneLabel(span.start, tz)}`
 }
@@ -268,7 +269,7 @@ export function blockRangeLabel(item: Pick<CalendarItem, 'startAt' | 'endAt' | '
 export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timezone'>, viewerTz: string): { primary: string; zone: string; mine?: string; mineText?: string; mineZone?: string } {
   const start = toMs(item.startAt), end = toMs(item.endAt), tz = item.timezone
   const ref = start ?? end
-  if (ref === null) return { primary: 'Chưa đặt lịch', zone: '' }
+  if (ref === null) return { primary: tt('Chưa đặt lịch'), zone: '' }
   const split = (zoneId: string) => start !== null && end !== null && offsetMinutes(start, zoneId) !== offsetMinutes(end, zoneId)
   const tag = (ms: number, zoneId: string, on: boolean) => (on ? ` ${zoneLabel(ms, zoneId)}` : '')
   const render = (zoneId: string) => {
@@ -279,15 +280,15 @@ export function windowText(item: Pick<CalendarItem, 'startAt' | 'endAt' | 'timez
         ? `${formatDateIn(start, zoneId)}, ${formatTimeIn(start, zoneId)}${tag(start, zoneId, od)}–${formatTimeIn(end, zoneId)}${tag(end, zoneId, od)}`
         : `${formatDateTimeIn(start, zoneId)}${tag(start, zoneId, od)} → ${formatDateTimeIn(end, zoneId)}${tag(end, zoneId, od)}`
     }
-    if (start !== null) return `Từ ${formatDateTimeIn(start, zoneId)}`
-    return `Đến ${formatDateTimeIn(end as number, zoneId)}`
+    if (start !== null) return tt('Từ {0}', { 0: formatDateTimeIn(start, zoneId) })
+    return tt('Đến {0}', { 0: formatDateTimeIn(end as number, zoneId) })
   }
   const label = zoneLabel(ref, tz)
-  const zone = split(tz) ? `${zoneLabel(start as number, tz)} → ${zoneLabel(end as number, tz)} · ${tz} (đổi giờ trong khoảng này)` : label === tz ? tz : `${label} · ${tz}`
+  const zone = split(tz) ? tt('{0} → {1} · {2} (đổi giờ trong khoảng này)', { 0: zoneLabel(start as number, tz), 1: zoneLabel(end as number, tz), 2: tz }) : label === tz ? tz : `${label} · ${tz}`
   const different = viewerTz !== tz && (offsetMinutes(ref, viewerTz) !== offsetMinutes(ref, tz) || (end !== null && offsetMinutes(end, viewerTz) !== offsetMinutes(end, tz)))
   if (!different) return { primary: render(tz), zone }
   const mineZone = split(viewerTz) ? `${zoneLabel(start as number, viewerTz)} → ${zoneLabel(end as number, viewerTz)}` : zoneLabel(ref, viewerTz), mineText = render(viewerTz)
-  return { primary: render(tz), zone, mine: `Giờ của bạn (${mineZone}): ${mineText}`, mineText, mineZone }
+  return { primary: render(tz), zone, mine: tt('Giờ của bạn ({0}): {1}', { 0: mineZone, 1: mineText }), mineText, mineZone }
 }
 
 export const isTeacherItem = (item: Pick<CalendarItem, 'relation'>) => ['OWNER', 'MANAGER', 'PROCTOR'].includes(item.relation)
@@ -296,13 +297,13 @@ export const isTeacherItem = (item: Pick<CalendarItem, 'relation'>) => ['OWNER',
 export function cardMetrics(item: CalendarItem, nowMs: number): string[] {
   if (isTeacherItem(item)) {
     return [
-      item.participantCount !== null && item.maxParticipants !== null ? `${item.participantCount}/${item.maxParticipants} người` : '',
-      ruleLabel(item.deadlineRule), `${item.durationMinutes} phút`, relationLabel(item.relation),
+      item.participantCount !== null && item.maxParticipants !== null ? tt('{0}/{1} người', { 0: item.participantCount, 1: item.maxParticipants }) : '',
+      ruleLabel(item.deadlineRule), tt('{0} phút', { 0: item.durationMinutes }), relationLabel(item.relation),
     ].filter(Boolean)
   }
   return [
-    countdownLine(item, nowMs) ?? '', `${item.durationMinutes} phút`, ruleLabel(item.deadlineRule),
-    item.attemptsRemaining !== null ? `Còn ${item.attemptsRemaining} lượt` : '', relationLabel(item.relation),
+    countdownLine(item, nowMs) ?? '', tt('{0} phút', { 0: item.durationMinutes }), ruleLabel(item.deadlineRule),
+    item.attemptsRemaining !== null ? tt('Còn {0} lượt', { 0: item.attemptsRemaining }) : '', relationLabel(item.relation),
   ].filter(Boolean)
 }
 

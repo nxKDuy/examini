@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { errorText } from '../../lib/errors'
 import { notificationApi } from './notificationApi'
 import { currentSubscription, disablePush, enablePush, getRecord, pushSupported } from './pushClient'
+import { t } from '../../lib/i18n'
 
 export type PushStatus = 'checking' | 'unsupported' | 'unconfigured' | 'blocked' | 'off' | 'on'
 
@@ -42,12 +43,12 @@ export function usePush() {
       const result = await enablePush({ userId, token: start.accessToken, publicKey: key.data.publicKey, isCurrent })
       if (result === 'stale') return
       setPermission(Notification.permission)
-      if (result === 'denied') { setError(Notification.permission === 'denied' ? 'Trình duyệt đã chặn thông báo cho trang này.' : 'Bạn chưa cho phép thông báo.'); return }
+      if (result === 'denied') { setError(Notification.permission === 'denied' ? t('Trình duyệt đã chặn thông báo cho trang này.') : t('Bạn chưa cho phép thông báo.')); return }
       await refresh()
     } catch (e) {
       if (!isCurrent()) return
       const name = (e as { name?: string } | undefined)?.name
-      setError(name === 'AbortError' || name === 'NotSupportedError' ? 'Trình duyệt không đăng ký được dịch vụ đẩy (có thể bị chặn hoặc thiếu kết nối tới nhà cung cấp push).' : errorText(e))
+      setError(name === 'AbortError' || name === 'NotSupportedError' ? t('Trình duyệt không đăng ký được dịch vụ đẩy (có thể bị chặn hoặc thiếu kết nối tới nhà cung cấp push).') : errorText(e))
     } finally { setBusy(false) }
   }
 

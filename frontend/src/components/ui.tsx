@@ -2,15 +2,17 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, AlertTriangle, CheckCircle2, ChevronRight, Info, Lock, RefreshCw, SearchX, WifiOff } from 'lucide-react'
 import { errorInfo } from '../lib/errors'
+import { t, useT } from '../lib/i18n'
 
 export function PageHeader({ title, description, actions, crumbs }: {
   title: ReactNode; description?: ReactNode; actions?: ReactNode; crumbs?: { label: string; to?: string }[]
 }) {
+  useT()
   return (
     <header className="page-header">
       <div style={{ minWidth: 0 }}>
         {crumbs && crumbs.length > 0 && (
-          <nav aria-label="Đường dẫn" className="breadcrumb">
+          <nav aria-label={t('Đường dẫn')} className="breadcrumb">
             {crumbs.map((c, i) => (
               <span key={i} className="row" style={{ gap: 6 }}>
                 {c.to ? <Link to={c.to}>{c.label}</Link> : <span aria-current="page">{c.label}</span>}
@@ -62,9 +64,10 @@ export function EmptyState({ icon, title, description, action }: { icon?: ReactN
 }
 
 export function ErrorState({ error, onRetry, title }: { error: unknown; onRetry?: () => void; title?: string }) {
+  useT()
   const info = errorInfo(error)
   const Icon = info.status === 0 ? WifiOff : info.status === 403 ? Lock : AlertCircle
-  const heading = title ?? (info.status === 403 ? 'Không có quyền truy cập' : info.status === 404 ? 'Không tìm thấy' : info.status === 0 ? 'Mất kết nối' : 'Không tải được dữ liệu')
+  const heading = title ?? (info.status === 403 ? t('Không có quyền truy cập') : info.status === 404 ? t('Không tìm thấy') : info.status === 0 ? t('Mất kết nối') : t('Không tải được dữ liệu'))
   return (
     <div role="alert" style={{ padding: '32px 20px', textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 8 }}>
       <Icon size={30} aria-hidden style={{ color: info.status === 403 ? 'var(--color-muted)' : 'var(--color-danger)' }} />
@@ -72,14 +75,15 @@ export function ErrorState({ error, onRetry, title }: { error: unknown; onRetry?
       <p className="muted small" style={{ maxWidth: '56ch' }}>{info.message}</p>
       {onRetry && info.status !== 403 && info.status !== 404 && (
         <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry} style={{ marginTop: 6 }}>
-          <RefreshCw size={14} aria-hidden /> Thử lại
+          <RefreshCw size={14} aria-hidden /> {t('Thử lại')}
         </button>
       )}
     </div>
   )
 }
 
-export function LoadingState({ rows = 3, label = 'Đang tải…' }: { rows?: number; label?: string }) {
+export function LoadingState({ rows = 3, label = t('Đang tải…') }: { rows?: number; label?: string }) {
+  useT()
   return (
     <div role="status" aria-live="polite" style={{ padding: 20, display: 'grid', gap: 12 }}>
       <span className="sr-only">{label}</span>
@@ -136,10 +140,11 @@ export function Section({ title, description, actions, children, bodyClassName =
 }
 
 export function Pagination({ page, totalPages, onChange, label }: { page: number; totalPages: number; onChange: (page: number) => void; label: string }) {
+  useT()
   if (totalPages <= 1) return null
   return (
     <nav aria-label={label} className="spread" style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)' }}>
-      <button type="button" className="btn btn-secondary btn-sm" disabled={page === 0} onClick={() => onChange(page - 1)}>Trang trước</button>
+      <button type="button" className="btn btn-secondary btn-sm" disabled={page === 0} onClick={() => onChange(page - 1)}>{t('Trang trước')}</button>
       <span className="small muted mono">Trang {page + 1} / {totalPages}</span>
       <button type="button" className="btn btn-secondary btn-sm" disabled={page + 1 >= totalPages} onClick={() => onChange(page + 1)}>Trang sau</button>
     </nav>

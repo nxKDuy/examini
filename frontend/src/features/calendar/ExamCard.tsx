@@ -4,6 +4,7 @@ import { Badge } from '../../components/ui'
 import type { CalendarItem } from './calendarApi'
 import { cardMetrics, itemSpan, stateInfo, windowText, type StateInfo } from './calendarModel'
 import { formatTimeIn, offsetMinutes, zoneLabel } from '../../lib/zone'
+import { t, useT } from '../../lib/i18n'
 
 const ICONS = { play: PlayCircle, clock: Clock, lock: Lock, edit: FileEdit, check: CheckCircle2, alert: AlertTriangle, send: Send, key: KeyRound, ban: Ban }
 
@@ -18,6 +19,7 @@ const summary = (item: CalendarItem, viewerTz: string) => `${item.examTitle}, ${
 export function AgendaRow({ item, nowMs, viewerTz, selected, onSelect }: {
   item: CalendarItem; nowMs: number; viewerTz: string; selected: boolean; onSelect: (item: CalendarItem) => void
 }) {
+  useT()
   const span = itemSpan(item)
   const w = windowText(item, viewerTz)
   const tz = item.timezone
@@ -25,7 +27,7 @@ export function AgendaRow({ item, nowMs, viewerTz, selected, onSelect }: {
   const split = !!span && span.kind === 'window' && offsetMinutes(span.start, tz) !== offsetMinutes(span.end, tz)
   const tag = (ms: number) => (split ? ` ${zoneLabel(ms, tz)}` : '')
   const clock = !span ? '–' : span.kind === 'window' ? `${formatTimeIn(span.start, tz)}${tag(span.start)}` : span.kind === 'open-start' ? formatTimeIn(span.start, tz) : formatTimeIn(span.end, tz)
-  const sub = !span ? 'Chưa có lịch' : span.kind === 'window' ? `đến ${formatTimeIn(span.end, tz)}${tag(span.end)}` : span.kind === 'open-start' ? 'mở từ' : 'hạn đóng'
+  const sub = !span ? t('Chưa có lịch') : span.kind === 'window' ? t('đến {0}{1}', { 0: formatTimeIn(span.end, tz), 1: tag(span.end) }) : span.kind === 'open-start' ? t('mở từ') : t('hạn đóng')
   const info = stateInfo(item.calendarState)
   return (
     <button type="button" className="cal-row" data-tone={info.tone} aria-current={selected} aria-label={summary(item, viewerTz)} onClick={() => onSelect(item)}>
@@ -52,11 +54,12 @@ export function MonthChip({ item, viewerTz, selected, onSelect }: { item: Calend
 }
 
 export function Legend() {
+  useT()
   const rows: [string, string][] = [
-    ['success', 'Làm được / đang mở'], ['neutral', 'Sắp tới / đã xuất bản'], ['warning', 'Nháp / chờ (nét đứt)'], ['muted', 'Đã đóng / đã nộp'], ['danger', 'Đã lỡ / lỗi'],
+    ['success', t('Làm được / đang mở')], ['neutral', t('Sắp tới / đã xuất bản')], ['warning', t('Nháp / chờ (nét đứt)')], ['muted', t('Đã đóng / đã nộp')], ['danger', t('Đã lỡ / lỗi')],
   ]
   return (
-    <ul className="cal-legend" aria-label="Chú giải trạng thái">
+    <ul className="cal-legend" aria-label={t('Chú giải trạng thái')}>
       {rows.map(([tone, label]) => <li key={tone}><span className="cal-swatch" data-tone={tone} aria-hidden />{label}</li>)}
     </ul>
   )

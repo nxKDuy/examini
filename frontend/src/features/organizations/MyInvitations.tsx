@@ -9,21 +9,24 @@ import { ROLE_LABEL, expiresText } from './orgModel'
 import { Badge, ErrorState, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { useNow } from '../../lib/hooks'
+import { t, useT } from '../../lib/i18n'
 
 /** Dashboard notice: a count and a link, nothing to decide here. */
 export function InvitationNotice() {
+  useT()
   const q = useMyInvitations()
   const n = q.data?.totalElements ?? 0
   if (n === 0) return null
   return (
-    <Notice tone="info" title={`Bạn có ${n} lời mời tham gia tổ chức`} action={<Link to="/organizations?tab=invitations" className="btn btn-secondary btn-sm">Xem lời mời</Link>}>
-      Chấp nhận hoặc từ chối ở mục Tổ chức. Lời mời hết hạn sau 7 ngày.
+    <Notice tone="info" title={t('Bạn có {0} lời mời tham gia tổ chức', { 0: n })} action={<Link to="/organizations?tab=invitations" className="btn btn-secondary btn-sm">{t('Xem lời mời')}</Link>}>
+      {t('Chấp nhận hoặc từ chối ở mục Tổ chức. Lời mời hết hạn sau 7 ngày.')}
     </Notice>
   )
 }
 
 /** The "pending invitations" block at the top of /organizations, with large Accept / Decline buttons. */
 export default function InvitationBlock({ focusOnMount }: { focusOnMount?: boolean }) {
+  useT()
   const q = useMyInvitations()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -40,7 +43,7 @@ export default function InvitationBlock({ focusOnMount }: { focusOnMount?: boole
   })
   const decline = useMutation({
     mutationFn: (i: Invitation) => orgApi.decline(i.id).then(() => i),
-    onSuccess: async i => { setFlash({ tone: 'success', text: `Đã từ chối lời mời vào ${i.organizationName ?? 'tổ chức'}.` }); await refresh() },
+    onSuccess: async i => { setFlash({ tone: 'success', text: t('Đã từ chối lời mời vào {0}.', { 0: i.organizationName ?? 'tổ chức' }) }); await refresh() },
     onError: async e => { setFlash({ tone: 'danger', text: errorText(e) }); await refresh() },
   })
   const busy = accept.isPending || decline.isPending
@@ -50,20 +53,20 @@ export default function InvitationBlock({ focusOnMount }: { focusOnMount?: boole
   if (!flash && items.length === 0) return null
   return (
     <section className="card" id="org-invitations" aria-labelledby="org-invitations-h">
-      <div className="card-header"><h2 id="org-invitations-h" ref={headingRef} tabIndex={-1} style={{ outline: 'none' }}>Lời mời đang chờ{items.length ? ` (${items.length})` : ''}</h2></div>
+      <div className="card-header"><h2 id="org-invitations-h" ref={headingRef} tabIndex={-1} style={{ outline: 'none' }}>{t('Lời mời đang chờ')}{items.length ? ` (${items.length})` : ''}</h2></div>
       {flash && <div className="card-body" style={{ paddingBottom: 0 }}><Notice tone={flash.tone} live>{flash.text}</Notice></div>}
       {items.map(i => (
         <div key={i.id} className="org-invite">
           <div className="stack-sm">
-            <strong style={{ fontSize: '1.1rem' }}>{i.organizationName ?? 'Tổ chức'}</strong>
+            <strong style={{ fontSize: '1.1rem' }}>{i.organizationName ?? t('Tổ chức')}</strong>
             <span className="row small muted" style={{ gap: 8 }}>
-              <Badge tone="info">Vai trò {ROLE_LABEL[i.role]}</Badge>
+              <Badge tone="info">{t('Vai trò')} {ROLE_LABEL[i.role]}</Badge>
               <span>{expiresText(i.expiresAt, nowMs)}</span>
             </span>
           </div>
           <div className="org-invite-actions">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setFlash(null); accept.mutate(i) }}><Check size={16} aria-hidden /> Chấp nhận</button>
-            <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setFlash(null); decline.mutate(i) }}><X size={16} aria-hidden /> Từ chối</button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => { setFlash(null); accept.mutate(i) }}><Check size={16} aria-hidden /> {t('Chấp nhận')}</button>
+            <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setFlash(null); decline.mutate(i) }}><X size={16} aria-hidden /> {t('Từ chối')}</button>
           </div>
         </div>
       ))}

@@ -4,8 +4,10 @@ import { authApi } from '../features/auth/authApi'
 import { useAuthStore } from '../store/authStore'
 import { reconcilePush } from '../features/notifications/pushClient'
 import { watchPushCleanup } from '../features/notifications/pushAuthWatcher'
+import { t, useT } from '../lib/i18n'
 
-export function FullPageLoader({ label = 'Đang xác thực phiên đăng nhập…' }: { label?: string }) {
+export function FullPageLoader({ label = t('Đang xác thực phiên đăng nhập…') }: { label?: string }) {
+  useT()
   return (
     <div className="auth-shell">
       <p role="status" className="row muted small"><span className="brand-mark" aria-hidden>E</span>{label}</p>

@@ -1,4 +1,4 @@
-import { t } from '../../lib/i18n'
+import { t, i18nMap } from '../../lib/i18n'
 
 // Exam Builder selection rules (scope lock B). Pure so they are testable without the UI.
 export const MAX_EXAM_QUESTIONS = 200
@@ -19,11 +19,11 @@ export function addToSelection(selected: string[], incoming: string[], inExam: s
 export const chunk = <T,>(items: T[], size = BATCH_CHUNK) =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, i * size + size))
 
-export const SKIP_REASON: Record<string, string> = {
+export const SKIP_REASON: Record<string, string> = i18nMap({
   QUESTION_NOT_FOUND: 'Câu hỏi không còn tồn tại',
   NOT_ACCESSIBLE: 'Bạn không còn quyền dùng câu này',
   NOT_ACTIVE: 'Câu chưa kích hoạt hoặc đã lưu trữ',
-}
+})
 
 export const totalPoints = (items: { weight: number }[]) => items.reduce((s, i) => s + (Number.isFinite(i.weight) ? i.weight : 0), 0)
 

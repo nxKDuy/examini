@@ -33,15 +33,32 @@ export const useLangStore = create<LangState>((set, get) => ({
 useLangStore.subscribe(s => { if (typeof document !== 'undefined') document.documentElement.lang = s.lang })
 if (typeof document !== 'undefined') document.documentElement.lang = useLangStore.getState().lang
 
-export function translate(lang: Lang, vi: string, vars?: Record<string, string | number>) {
+export type Vars = Record<string, string | number | null | undefined>
+export function translate(lang: Lang, vi: string, vars?: Vars) {
   const text = lang === 'en' ? EN[vi] ?? vi : vi
-  return vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : text
+  return vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k] ?? '') : m)) : text
 }
 
 /** Non-hook form for models and constants; components should call useT() so they re-render on change. */
-export const t = (vi: string, vars?: Record<string, string | number>) => translate(useLangStore.getState().lang, vi, vars)
+export const t = (vi: string, vars?: Vars) => translate(useLangStore.getState().lang, vi, vars)
 
 export function useT() {
   useLangStore(s => s.lang)
   return t
+}
+
+/**
+ * Module-level label maps/lists keep their Vietnamese source; string values are translated when read
+ * (at render time), so a language switch never needs the constants to be rebuilt.
+ */
+export function i18nMap<T extends object>(source: T): T {
+  return new Proxy(source, {
+    get(target, key, receiver) {
+      const v = Reflect.get(target, key, receiver)
+      if (typeof v === 'string') return t(v)
+      // Only plain objects and arrays are wrapped; RegExp, Date, Map and class instances are returned as they are.
+      if (v && typeof v === 'object' && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype)) return i18nMap(v as object)
+      return v
+    },
+  }) as T
 }

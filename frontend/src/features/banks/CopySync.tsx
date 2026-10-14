@@ -11,6 +11,7 @@ import { Badge, EmptyState, ErrorState, LoadingState, Notice } from '../../compo
 import { errorText } from '../../lib/errors'
 import { formatDateTime, shortId } from '../../lib/format'
 import './banks.css'
+import { t as tt, useT, i18nMap } from '../../lib/i18n'
 
 type Preview = QuestionSyncPreview | SetSyncPreview
 const previewKey = (kind: SyncKind, id: string) => ['copy-sync', kind, id]
@@ -18,26 +19,27 @@ const loadPreview = (kind: SyncKind, id: string): Promise<Preview> => kind === '
 
 /** "Cập nhật từ nguồn" line for a copied Question or a forked Set. Silent when the resource is not a copy (404). */
 export function CopySyncEntry({ kind, id }: { kind: SyncKind; id: string }) {
+  useT()
   const [open, setOpen] = useState(false)
   const preview = useQuery({
     queryKey: previewKey(kind, id), retry: false,
     queryFn: async () => { try { return await loadPreview(kind, id) } catch (e) { if (isStatus(e, 404)) return null; throw e } },
   })
   if (preview.isLoading || preview.data === null) return null
-  if (preview.isError) return <p className="xsmall muted">Chưa kiểm tra được cập nhật từ nguồn. <button type="button" className="btn btn-ghost btn-sm" onClick={() => void preview.refetch()}>Thử lại</button></p>
+  if (preview.isError) return <p className="xsmall muted">{tt('Chưa kiểm tra được cập nhật từ nguồn.')} <button type="button" className="btn btn-ghost btn-sm" onClick={() => void preview.refetch()}>{tt('Thử lại')}</button></p>
   const p = preview.data!
   const rows = syncRows(p), conflicts = rows.filter(r => r.conflict).length
   const unavailable = p.availability === 'UNAVAILABLE'
   return (
-    <section aria-label="Cập nhật từ nguồn" className="sync-entry" data-state={unavailable ? 'unavailable' : rows.length ? 'pending' : 'clean'}>
+    <section aria-label={tt('Cập nhật từ nguồn')} className="sync-entry" data-state={unavailable ? 'unavailable' : rows.length ? 'pending' : 'clean'}>
       <div style={{ minWidth: 0 }}>
-        <span className="field-label">Cập nhật từ nguồn</span>
-        <p className="small">{unavailable ? 'Nguồn không còn truy cập được · chỉ xem lịch sử'
-          : rows.length ? <>Nguồn có <strong>{rows.length}</strong> thay đổi{conflicts ? <> · <strong>{conflicts}</strong> xung đột</> : null}</>
-          : `Đã đồng bộ với nguồn phiên bản ${p.latestSourceVersion ?? p.referenceSourceVersion}`}</p>
+        <span className="field-label">{tt('Cập nhật từ nguồn')}</span>
+        <p className="small">{unavailable ? tt('Nguồn không còn truy cập được · chỉ xem lịch sử')
+          : rows.length ? <>{tt('Nguồn có')} <strong>{rows.length}</strong> {tt('thay đổi')}{conflicts ? <> · <strong>{conflicts}</strong> {tt('xung đột')}</> : null}</>
+          : tt('Đã đồng bộ với nguồn phiên bản {0}', { 0: p.latestSourceVersion ?? p.referenceSourceVersion })}</p>
       </div>
       <button type="button" className={`btn btn-sm ${rows.length ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setOpen(true)}>
-        <RefreshCw size={14} aria-hidden /> {rows.length ? 'Đồng bộ phiên bản' : 'Lịch sử đồng bộ'}
+        <RefreshCw size={14} aria-hidden /> {rows.length ? tt('Đồng bộ phiên bản') : tt('Lịch sử đồng bộ')}
       </button>
       {open && <CopySyncDialog kind={kind} id={id} onClose={() => setOpen(false)} />}
     </section>
@@ -45,9 +47,10 @@ export function CopySyncEntry({ kind, id }: { kind: SyncKind; id: string }) {
 }
 
 type DialogTab = SyncTab | 'history'
-const TAB_LABEL: Record<DialogTab, string> = { info: 'Thông tin', items: 'Câu hỏi', order: 'Thứ tự', history: 'Lịch sử' }
+const TAB_LABEL: Record<DialogTab, string> = i18nMap({ info: 'Thông tin', items: 'Câu hỏi', order: 'Thứ tự', history: 'Lịch sử' })
 
 function CopySyncDialog({ kind, id, onClose }: { kind: SyncKind; id: string; onClose: () => void }) {
+  useT()
   const qc = useQueryClient()
   const preview = useQuery({ queryKey: previewKey(kind, id), queryFn: () => loadPreview(kind, id), retry: false })
   const setQuery = useQuery({ queryKey: ['copy-sync', 'set-items', id], queryFn: () => bankApi.questionSet(id), enabled: kind === 'set' })
@@ -70,9 +73,9 @@ function CopySyncDialog({ kind, id, onClose }: { kind: SyncKind; id: string; onC
       qc.setQueryData(previewKey(kind, id), next)
       setDecisions({}); setDraftCreated(created)
       setNotice({ tone: 'success', text: created
-        ? 'Đã áp dụng. Phần lấy từ nguồn được lưu thành bản nháp (DRAFT) mới; cần kích hoạt trước khi dùng trong đề thi hoặc xuất bản.'
-        : 'Đã ghi nhận lựa chọn giữ bản của bạn; nội dung không đổi.' })
-      if (kind === 'set' && created) setNotice(n => n && { ...n, text: `${n.text} Bộ đã có phiên bản mới: tải lại trang trước khi sửa bộ.` })
+        ? tt('Đã áp dụng. Phần lấy từ nguồn được lưu thành bản nháp (DRAFT) mới; cần kích hoạt trước khi dùng trong đề thi hoặc xuất bản.')
+        : tt('Đã ghi nhận lựa chọn giữ bản của bạn; nội dung không đổi.') })
+      if (kind === 'set' && created) setNotice(n => n && { ...n, text: tt('{0} Bộ đã có phiên bản mới: tải lại trang trước khi sửa bộ.', { 0: n.text }) })
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['copy-sync', kind, id, 'history'] }), qc.invalidateQueries({ queryKey: ['copy-sync', 'set-items', id] }),
         qc.invalidateQueries({ queryKey: ['question', id] }), qc.invalidateQueries({ queryKey: ['versions', id] }), qc.invalidateQueries({ queryKey: ['questions'] }),
@@ -83,7 +86,7 @@ function CopySyncDialog({ kind, id, onClose }: { kind: SyncKind; id: string; onC
       if (!isStatus(e, 409)) { setNotice({ tone: 'danger', text: errorText(e) }); return }
       const fresh = await preview.refetch()
       if (fresh.data) setDecisions(d => keepChoices(syncRows(fresh.data!), d))
-      setNotice({ tone: 'warning', text: 'Dữ liệu đã thay đổi, đã tải lại so sánh. Lựa chọn còn hợp lệ được giữ; kiểm tra lại trước khi áp dụng.' })
+      setNotice({ tone: 'warning', text: tt('Dữ liệu đã thay đổi, đã tải lại so sánh. Lựa chọn còn hợp lệ được giữ; kiểm tra lại trước khi áp dụng.') })
     },
   })
 
@@ -95,27 +98,27 @@ function CopySyncDialog({ kind, id, onClose }: { kind: SyncKind; id: string; onC
   const drafts = (setQuery.data?.items ?? []).filter(i => i.question.status === 'DRAFT')
 
   return (
-    <Dialog size="lg" title={kind === 'question' ? 'Đồng bộ phiên bản câu hỏi' : 'Đồng bộ phiên bản bộ câu hỏi'} onClose={onClose} busy={apply.isPending}
+    <Dialog size="lg" title={kind === 'question' ? tt('Đồng bộ phiên bản câu hỏi') : tt('Đồng bộ phiên bản bộ câu hỏi')} onClose={onClose} busy={apply.isPending}
       description={p && (available
-        ? `Bản của bạn v${p.localVersion} · gốc lúc sao chép v${p.referenceSourceVersion} · nguồn mới nhất v${p.latestSourceVersion}. Chọn cho từng thay đổi; không có gộp tự động.`
-        : 'Nguồn không còn truy cập được (đã gỡ, lưu trữ hoặc thu hồi quyền). Chỉ xem lịch sử.')}
+        ? tt('Bản của bạn v{0} · gốc lúc sao chép v{1} · nguồn mới nhất v{2}. Chọn cho từng thay đổi; không có gộp tự động.', { 0: p.localVersion, 1: p.referenceSourceVersion, 2: p.latestSourceVersion })
+        : tt('Nguồn không còn truy cập được (đã gỡ, lưu trữ hoặc thu hồi quyền). Chỉ xem lịch sử.'))}
       footer={<>
-        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={apply.isPending}>Đóng</button>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={apply.isPending}>{tt('Đóng')}</button>
         {available && rows.length > 0 && <button type="button" className="btn btn-primary" disabled={!canApply(rows, decisions) || apply.isPending} aria-busy={apply.isPending} onClick={() => apply.mutate()}>
-          {apply.isPending ? 'Đang áp dụng…' : `Áp dụng ${Object.keys(keepChoices(rows, decisions)).length} lựa chọn`}
+          {apply.isPending ? tt('Đang áp dụng…') : tt('Áp dụng {0} lựa chọn', { 0: Object.keys(keepChoices(rows, decisions)).length })}
         </button>}
       </>}>
       {preview.isLoading ? <LoadingState rows={4} /> : preview.isError || !p ? <ErrorState error={preview.error} onRetry={() => void preview.refetch()} /> : <div className="stack">
-        {!available && <Notice tone="warning" title="Chỉ xem lịch sử">Nguồn không còn truy cập được (đã gỡ, lưu trữ hoặc thu hồi). Không thể áp dụng thay đổi mới.</Notice>}
+        {!available && <Notice tone="warning" title={tt('Chỉ xem lịch sử')}>{tt('Nguồn không còn truy cập được (đã gỡ, lưu trữ hoặc thu hồi). Không thể áp dụng thay đổi mới.')}</Notice>}
         {notice && <Notice tone={notice.tone} live>{notice.text}</Notice>}
         {draftCreated && (kind === 'question'
-          ? <div className="row"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Mở câu hỏi (bản nháp mới)</button></div>
-          : drafts.length > 0 && <section aria-label="Câu bản nháp cần kích hoạt" className="stack-sm"><span className="field-label">Câu bản nháp cần kích hoạt ({drafts.length})</span>
+          ? <div className="row"><button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>{tt('Mở câu hỏi (bản nháp mới)')}</button></div>
+          : drafts.length > 0 && <section aria-label={tt('Câu bản nháp cần kích hoạt')} className="stack-sm"><span className="field-label">{tt('Câu bản nháp cần kích hoạt (')}{drafts.length})</span>
             <ul className="sync-drafts">{drafts.map(d => <li key={d.id}><Link to={`/questions?q=${d.sourceQuestionId}`}>{excerpt(d.question.content, 100)}</Link><span className="xsmall muted"> · v{d.sourceQuestionVersion}</span></li>)}</ul>
-            <p className="xsmall muted">Kích hoạt từng câu rồi cập nhật bộ qua Sửa bộ trước khi đăng công khai.</p></section>)}
-        <div className="tabs" role="tablist" aria-label="Phần đồng bộ">
+            <p className="xsmall muted">{tt('Kích hoạt từng câu rồi cập nhật bộ qua Sửa bộ trước khi đăng công khai.')}</p></section>)}
+        <div className="tabs" role="tablist" aria-label={tt('Phần đồng bộ')}>
           {tabs.map(t => <button key={t} type="button" role="tab" className="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-            {t === 'info' && kind === 'question' ? 'So sánh' : TAB_LABEL[t]}{t !== 'history' && unresolved[t] > 0 ? <span className="count" aria-label={`${unresolved[t]} xung đột chưa chọn`}>⚠ {unresolved[t]}</span> : t !== 'history' && rows.some(r => r.tab === t) ? <span className="count">{rows.filter(r => r.tab === t).length}</span> : null}
+            {t === 'info' && kind === 'question' ? tt('So sánh') : TAB_LABEL[t]}{t !== 'history' && unresolved[t] > 0 ? <span className="count" aria-label={tt('{0} xung đột chưa chọn', { 0: unresolved[t] })}>⚠ {unresolved[t]}</span> : t !== 'history' && rows.some(r => r.tab === t) ? <span className="count">{rows.filter(r => r.tab === t).length}</span> : null}
           </button>)}
         </div>
         <div role="tabpanel">
@@ -132,26 +135,29 @@ function CopySyncDialog({ kind, id, onClose }: { kind: SyncKind; id: string; onC
 function Choice({ name, value, decisions, conflict, labels, onChoose }: {
   name: string; value?: string; decisions: Decisions; conflict: boolean; labels?: Partial<Record<SyncChoice, string>>; onChoose: (key: string, c: SyncChoice | null) => void
 }) {
+  useT()
   const current = decisions[name]
   return (
     <fieldset className="sync-choice">
-      <legend className="sr-only">Lựa chọn cho {value ?? decisionLabel(name)}</legend>
+      <legend className="sr-only">{tt('Lựa chọn cho')} {value ?? decisionLabel(name)}</legend>
       {(['KEEP_LOCAL', 'TAKE_SOURCE'] as SyncChoice[]).map(c => <label key={c} className="check small">
         <input type="radio" name={`sync-${name}`} checked={current === c} onChange={() => onChoose(name, c)} /> {labels?.[c] ?? SYNC_CHOICE_LABEL[c]}
       </label>)}
-      {current && !conflict && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChoose(name, null)}>Bỏ qua</button>}
+      {current && !conflict && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChoose(name, null)}>{tt('Bỏ qua')}</button>}
     </fieldset>
   )
 }
 
 function ConflictMark({ conflict, decided }: { conflict: boolean; decided: boolean }) {
+  useT()
   if (!conflict) return null
-  return <Badge tone={decided ? 'neutral' : 'danger'} icon={<AlertTriangle size={12} aria-hidden />}>{decided ? 'Xung đột · đã chọn' : 'Xung đột – bắt buộc chọn'}</Badge>
+  return <Badge tone={decided ? 'neutral' : 'danger'} icon={<AlertTriangle size={12} aria-hidden />}>{decided ? tt('Xung đột · đã chọn') : tt('Xung đột – bắt buộc chọn')}</Badge>
 }
 
 function FieldTable({ changes, decisions, onChoose }: { changes: FieldChange[]; decisions: Decisions; onChoose: (key: string, c: SyncChoice | null) => void }) {
+  useT()
   const shown = changes.filter(c => c.sourceChanged).sort((a, b) => Number(b.conflict) - Number(a.conflict))
-  if (!shown.length) return <EmptyState title="Không có thay đổi ở phần này" description="Nguồn không đổi các trường thông tin kể từ lần đồng bộ trước." />
+  if (!shown.length) return <EmptyState title={tt('Không có thay đổi ở phần này')} description={tt('Nguồn không đổi các trường thông tin kể từ lần đồng bộ trước.')} />
   return (
     <div className="sync-list">
       {shown.map(c => <article key={c.field} className="sync-row" data-conflict={c.conflict && !decisions[c.field] ? 'open' : c.conflict ? 'done' : undefined}>
@@ -160,12 +166,12 @@ function FieldTable({ changes, decisions, onChoose }: { changes: FieldChange[]; 
           <ConflictMark conflict={c.conflict} decided={!!decisions[c.field]} />
         </header>
         {c.redacted ? <div className="stack-sm">
-          <div className="row">{c.sourceChanged && <Badge tone="info">Nguồn đã thay đổi</Badge>}{c.localChanged && <Badge>Bạn đã sửa</Badge>}</div>
-          <p className="xsmall muted">Nội dung đáp án không hiển thị khi so sánh.</p>
+          <div className="row">{c.sourceChanged && <Badge tone="info">{tt('Nguồn đã thay đổi')}</Badge>}{c.localChanged && <Badge>{tt('Bạn đã sửa')}</Badge>}</div>
+          <p className="xsmall muted">{tt('Nội dung đáp án không hiển thị khi so sánh.')}</p>
         </div> : <div className="sync-values">
-          <Value label="Gốc lúc sao chép" text={syncValue(c.field, c.reference)} />
-          <Value label="Bản của bạn" text={syncValue(c.field, c.local)} flag={c.localChanged ? 'Bạn đã sửa' : undefined} />
-          <Value label="Nguồn mới nhất" text={syncValue(c.field, c.latest)} flag="Nguồn đã thay đổi" />
+          <Value label={tt('Gốc lúc sao chép')} text={syncValue(c.field, c.reference)} />
+          <Value label={tt('Bản của bạn')} text={syncValue(c.field, c.local)} flag={c.localChanged ? tt('Bạn đã sửa') : undefined} />
+          <Value label={tt('Nguồn mới nhất')} text={syncValue(c.field, c.latest)} flag={tt('Nguồn đã thay đổi')} />
         </div>}
         <Choice name={c.field} value={SYNC_FIELD_LABEL[c.field]} decisions={decisions} conflict={c.conflict} onChoose={onChoose} />
       </article>)}
@@ -174,27 +180,29 @@ function FieldTable({ changes, decisions, onChoose }: { changes: FieldChange[]; 
 }
 
 function Value({ label, text, flag }: { label: string; text: string | null; flag?: string }) {
+  useT()
   const long = (text?.length ?? 0) > 160
   return (
     <div className="sync-value">
       <span className="xsmall muted">{label}{flag && <> · {flag}</>}</span>
-      {text === null ? <span className="small muted">(trống)</span> : long
+      {text === null ? <span className="small muted">{tt('(trống)')}</span> : long
         ? <details><summary className="small prewrap">{text.slice(0, 160)}…</summary><p className="small prewrap">{text}</p></details>
         : <p className="small prewrap">{text}</p>}
     </div>
   )
 }
 
-const ITEM_LABELS: Record<SetItemChange['kind'], Record<SyncChoice, string>> = {
+const ITEM_LABELS: Record<SetItemChange['kind'], Record<SyncChoice, string>> = i18nMap({
   ADDED: { KEEP_LOCAL: 'Không thêm', TAKE_SOURCE: 'Thêm vào bộ (bản nháp mới)' },
   UPDATED: { KEEP_LOCAL: 'Giữ câu của tôi', TAKE_SOURCE: 'Lấy bản nguồn (bản nháp mới)' },
   REMOVED: { KEEP_LOCAL: 'Giữ trong bộ', TAKE_SOURCE: 'Bỏ khỏi bộ' },
-}
+})
 
 function ItemList({ preview, rows, local, decisions, onChoose }: { preview: SetSyncPreview; rows: SyncRow[]; local: PublicPostItem[]; decisions: Decisions; onChoose: (key: string, c: SyncChoice | null) => void }) {
+  useT()
   const byKey = new Map(preview.itemChanges.map(i => [`ITEM:${i.sourceQuestionId}`, i]))
   const items = rows.filter(r => r.tab === 'items').map(r => byKey.get(r.key)!).filter(Boolean)
-  if (!items.length) return <EmptyState title="Không có thay đổi câu hỏi" description="Nguồn không thêm, sửa hay bỏ câu nào kể từ lần đồng bộ trước." />
+  if (!items.length) return <EmptyState title={tt('Không có thay đổi câu hỏi')} description={tt('Nguồn không thêm, sửa hay bỏ câu nào kể từ lần đồng bộ trước.')} />
   const content = new Map(local.map(i => [i.sourceQuestionId, i.question.content]))
   return (
     <div className="sync-list">
@@ -202,12 +210,12 @@ function ItemList({ preview, rows, local, decisions, onChoose }: { preview: SetS
         return <article key={key} className="sync-row" data-conflict={i.conflict && !decisions[key] ? 'open' : i.conflict ? 'done' : undefined}>
           <header className="row" style={{ justifyContent: 'space-between' }}>
             <span className="row" style={{ gap: 8 }}><Badge tone={i.kind === 'REMOVED' ? 'danger' : i.kind === 'ADDED' ? 'info' : 'neutral'}>{ITEM_KIND_LABEL[i.kind]}</Badge>
-              <strong className="small">{text ? excerpt(text, 110) : `Câu nguồn ${shortId(i.sourceQuestionId)}`}</strong></span>
+              <strong className="small">{text ? excerpt(text, 110) : tt('Câu nguồn {0}', { 0: shortId(i.sourceQuestionId) })}</strong></span>
             <ConflictMark conflict={i.conflict} decided={!!decisions[key]} />
           </header>
           <p className="xsmall muted">{[
-            i.kind === 'ADDED' ? `Nguồn thêm câu mới (v${i.latestVersion}) ở vị trí ${(i.latestPosition ?? 0) + 1}` : i.kind === 'REMOVED' ? 'Nguồn đã bỏ câu này' : `Nguồn cập nhật v${i.referenceVersion} → v${i.latestVersion}`,
-            i.localChanged ? (i.localQuestionId ? 'Bạn đã sửa câu này' : 'Bạn đã bỏ câu này khỏi bộ') : '',
+            i.kind === 'ADDED' ? tt('Nguồn thêm câu mới (v{0}) ở vị trí {1}', { 0: i.latestVersion, 1: (i.latestPosition ?? 0) + 1 }) : i.kind === 'REMOVED' ? tt('Nguồn đã bỏ câu này') : tt('Nguồn cập nhật v{0} → v{1}', { 0: i.referenceVersion, 1: i.latestVersion }),
+            i.localChanged ? (i.localQuestionId ? tt('Bạn đã sửa câu này') : tt('Bạn đã bỏ câu này khỏi bộ')) : '',
           ].filter(Boolean).join(' · ')}</p>
           <Choice name={key} value={text ? excerpt(text, 40) : shortId(i.sourceQuestionId)} decisions={decisions} conflict={i.conflict} labels={ITEM_LABELS[i.kind]} onChoose={onChoose} />
         </article> })}
@@ -216,6 +224,7 @@ function ItemList({ preview, rows, local, decisions, onChoose }: { preview: SetS
 }
 
 function OrderPanel({ preview, local, decisions, onChoose }: { preview: SetSyncPreview; local: PublicPostItem[]; decisions: Decisions; onChoose: (key: string, c: SyncChoice | null) => void }) {
+  useT()
   const full = preview.localOrder !== undefined
   const rows = full ? orderRows(preview.localOrder ?? [], preview.sourceOrder ?? [], preview.referenceOrder ?? [])
     // Older provider: current order only, source position for changed items.
@@ -225,37 +234,38 @@ function OrderPanel({ preview, local, decisions, onChoose }: { preview: SetSyncP
   return (
     <div className="stack">
       {preview.sourceReordered ? <article className="sync-row" data-conflict={preview.reorderConflict && !decisions.ORDER ? 'open' : preview.reorderConflict ? 'done' : undefined}>
-        <header className="row" style={{ justifyContent: 'space-between' }}><strong>Thứ tự câu</strong><ConflictMark conflict={preview.reorderConflict} decided={!!decisions.ORDER} /></header>
-        <p className="xsmall muted">Nguồn đã sắp xếp lại các câu chung{preview.localReordered ? '; bạn cũng đã sắp xếp lại' : ''}.</p>
-        <Choice name="ORDER" value="thứ tự câu" decisions={decisions} conflict={preview.reorderConflict} labels={{ KEEP_LOCAL: 'Giữ thứ tự của tôi', TAKE_SOURCE: 'Theo thứ tự nguồn' }} onChoose={onChoose} />
-      </article> : <p className="small muted">{preview.localReordered ? 'Nguồn không đổi thứ tự; bạn đã sắp xếp lại và thứ tự của bạn được giữ.' : 'Nguồn không đổi thứ tự các câu chung.'}</p>}
+        <header className="row" style={{ justifyContent: 'space-between' }}><strong>{tt('Thứ tự câu')}</strong><ConflictMark conflict={preview.reorderConflict} decided={!!decisions.ORDER} /></header>
+        <p className="xsmall muted">{tt('Nguồn đã sắp xếp lại các câu chung')}{preview.localReordered ? tt('; bạn cũng đã sắp xếp lại') : ''}.</p>
+        <Choice name="ORDER" value="thứ tự câu" decisions={decisions} conflict={preview.reorderConflict} labels={{ KEEP_LOCAL: tt('Giữ thứ tự của tôi'), TAKE_SOURCE: tt('Theo thứ tự nguồn') }} onChoose={onChoose} />
+      </article> : <p className="small muted">{preview.localReordered ? tt('Nguồn không đổi thứ tự; bạn đã sắp xếp lại và thứ tự của bạn được giữ.') : tt('Nguồn không đổi thứ tự các câu chung.')}</p>}
       <div className="table-wrap"><table className="bk-table">
-        <thead><tr><th scope="col">Của bạn</th><th scope="col">Câu</th><th scope="col">Nguồn mới nhất</th>{full && <th scope="col">Lần đồng bộ trước</th>}</tr></thead>
+        <thead><tr><th scope="col">{tt('Của bạn')}</th><th scope="col">{tt('Câu')}</th><th scope="col">{tt('Nguồn mới nhất')}</th>{full && <th scope="col">{tt('Lần đồng bộ trước')}</th>}</tr></thead>
         <tbody>{rows.map(r => <tr key={r.key}>
           <td>{pos(r.local)}</td>
-          <td className="small">{r.content ? excerpt(r.content, 90) : <span className="muted">(câu đã bị bỏ khỏi nguồn)</span>}
-            {r.onlyLocal && <span className="xsmall muted" style={{ display: 'block' }}>Câu bạn tự thêm</span>}
-            {r.notCopied && <span className="xsmall muted" style={{ display: 'block' }}>Chưa có trong bộ của bạn</span>}</td>
+          <td className="small">{r.content ? excerpt(r.content, 90) : <span className="muted">{tt('(câu đã bị bỏ khỏi nguồn)')}</span>}
+            {r.onlyLocal && <span className="xsmall muted" style={{ display: 'block' }}>{tt('Câu bạn tự thêm')}</span>}
+            {r.notCopied && <span className="xsmall muted" style={{ display: 'block' }}>{tt('Chưa có trong bộ của bạn')}</span>}</td>
           <td>{pos(r.source)}</td>{full && <td>{pos(r.reference)}</td>}
         </tr>)}</tbody>
       </table></div>
-      {!full && <p className="xsmall muted">Vị trí trong nguồn chỉ có cho câu nguồn đã thay đổi; câu khác hiện “—”.</p>}
+      {!full && <p className="xsmall muted">{tt('Vị trí trong nguồn chỉ có cho câu nguồn đã thay đổi; câu khác hiện “—”.')}</p>}
     </div>
   )
 }
 
 function History({ query }: { query: UseQueryResult<SyncEvent[]> }) {
+  useT()
   if (query.isLoading) return <LoadingState rows={3} />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />
-  if (!query.data?.length) return <EmptyState title="Chưa có lần đồng bộ nào" description="Mỗi lần áp dụng lựa chọn sẽ được ghi lại ở đây." />
+  if (!query.data?.length) return <EmptyState title={tt('Chưa có lần đồng bộ nào')} description={tt('Mỗi lần áp dụng lựa chọn sẽ được ghi lại ở đây.')} />
   return (
     <div className="table-wrap"><table className="bk-table">
-      <thead><tr><th scope="col">Thời gian</th><th scope="col">Người thực hiện</th><th scope="col">Phiên bản</th><th scope="col">Lựa chọn</th></tr></thead>
+      <thead><tr><th scope="col">{tt('Thời gian')}</th><th scope="col">{tt('Người thực hiện')}</th><th scope="col">{tt('Phiên bản')}</th><th scope="col">{tt('Lựa chọn')}</th></tr></thead>
       <tbody>{query.data.map(e => <tr key={e.id}>
         <td className="small">{formatDateTime(e.createdAt)}</td><td className="small">{shortId(e.actorUserId)}</td>
         <td className="small">{e.correctedLocalVersion != null
-          ? <>Bản của bạn v{e.correctedLocalVersion} · nguồn v{e.sourceVersion}<span className="xsmall" style={{ display: 'block' }}><Badge>Đã đính chính</Badge> ghi nhận lúc áp dụng: v{e.localVersion}{e.correctionReason ? ` · ${e.correctionReason}` : ''}{e.correctedAt ? ` · ${formatDateTime(e.correctedAt)}` : ''}</span></>
-          : <>Bản của bạn v{e.localVersion} · nguồn v{e.sourceVersion}</>}</td>
+          ? <>{tt('Bản của bạn v')}{e.correctedLocalVersion} {tt('· nguồn v')}{e.sourceVersion}<span className="xsmall" style={{ display: 'block' }}><Badge>{tt('Đã đính chính')}</Badge> {tt('ghi nhận lúc áp dụng: v')}{e.localVersion}{e.correctionReason ? ` · ${e.correctionReason}` : ''}{e.correctedAt ? ` · ${formatDateTime(e.correctedAt)}` : ''}</span></>
+          : <>{tt('Bản của bạn v')}{e.localVersion} {tt('· nguồn v')}{e.sourceVersion}</>}</td>
         <td className="small">{parseActions(e.actions).map(a => <div key={a.key}>{decisionLabel(a.key)}: {SYNC_CHOICE_LABEL[a.choice as SyncChoice] ?? a.choice}</div>)}</td>
       </tr>)}</tbody>
     </table></div>

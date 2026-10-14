@@ -1,4 +1,4 @@
-import { t } from '../../lib/i18n'
+import { t, i18nMap } from '../../lib/i18n'
 import type { IntegrityAudit, IntegrityPolicy, Receipt, SignalMetadata, SignalType } from './integrityApi'
 
 export const DEFAULT_LIMIT = 5
@@ -18,20 +18,20 @@ export const NEW_EXAM_POLICY: IntegrityPolicy = {
 /** Signals that count toward the per-attempt budget (contract A): network, recovery and COPY/PASTE are audit only. */
 export const BUDGET_SIGNALS: SignalType[] = ['TAB_SWITCH', 'WINDOW_BLUR', 'EXIT_FULLSCREEN', 'PAGE_RELOAD']
 
-export const SIGNAL_LABEL: Record<SignalType, string> = {
+export const SIGNAL_LABEL: Record<SignalType, string> = i18nMap({
   TAB_SWITCH: 'Chuyển tab', WINDOW_BLUR: 'Rời cửa sổ', WINDOW_FOCUS: 'Quay lại cửa sổ', EXIT_FULLSCREEN: 'Thoát toàn màn hình',
   FULLSCREEN_ENTER: 'Vào toàn màn hình', COPY: 'Sao chép', PASTE: 'Dán', NETWORK_DISCONNECT: 'Mất mạng', NETWORK_RECONNECT: 'Có mạng lại',
   PAGE_RELOAD: 'Tải lại trang', SESSION_RESUME: 'Mở lại phiên',
-}
+})
 
-export const MONITORS: { key: keyof IntegrityPolicy; label: string; hint: string }[] = [
+export const MONITORS: { key: keyof IntegrityPolicy; label: string; hint: string }[] = i18nMap([
   { key: 'monitorTabSwitch', label: 'Chuyển tab', hint: 'Ghi nhận khi trang bài thi bị ẩn. Có tính vào ngưỡng.' },
   { key: 'monitorWindowBlur', label: 'Rời cửa sổ', hint: 'Ghi nhận khi cửa sổ trình duyệt mất tiêu điểm. Có tính vào ngưỡng.' },
   { key: 'requireFullscreen', label: 'Yêu cầu toàn màn hình', hint: 'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng.' },
   { key: 'monitorNetwork', label: 'Mất kết nối mạng', hint: 'Chỉ ghi nhận để đối chiếu, không tính vào ngưỡng. Thí sinh vẫn làm bài khi mất mạng.' },
   { key: 'monitorCopy', label: 'Sao chép', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
   { key: 'monitorPaste', label: 'Dán', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
-]
+])
 
 export const monitored = (p: IntegrityPolicy | null | undefined) =>
   !!p && (p.monitorTabSwitch || p.monitorWindowBlur || p.requireFullscreen || p.monitorCopy || p.monitorPaste || p.monitorNetwork)
@@ -47,7 +47,7 @@ export function limitError(value: number) {
 export function policySummary(p: IntegrityPolicy | null | undefined) {
   if (!monitored(p)) return t('Tắt')
   const on = MONITORS.filter(m => p![m.key]).map(m => t(m.label).toLowerCase())
-  return `${on.join(', ')}${counts(p) ? t(' · tự nộp khi vượt {n} tín hiệu', { n: p!.warningEventLimit }) : ''}`
+  return t('{0}{1}', { 0: on.join(', '), 1: counts(p) ? t(' · tự nộp khi vượt {n} tín hiệu', { n: p!.warningEventLimit }) : '' })
 }
 
 /** What the Student sees after a receipt. Never says "gian lận". */
@@ -68,16 +68,16 @@ export function retryDelay(status: number | undefined, attempt: number): number 
 export function metadataText(m: SignalMetadata | null | undefined) {
   if (!m) return ''
   const parts: string[] = []
-  if (m.durationMs != null) parts.push(`${Math.round(m.durationMs / 1000)} giây`)
-  if (m.visibilityState) parts.push(m.visibilityState === 'HIDDEN' ? 'trang bị ẩn' : 'trang hiển thị')
-  if (m.networkState) parts.push(m.networkState === 'OFFLINE' ? 'ngoại tuyến' : 'trực tuyến')
+  if (m.durationMs != null) parts.push(t('{0} giây', { 0: Math.round(m.durationMs / 1000) }))
+  if (m.visibilityState) parts.push(m.visibilityState === 'HIDDEN' ? t('trang bị ẩn') : t('trang hiển thị'))
+  if (m.networkState) parts.push(m.networkState === 'OFFLINE' ? t('ngoại tuyến') : t('trực tuyến'))
   return parts.join(' · ')
 }
 
-export const AUDIT_LABEL: Record<string, string> = {
+export const AUDIT_LABEL: Record<string, string> = i18nMap({
   INTEGRITY_BUDGET_AUTO_SUBMITTED: 'Tự nộp do vượt ngưỡng tín hiệu',
   EXAM_INTEGRITY_LOCK_AUTO_SUBMITTED: 'Tự nộp do khóa toàn kỳ thi',
-}
+})
 
 /** An attempt ended by integrity (budget or whole-exam lock) — the case where staff may grant a new attempt. */
 export const integrityEnded = (audit: IntegrityAudit[]) => audit.some(a => a.action in AUDIT_LABEL)

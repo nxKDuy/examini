@@ -1,4 +1,5 @@
 import type { AppNotification } from './notificationApi'
+import { t } from '../../lib/i18n'
 
 export type NotificationIcon = 'calendar-plus' | 'calendar-clock' | 'calendar-x' | 'play' | 'lock' | 'bell' | 'result' | 'send' | 'approved' | 'rejected' | 'member' | 'assigned'
 
@@ -25,7 +26,7 @@ const rtf = new Intl.RelativeTimeFormat('vi', { numeric: 'always' })
 export function relativeTime(iso: string, nowMs: number): string {
   const diff = Math.round((Date.parse(iso) - nowMs) / 1000)
   const s = Math.abs(diff)
-  if (s < 45) return 'vừa xong'
+  if (s < 45) return t('vừa xong')
   if (s < 3600) return rtf.format(Math.round(diff / 60), 'minute')
   if (s < 86400) return rtf.format(Math.round(diff / 3600), 'hour')
   if (s < 7 * 86400) return rtf.format(Math.round(diff / 86400), 'day')

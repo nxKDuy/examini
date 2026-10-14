@@ -12,12 +12,14 @@ import { examApi } from '../exams/examApi'
 import { ConfirmDialog } from '../../components/Dialog'
 import { EmptyState, ErrorState, Field, LoadingState, PageHeader } from '../../components/ui'
 import { useIsNarrow } from '../../lib/hooks'
+import { t as tt, useT, i18nMap } from '../../lib/i18n'
 
-const TABS = [{ value: '', label: 'Tất cả' }, { value: 'NEEDS_REVIEW', label: 'Cần chấm tay' }, { value: 'PENDING', label: 'Chờ chấm' }, { value: 'GRADED', label: 'Đã chấm' }]
-const RELEASED = [{ value: '', label: 'Công bố: tất cả' }, { value: 'true', label: 'Đã công bố' }, { value: 'false', label: 'Chưa công bố' }]
+const TABS = i18nMap([{ value: '', label: 'Tất cả' }, { value: 'NEEDS_REVIEW', label: 'Cần chấm tay' }, { value: 'PENDING', label: 'Chờ chấm' }, { value: 'GRADED', label: 'Đã chấm' }])
+const RELEASED = i18nMap([{ value: '', label: 'Công bố: tất cả' }, { value: 'true', label: 'Đã công bố' }, { value: 'false', label: 'Chưa công bố' }])
 
 /** Teacher grading for ONE Exam at a time (the backend queue requires examId). Student-first: pick a submission, grade it item by item. */
 export default function GradingPage() {
+  useT()
   const [params, setParams] = useSearchParams()
   const examId = params.get('examId') ?? ''
   const status = params.get('status') ?? ''
@@ -70,12 +72,12 @@ export default function GradingPage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Chấm bài" description="Chọn kỳ thi, mở từng bài nộp và chấm theo từng câu. Lưu nháp, hoàn tất chấm rồi công bố là ba bước riêng."
-        actions={examId && <button type="button" className="btn btn-secondary" onClick={() => setPolicyOpen(true)} disabled={!policy.data}><Settings2 size={16} aria-hidden /> Chính sách kết quả</button>} />
+      <PageHeader title={tt('Chấm bài')} description={tt('Chọn kỳ thi, mở từng bài nộp và chấm theo từng câu. Lưu nháp, hoàn tất chấm rồi công bố là ba bước riêng.')}
+        actions={examId && <button type="button" className="btn btn-secondary" onClick={() => setPolicyOpen(true)} disabled={!policy.data}><Settings2 size={16} aria-hidden /> {tt('Chính sách kết quả')}</button>} />
       <section className="card card-body" style={{ display: 'grid', gap: 12 }}>
-        <Field label="Kỳ thi" htmlFor="grading-exam" hint="Chỉ Chủ sở hữu và Quản lý của kỳ thi được chấm bài. Hàng chờ chấm theo từng kỳ thi.">
+        <Field label={tt('Kỳ thi')} htmlFor="grading-exam" hint={tt('Chỉ Chủ sở hữu và Quản lý của kỳ thi được chấm bài. Hàng chờ chấm theo từng kỳ thi.')}>
           <select id="grading-exam" className="input" value={examId} onChange={e => setExam(e.target.value)}>
-            <option value="">Chọn kỳ thi</option>
+            <option value="">{tt('Chọn kỳ thi')}</option>
             {gradable.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
           </select>
         </Field>
@@ -84,24 +86,24 @@ export default function GradingPage() {
       {!examId ? (
         <section className="card">{exams.isError ? <ErrorState error={exams.error} onRetry={() => void exams.refetch()} />
           : exams.isLoading ? <LoadingState rows={2} />
-          : <EmptyState icon={<ClipboardCheck size={30} />} title="Chọn một kỳ thi" description={gradable.length === 0 ? 'Bạn chưa có kỳ thi đã xuất bản. Bài nộp xuất hiện sau khi kỳ thi được mở và thí sinh nộp bài.' : 'Chọn kỳ thi để xem danh sách bài nộp.'} />}</section>
+          : <EmptyState icon={<ClipboardCheck size={30} />} title={tt('Chọn một kỳ thi')} description={gradable.length === 0 ? tt('Bạn chưa có kỳ thi đã xuất bản. Bài nộp xuất hiện sau khi kỳ thi được mở và thí sinh nộp bài.') : tt('Chọn kỳ thi để xem danh sách bài nộp.')} />}</section>
       ) : (
         <>
           {overview.isError ? <section className="card"><ErrorState error={overview.error} onRetry={() => void overview.refetch()} /></section> : (
             <div>
-              <div className="grade-overview" role="group" aria-label="Tổng quan toàn kỳ thi">
-                {([['Tổng bài nộp', o?.totalSubmissions], ['Cần chấm tay', o?.needsReview], ['Chờ hoàn tất', o?.pending], ['Đã chấm', o?.graded], ['Đã công bố', o?.released], ['Câu chờ chấm tay', o?.pendingManualItems]] as const)
+              <div className="grade-overview" role="group" aria-label={tt('Tổng quan toàn kỳ thi')}>
+                {([[tt('Tổng bài nộp'), o?.totalSubmissions], [tt('Cần chấm tay'), o?.needsReview], [tt('Chờ hoàn tất'), o?.pending], [tt('Đã chấm'), o?.graded], [tt('Đã công bố'), o?.released], [tt('Câu chờ chấm tay'), o?.pendingManualItems]] as const)
                   .map(([label, n]) => <div key={label}><div className="n">{n ?? '-'}</div><div className="l">{label}</div></div>)}
               </div>
-              <p className="xsmall muted" style={{ marginTop: 6 }}>Số liệu của toàn kỳ thi, không chỉ trang đang xem. "Đã công bố" đếm bản công bố nên có thể trùng các nhóm khác (ví dụ bài đang chấm lại), đừng cộng các ô để suy ra tổng.{(o?.invalidated ?? 0) > 0 && <> Có {o!.invalidated} bài đã bị vô hiệu hóa (loại khỏi kết quả hợp lệ, không chấm được).</>}</p>
+              <p className="xsmall muted" style={{ marginTop: 6 }}>{tt('Số liệu của toàn kỳ thi, không chỉ trang đang xem. "Đã công bố" đếm bản công bố nên có thể trùng các nhóm khác (ví dụ bài đang chấm lại), đừng cộng các ô để suy ra tổng.')}{(o?.invalidated ?? 0) > 0 && <> {tt('Có')} {o!.invalidated} {tt('bài đã bị vô hiệu hóa (loại khỏi kết quả hợp lệ, không chấm được).')}</>}</p>
             </div>
           )}
           {showQueue && (
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <div className="tabs" role="tablist" aria-label="Trạng thái chấm" style={{ border: '1px solid #000' }}>
+              <div className="tabs" role="tablist" aria-label={tt('Trạng thái chấm')} style={{ border: '1px solid #000' }}>
                 {TABS.map(t => <button key={t.value} type="button" role="tab" className="tab" aria-selected={status === t.value} onClick={() => setFilter('status', t.value)}>{t.label}</button>)}
               </div>
-              <select className="input" aria-label="Lọc theo công bố" style={{ maxWidth: 200 }} value={released} onChange={e => setFilter('released', e.target.value)}>
+              <select className="input" aria-label={tt('Lọc theo công bố')} style={{ maxWidth: 200 }} value={released} onChange={e => setFilter('released', e.target.value)}>
                 {RELEASED.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
@@ -111,14 +113,14 @@ export default function GradingPage() {
               activeId={selected} onSelect={select} page={page} onPage={changePage} status={status} />}
             {showWork
               ? <SubmissionWorkspace key={selected!} id={selected!} policy={policy.data} narrow={narrow} onDirty={onDirty} onBack={() => select(null)} />
-              : !narrow && <section className="card" style={{ gridColumn: 'span 2' }}><EmptyState title="Chọn một bài nộp" description="Xem bài làm đóng băng theo đề, chấm từng câu và lưu nháp trước khi hoàn tất." /></section>}
+              : !narrow && <section className="card" style={{ gridColumn: 'span 2' }}><EmptyState title={tt('Chọn một bài nộp')} description={tt('Xem bài làm đóng băng theo đề, chấm từng câu và lưu nháp trước khi hoàn tất.')} /></section>}
           </div>
         </>
       )}
       {policyOpen && policy.data && <ResultPolicyDialog examId={examId} policy={policy.data} onClose={() => setPolicyOpen(false)} />}
       {askingToLeave && (
-        <ConfirmDialog title="Bỏ thay đổi chưa lưu?" tone="danger" confirmLabel="Bỏ thay đổi và tiếp tục" cancelLabel="Ở lại"
-          description="Bài đang mở có điểm hoặc nhận xét chưa lưu. Rời đi sẽ mất chúng. Chọn Ở lại để giữ nguyên bản nháp rồi Lưu nháp."
+        <ConfirmDialog title={tt('Bỏ thay đổi chưa lưu?')} tone="danger" confirmLabel={tt('Bỏ thay đổi và tiếp tục')} cancelLabel={tt('Ở lại')}
+          description={tt('Bài đang mở có điểm hoặc nhận xét chưa lưu. Rời đi sẽ mất chúng. Chọn Ở lại để giữ nguyên bản nháp rồi Lưu nháp.')}
           onCancel={stay} onConfirm={leave} />
       )}
     </div>

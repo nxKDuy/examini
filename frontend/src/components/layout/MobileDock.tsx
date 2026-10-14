@@ -1,4 +1,4 @@
-import { useT } from '../../lib/i18n'
+import { useT, t as tt } from '../../lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, matchPath, useLocation } from 'react-router-dom'
 import { Ellipsis } from 'lucide-react'
@@ -40,7 +40,7 @@ function MoreSheet({ refEl, onClose, items }: { refEl: React.RefObject<HTMLDivEl
     <>
       <button type="button" className="dock-backdrop" aria-label={t('Đóng')} tabIndex={-1} onClick={onClose} />
       <div ref={refEl} className="dock-sheet" role="dialog" aria-modal="true" aria-label={t('Thêm mục điều hướng')}>
-        <div className="dock-sheet-head"><strong>Khác</strong><button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Đóng</button></div>
+        <div className="dock-sheet-head"><strong>{tt('Khác')}</strong><button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>{tt('Đóng')}</button></div>
         <nav aria-label={t('Các mục khác')}>
           {items.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} className="dock-sheet-link" onClick={onClose}><Icon size={20} aria-hidden /><span>{t(label)}</span></NavLink>)}
         </nav>

@@ -1,4 +1,5 @@
 import type { DraftRequest, GradeItem, Submission, SubmissionDetail } from './gradingApi'
+import { t } from '../../lib/i18n'
 
 /** Pure grading-form logic: what to send, what is valid, what the Student sees. No React, no fetch. */
 
@@ -7,7 +8,7 @@ export const isChoiceAnswer = (type: string) => type === 'MULTIPLE_CHOICE' || ty
 /** The server auto-scores it, so changing that score is an override that needs its own reason. Includes SHORT_ANSWER. */
 export const isAutoGraded = (type: string) => isChoiceAnswer(type) || type === 'SHORT_ANSWER'
 export const shortStudent = (id: string) => id.slice(0, 8)
-export const studentName = (submission: { studentId: string; studentDisplayName?: string | null }) => submission.studentDisplayName?.trim() || `Thí sinh ${shortStudent(submission.studentId)}`
+export const studentName = (submission: { studentId: string; studentDisplayName?: string | null }) => submission.studentDisplayName?.trim() || t('Thí sinh {0}', { 0: shortStudent(submission.studentId) })
 
 export interface ItemForm { score: string; feedback: string; overrideReason: string }
 export interface GradeForm { feedback: string; items: Record<string, ItemForm> }
@@ -27,9 +28,9 @@ const parseScore = (s: string) => (s.trim() === '' ? null : Number(s))
 export function scoreProblem(item: GradeItem, f: ItemForm): string | null {
   const v = parseScore(f.score)
   if (v === null) return null
-  if (!Number.isFinite(v)) return 'Nhập một số hợp lệ.'
+  if (!Number.isFinite(v)) return t('Nhập một số hợp lệ.')
   const max = item.pointValue ?? 0
-  if (v < 0 || v > max) return `Điểm phải từ 0 đến ${max}.`
+  if (v < 0 || v > max) return t('Điểm phải từ 0 đến {0}.', { 0: max })
   return null
 }
 
@@ -46,7 +47,7 @@ export function itemProblems(d: SubmissionDetail, form: GradeForm, initial: Grad
   for (const i of d.items) {
     const f = form.items[i.questionId]; if (!f) continue
     const score = scoreProblem(i, f)
-    const reason = reasonRequired(i, f, initial.items[i.questionId]) && f.overrideReason.trim() === '' ? 'Nhập lý do khi sửa điểm tự động.' : undefined
+    const reason = reasonRequired(i, f, initial.items[i.questionId]) && f.overrideReason.trim() === '' ? t('Nhập lý do khi sửa điểm tự động.') : undefined
     if (score || reason) out[i.questionId] = { ...(score ? { score } : {}), ...(reason ? { reason } : {}) }
   }
   return out
@@ -120,7 +121,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export function studentAnswerText(type: string, answer: string | undefined, answerDisplay?: string | null): { text: string; unresolved: boolean } | null {
   if (answerDisplay !== undefined && answerDisplay !== null && answerDisplay.trim() !== '') return { text: answerDisplay, unresolved: false }
   if (answer === undefined || answer === null || answer.trim() === '') return null
-  if (isChoiceAnswer(type) && UUID.test(answer.trim())) return { text: 'Đã chọn một phương án', unresolved: true }
+  if (isChoiceAnswer(type) && UUID.test(answer.trim())) return { text: t('Đã chọn một phương án'), unresolved: true }
   return { text: answer, unresolved: false }
 }
 export const readableAnswers = (list: string[] | undefined) => (list ?? []).filter(a => !UUID.test(a.trim()))

@@ -1,15 +1,16 @@
 import type { AddOutcome, AddRequest, ParticipantRow } from './participantApi'
+import { t as tt, i18nMap } from '../../lib/i18n'
 
 /** Pure Participants UI rules. They mirror what the server enforces so the UI does not offer actions in vain; the server stays the authority. */
 
-export const OUTCOME_LABEL: Record<AddOutcome, { text: string; tone: 'success' | 'info' | 'warning' | 'danger' | 'muted' }> = {
+export const OUTCOME_LABEL: Record<AddOutcome, { text: string; tone: 'success' | 'info' | 'warning' | 'danger' | 'muted' }> = i18nMap({
   ASSIGNED: { text: 'Đã thêm', tone: 'success' }, REINSTATED: { text: 'Đã khôi phục lại', tone: 'success' },
   ALREADY_PARTICIPANT: { text: 'Đã có trong danh sách', tone: 'info' }, CAPACITY_FULL: { text: 'Hết chỗ', tone: 'danger' },
   NOT_FOUND: { text: 'Không tìm thấy tài khoản', tone: 'warning' }, NOT_A_STUDENT: { text: 'Không phải học sinh', tone: 'warning' },
-}
-export const SOURCE_LABEL: Record<string, string> = { ASSIGNED: 'Được phân công', JOIN_CODE: 'Mã tham gia', PUBLIC: 'Công khai' }
-export const STATUS_LABEL: Record<string, string> = { ACTIVE: 'Đủ điều kiện', REVOKED: 'Đã gỡ' }
-export const ATTEMPT_STATUS_LABEL: Record<string, string> = { IN_PROGRESS: 'Đang làm', SUBMITTED: 'Đã nộp', AUTO_SUBMITTED: 'Tự động nộp', CANCELLED: 'Đã dừng' }
+})
+export const SOURCE_LABEL: Record<string, string> = i18nMap({ ASSIGNED: 'Được phân công', JOIN_CODE: 'Mã tham gia', PUBLIC: 'Công khai' })
+export const STATUS_LABEL: Record<string, string> = i18nMap({ ACTIVE: 'Đủ điều kiện', REVOKED: 'Đã gỡ' })
+export const ATTEMPT_STATUS_LABEL: Record<string, string> = i18nMap({ IN_PROGRESS: 'Đang làm', SUBMITTED: 'Đã nộp', AUTO_SUBMITTED: 'Tự động nộp', CANCELLED: 'Đã dừng' })
 
 export const MAX_BATCH = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -22,14 +23,14 @@ export type BatchParse =
 /** One value per line (commas/semicolons/spaces also separate). Either all user ids or all e-mails, 1..100, exactly as typed (e-mails are not normalised). */
 export function parseBatch(raw: string): BatchParse {
   const tokens = raw.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean)
-  if (tokens.length === 0) return { ok: false, error: 'Nhập ít nhất một mã người dùng hoặc email.', count: 0 }
+  if (tokens.length === 0) return { ok: false, error: tt('Nhập ít nhất một mã người dùng hoặc email.'), count: 0 }
   const unique = [...new Set(tokens)]
   const duplicates = tokens.length - unique.length
-  if (unique.length > MAX_BATCH) return { ok: false, error: `Tối đa ${MAX_BATCH} dòng mỗi lần (đang có ${unique.length}).`, count: unique.length }
+  if (unique.length > MAX_BATCH) return { ok: false, error: tt('Tối đa {0} dòng mỗi lần (đang có {1}).', { 0: MAX_BATCH, 1: unique.length }), count: unique.length }
   const ids = unique.filter(t => UUID.test(t)), emails = unique.filter(t => !UUID.test(t) && EMAIL.test(t))
   const bad = unique.length - ids.length - emails.length
-  if (bad > 0) return { ok: false, error: `${bad} dòng không phải mã người dùng (UUID) hay email hợp lệ.`, count: unique.length }
-  if (ids.length > 0 && emails.length > 0) return { ok: false, error: 'Mỗi lần chỉ dùng một loại: toàn mã người dùng hoặc toàn email.', count: unique.length }
+  if (bad > 0) return { ok: false, error: tt('{0} dòng không phải mã người dùng (UUID) hay email hợp lệ.', { 0: bad }), count: unique.length }
+  if (ids.length > 0 && emails.length > 0) return { ok: false, error: tt('Mỗi lần chỉ dùng một loại: toàn mã người dùng hoặc toàn email.'), count: unique.length }
   return ids.length > 0
     ? { ok: true, request: { userIds: ids }, count: ids.length, kind: 'ids', duplicates }
     : { ok: true, request: { emails }, count: emails.length, kind: 'emails', duplicates }
@@ -57,14 +58,14 @@ export function rowAbilities(manage: boolean, row: Pick<ParticipantRow, 'status'
 
 export function participantName(p: { displayName?: string; userId: string }): { text: string; fallback: boolean } {
   const n = p.displayName?.trim()
-  return n ? { text: n, fallback: false } : { text: `Thí sinh ${p.userId.slice(0, 8)}`, fallback: true }
+  return n ? { text: n, fallback: false } : { text: tt('Thí sinh {0}', { 0: p.userId.slice(0, 8) }), fallback: true }
 }
 
 export function attemptSummary(row: Pick<ParticipantRow, 'attempts' | 'effectiveAttemptLimit'>): string {
   const a = row.attempts
-  if (!a) return `Chưa làm / ${row.effectiveAttemptLimit}`
+  if (!a) return tt('Chưa làm / {0}', { 0: row.effectiveAttemptLimit })
   const base = `${a.used}/${row.effectiveAttemptLimit}`
-  return a.invalidated > 0 ? `${base} (${a.invalidated} bị vô hiệu)` : base
+  return a.invalidated > 0 ? tt('{0} ({1} bị vô hiệu)', { 0: base, 1: a.invalidated }) : base
 }
 
 /** Per-attempt invalidation needs a public reason and the attempt number (or name) typed back. */
@@ -73,7 +74,7 @@ export const invalidateReady = (reason: string, typed: string, attemptNumber: nu
 
 export const grantQuantityError = (raw: string): string | null => {
   const n = Number(raw)
-  return Number.isInteger(n) && n >= 1 && n <= 100 ? null : 'Số lượt cấp thêm phải là số nguyên từ 1 đến 100.'
+  return Number.isInteger(n) && n >= 1 && n <= 100 ? null : tt('Số lượt cấp thêm phải là số nguyên từ 1 đến 100.')
 }
 /** One id per dialog opening: pressing Cấp thêm twice (or a retry after a lost response) replays the same request instead of granting twice. */
 export const newRequestId = () => (globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(36).slice(2)}`)

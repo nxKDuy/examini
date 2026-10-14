@@ -1,19 +1,20 @@
 import { parseUtc } from '../../lib/format'
 import type { Contribution, ContributionStatus, Lineage, PublicQuestion, PublicViewResponse, QuestionSet } from './bankApi'
 import type { Organization } from '../organizations/orgApi'
+import { t as tt, i18nMap } from '../../lib/i18n'
 
 /** Pure Bank UI rules. They mirror what the server enforces so the UI does not offer actions in vain; the server stays the authority. */
 
-export const CONTRIBUTION_LABEL: Record<ContributionStatus, { text: string; tone: 'info' | 'success' | 'danger' }> = {
+export const CONTRIBUTION_LABEL: Record<ContributionStatus, { text: string; tone: 'info' | 'success' | 'danger' }> = i18nMap({
   PENDING_REVIEW: { text: 'Chờ duyệt', tone: 'info' }, APPROVED: { text: 'Đã duyệt', tone: 'success' }, REJECTED: { text: 'Bị từ chối', tone: 'danger' },
-}
-export const BANK_TYPE_LABEL: Record<string, string> = { PERSONAL: 'Kho cá nhân', ORGANIZATION: 'Ngân hàng tổ chức', PUBLIC: 'Ngân hàng công khai', SYSTEM: 'Ngân hàng hệ thống' }
+})
+export const BANK_TYPE_LABEL: Record<string, string> = i18nMap({ PERSONAL: 'Kho cá nhân', ORGANIZATION: 'Ngân hàng tổ chức', PUBLIC: 'Ngân hàng công khai', SYSTEM: 'Ngân hàng hệ thống' })
 
 export type Capability = 'BANK_READ' | 'BANK_USE' | 'BANK_SUBMIT' | 'BANK_REVIEW' | 'BANK_MANAGE'
 export const hasCapability = (org: Pick<Organization, 'me'>, cap: Capability) => !!org.me?.capabilities?.includes(cap)
 
 export type OrgBankTab = 'approved' | 'mine' | 'queue' | 'history'
-export const ORG_BANK_TAB_LABEL: Record<OrgBankTab, string> = { approved: 'Câu hỏi đã duyệt', mine: 'Đóng góp của tôi', queue: 'Hàng chờ duyệt', history: 'Lịch sử' }
+export const ORG_BANK_TAB_LABEL: Record<OrgBankTab, string> = i18nMap({ approved: 'Câu hỏi đã duyệt', mine: 'Đóng góp của tôi', queue: 'Hàng chờ duyệt', history: 'Lịch sử' })
 /** Sub-tabs from the real capabilities: everyone with BANK_READ reads and sees own contributions; only reviewers get the queue and history. */
 export function orgBankTabs(org: Pick<Organization, 'me'> & Partial<Pick<Organization, 'status'>>): OrgBankTab[] {
   if (!hasCapability(org, 'BANK_READ')) return []
@@ -33,9 +34,9 @@ export function contributionQuery(tab: OrgBankTab, canReview = true): { mine: bo
 /** Self-review is forbidden by the server (403); the UI says so up front instead of offering a button that cannot work. */
 export const isOwnContribution = (c: Pick<Contribution, 'sourceOwnerUserId'>, userId: string | undefined) => !!userId && c.sourceOwnerUserId === userId
 export function reviewState(c: Pick<Contribution, 'status' | 'sourceOwnerUserId'>, canReview: boolean, userId: string | undefined): { canAct: boolean; note: string | null } {
-  if (c.status !== 'PENDING_REVIEW') return { canAct: false, note: 'Đóng góp này đã được xử lý.' }
-  if (!canReview || !userId) return { canAct: false, note: 'Bạn không có quyền duyệt trong tổ chức này.' }
-  if (isOwnContribution(c, userId)) return { canAct: false, note: 'Đây là đóng góp của chính bạn. Người khác phải duyệt; bạn không thể tự duyệt.' }
+  if (c.status !== 'PENDING_REVIEW') return { canAct: false, note: tt('Đóng góp này đã được xử lý.') }
+  if (!canReview || !userId) return { canAct: false, note: tt('Bạn không có quyền duyệt trong tổ chức này.') }
+  if (isOwnContribution(c, userId)) return { canAct: false, note: tt('Đây là đóng góp của chính bạn. Người khác phải duyệt; bạn không thể tự duyệt.') }
   return { canAct: true, note: null }
 }
 export const rejectReady = (note: string) => note.trim().length > 0
@@ -47,7 +48,7 @@ export const submitTargets = (orgs: Organization[]) => orgs.filter(o => o.status
 export const canShare = (q: { status: string }) => q.status === 'ACTIVE'
 
 export function publicationBadge(p: Pick<PublicQuestion, 'publicationStatus'>): { text: string; tone: 'success' | 'muted' } {
-  return p.publicationStatus === 'ARCHIVED' ? { text: 'Đã gỡ công khai', tone: 'muted' } : { text: 'Đang công khai', tone: 'success' }
+  return p.publicationStatus === 'ARCHIVED' ? { text: tt('Đã gỡ công khai'), tone: 'muted' } : { text: tt('Đang công khai'), tone: 'success' }
 }
 export const isPublicOwner = (p: Pick<PublicQuestion, 'sourceOwnerUserId'>, userId: string | undefined) => !!userId && p.sourceOwnerUserId === userId
 export const canUnpublish = (p: Pick<PublicQuestion, 'sourceOwnerUserId' | 'publicationStatus'>, userId: string | undefined) => isPublicOwner(p, userId) && p.publicationStatus === 'PUBLISHED'
@@ -56,7 +57,7 @@ export const canForkPublic = (p: Pick<PublicQuestion, 'publicationStatus'>, teac
 export function copiedBadge(p: Pick<PublicQuestion, 'isCopied' | 'postType' | 'items' | 'itemCount'>): string | null {
   if (!p.isCopied) return null
   return p.postType === 'QUESTION_SET' && (p.items?.filter(item => item.isCopied).length ?? 0) < (p.itemCount ?? p.items?.length ?? 0)
-    ? 'Đã sao chép một phần' : 'Đã sao chép'
+    ? tt('Đã sao chép một phần') : tt('Đã sao chép')
 }
 /** Card date: when the snapshot's CONTENT was last edited at the source; older rows fall back to the publish date (the backend does the same). */
 export function updatedDate(p: Pick<PublicQuestion, 'contentUpdatedAt' | 'publishedAt'>): string | null {
@@ -75,11 +76,11 @@ export function broadTopic(p: Pick<PublicQuestion, 'subjects' | 'categories' | '
 export interface Stat { key: 'views' | 'copies' | 'rating'; value: string; label: string; empty?: boolean }
 /** Compact real numbers only: a missing figure is "—" (never 0 invented), no rating is stated as such, the average stays raw out of 10. */
 export function postStats(p: Pick<PublicQuestion, 'viewsTotal' | 'copiesTotal' | 'averageRating' | 'ratingCount'>): Stat[] {
-  const count = (key: 'views' | 'copies', n: number | null | undefined, noun: string): Stat => (n == null ? { key, value: '—', label: `Chưa có số liệu ${noun}` } : { key, value: String(n), label: `${n} lượt ${noun}` })
-  const rating: Stat = p.ratingCount == null ? { key: 'rating', value: '—', label: 'Chưa có số liệu đánh giá', empty: true }
-    : p.ratingCount === 0 || p.averageRating == null ? { key: 'rating', value: 'Chưa có', label: 'Chưa có đánh giá', empty: true }
-    : { key: 'rating', value: `${Number(p.averageRating.toFixed(1))}/10 (${p.ratingCount})`, label: `${Number(p.averageRating.toFixed(1))}/10 từ ${p.ratingCount} đánh giá` }
-  return [count('views', p.viewsTotal, 'xem'), count('copies', p.copiesTotal, 'sao chép'), rating]
+  const count = (key: 'views' | 'copies', n: number | null | undefined, noun: string): Stat => (n == null ? { key, value: '—', label: tt('Chưa có số liệu {0}', { 0: noun }) } : { key, value: String(n), label: tt('{0} lượt {1}', { 0: n, 1: noun }) })
+  const rating: Stat = p.ratingCount == null ? { key: 'rating', value: '—', label: tt('Chưa có số liệu đánh giá'), empty: true }
+    : p.ratingCount === 0 || p.averageRating == null ? { key: 'rating', value: tt('Chưa có'), label: tt('Chưa có đánh giá'), empty: true }
+    : { key: 'rating', value: `${Number(p.averageRating.toFixed(1))}/10 (${p.ratingCount})`, label: tt('{0}/10 từ {1} đánh giá', { 0: Number(p.averageRating.toFixed(1)), 1: p.ratingCount }) }
+  return [count('views', p.viewsTotal, 'xem'), count('copies', p.copiesTotal, tt('sao chép')), rating]
 }
 const squash = (t: string) => t.replace(/\s+/g, ' ').replace(/[\s….]+$/u, '').trim().toLowerCase()
 /**
@@ -120,16 +121,16 @@ export interface ChainLink { key: string; label: string; detail: string; tone: '
 export function provenanceChain(l: Lineage | null): ChainLink[] {
   if (!l) return []
   if (l.nodes?.length) return l.nodes.map((n, i) => {
-    const label = n.relation === 'SOURCE' ? `Câu gốc ${shortId(n.id)}` : n.relation === 'PUBLICATION' ? 'Bản đã xuất bản/đóng góp' : 'Bản sao này'
-    const status = n.available ? ({ DRAFT: 'Bản nháp', ACTIVE: 'Đang dùng', PUBLISHED: 'Đang công khai', APPROVED: 'Đã duyệt', ARCHIVED: n.bankType === 'PUBLIC' ? 'Đã gỡ công khai' : 'Đã lưu trữ' } as Record<string, string>)[n.status ?? ''] ?? 'Trạng thái chưa được cung cấp' : 'Nguồn hiện không khả dụng hoặc không còn quyền xem'
-    const bank = n.available ? `${BANK_TYPE_LABEL[n.bankType] ?? 'Ngân hàng'}${n.name?.trim() ? ` · ${n.name.trim()}` : ''}` : ''
-    return { key: `${n.relation}-${i}`, label, detail: [`Phiên bản ${n.version}`, status, bank, n.frozen ? 'Bản chụp cố định' : ''].filter(Boolean).join(' · '), tone: n.relation === 'SOURCE' ? 'source' : n.relation === 'PUBLICATION' ? 'bridge' : 'here' }
+    const label = n.relation === 'SOURCE' ? tt('Câu gốc {0}', { 0: shortId(n.id) }) : n.relation === 'PUBLICATION' ? tt('Bản đã xuất bản/đóng góp') : tt('Bản sao này')
+    const status = n.available ? ({ DRAFT: tt('Bản nháp'), ACTIVE: tt('Đang dùng'), PUBLISHED: tt('Đang công khai'), APPROVED: tt('Đã duyệt'), ARCHIVED: n.bankType === 'PUBLIC' ? tt('Đã gỡ công khai') : tt('Đã lưu trữ') } as Record<string, string>)[n.status ?? ''] ?? tt('Trạng thái chưa được cung cấp') : tt('Nguồn hiện không khả dụng hoặc không còn quyền xem')
+    const bank = n.available ? tt('{0}{1}', { 0: BANK_TYPE_LABEL[n.bankType] ?? 'Ngân hàng', 1: n.name?.trim() ? ` · ${n.name.trim()}` : '' }) : ''
+    return { key: `${n.relation}-${i}`, label, detail: [tt('Phiên bản {0}', { 0: n.version }), status, bank, n.frozen ? tt('Bản chụp cố định') : ''].filter(Boolean).join(' · '), tone: n.relation === 'SOURCE' ? 'source' : n.relation === 'PUBLICATION' ? 'bridge' : 'here' }
   })
-  const bank = BANK_TYPE_LABEL[l.sourceBankType ?? ''] ?? 'Ngân hàng khác'
-  const links: ChainLink[] = [{ key: 'source', label: `Câu gốc ${shortId(l.sourceQuestionId)}`, detail: `Phiên bản ${l.sourceQuestionVersion} · ${bank}`, tone: 'source' }]
-  if (l.sourcePublicQuestionId) links.push({ key: 'public', label: 'Bản xuất bản công khai', detail: `Mã ${shortId(l.sourcePublicQuestionId)}`, tone: 'bridge' })
-  if (l.sourceOrganizationQuestionId) links.push({ key: 'org', label: 'Bản đã duyệt của tổ chức', detail: `Mã ${shortId(l.sourceOrganizationQuestionId)}`, tone: 'bridge' })
-  links.push({ key: 'here', label: 'Bản sao này', detail: l.copiedAt ? `Sao chép ${new Date(l.copiedAt).toLocaleDateString('vi-VN')}` : 'Bản sao độc lập', tone: 'here' })
+  const bank = BANK_TYPE_LABEL[l.sourceBankType ?? ''] ?? tt('Ngân hàng khác')
+  const links: ChainLink[] = [{ key: 'source', label: tt('Câu gốc {0}', { 0: shortId(l.sourceQuestionId) }), detail: tt('Phiên bản {0} · {1}', { 0: l.sourceQuestionVersion, 1: bank }), tone: 'source' }]
+  if (l.sourcePublicQuestionId) links.push({ key: 'public', label: tt('Bản xuất bản công khai'), detail: tt('Mã {0}', { 0: shortId(l.sourcePublicQuestionId) }), tone: 'bridge' })
+  if (l.sourceOrganizationQuestionId) links.push({ key: 'org', label: tt('Bản đã duyệt của tổ chức'), detail: tt('Mã {0}', { 0: shortId(l.sourceOrganizationQuestionId) }), tone: 'bridge' })
+  links.push({ key: 'here', label: tt('Bản sao này'), detail: l.copiedAt ? tt('Sao chép {0}', { 0: new Date(l.copiedAt).toLocaleDateString('vi-VN') }) : tt('Bản sao độc lập'), tone: 'here' })
   return links
 }
 

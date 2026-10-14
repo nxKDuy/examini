@@ -5,9 +5,11 @@ import { Field, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { orgApi, type InviteRole, type Organization } from './orgApi'
 import { ROLE_LABEL, inviteRolesFor, parseRecipient } from './orgModel'
+import { t, useT } from '../../lib/i18n'
 
 /** One box for a user id or an exact e-mail. ADMIN may only invite MEMBER. Duplicate pending invites answer 200 and are reported as such. */
 export default function InviteDialog({ org, onDone, onClose }: { org: Organization; onDone: (created: boolean) => void; onClose: () => void }) {
+  useT()
   const qc = useQueryClient()
   const roles = inviteRolesFor(org.me?.role)
   const [value, setValue] = useState('')
@@ -20,18 +22,18 @@ export default function InviteDialog({ org, onDone, onClose }: { org: Organizati
   })
   function submit(e: FormEvent) { e.preventDefault(); setTouched(true); if (recipient && !invite.isPending) invite.mutate() }
   return (
-    <Dialog title="Mời vào tổ chức" description="Người được mời phải đã có tài khoản EXAMINI. Lời mời hết hạn sau 7 ngày và không tự thêm vào tổ chức." onClose={onClose} busy={invite.isPending}
+    <Dialog title={t('Mời vào tổ chức')} description={t('Người được mời phải đã có tài khoản EXAMINI. Lời mời hết hạn sau 7 ngày và không tự thêm vào tổ chức.')} onClose={onClose} busy={invite.isPending}
       footer={<>
-        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={invite.isPending}>Hủy</button>
-        <button type="submit" form="org-invite-form" className="btn btn-primary" disabled={invite.isPending}>{invite.isPending ? 'Đang gửi…' : 'Gửi lời mời'}</button>
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={invite.isPending}>{t('Hủy')}</button>
+        <button type="submit" form="org-invite-form" className="btn btn-primary" disabled={invite.isPending}>{invite.isPending ? t('Đang gửi…') : t('Gửi lời mời')}</button>
       </>}>
       <form id="org-invite-form" onSubmit={submit} className="stack">
         {invite.isError && <Notice tone="danger" live>{errorText(invite.error)}</Notice>}
-        <Field label="Mã người dùng hoặc email" htmlFor="invite-recipient" required hint="Dán mã người dùng (UUID) hoặc email đúng như đã đăng ký."
-          error={touched && !recipient ? 'Nhập mã người dùng (UUID) hoặc một email hợp lệ.' : undefined}>
+        <Field label={t('Mã người dùng hoặc email')} htmlFor="invite-recipient" required hint={t('Dán mã người dùng (UUID) hoặc email đúng như đã đăng ký.')}
+          error={touched && !recipient ? t('Nhập mã người dùng (UUID) hoặc một email hợp lệ.') : undefined}>
           <input id="invite-recipient" className="input" value={value} autoComplete="off" spellCheck={false} aria-invalid={touched && !recipient} onChange={e => setValue(e.target.value)} data-autofocus />
         </Field>
-        <Field label="Vai trò" htmlFor="invite-role" hint={roles.length === 1 ? 'Quản trị chỉ mời được thành viên thường.' : 'Chủ sở hữu có thể mời cả Quản trị.'}>
+        <Field label={t('Vai trò')} htmlFor="invite-role" hint={roles.length === 1 ? t('Quản trị chỉ mời được thành viên thường.') : t('Chủ sở hữu có thể mời cả Quản trị.')}>
           <select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as InviteRole)}>
             {roles.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
           </select>

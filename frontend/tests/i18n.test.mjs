@@ -47,3 +47,15 @@ test('every English entry keeps the same {placeholders} as its Vietnamese key', 
   const bad = Object.entries(EN).filter(([vi, en]) => ph(vi) !== ph(en) || !en.trim())
   assert.deepEqual(bad, [])
 })
+
+test('i18nMap translates string values when read and keeps keys, nesting and arrays working', () => {
+  i.useLangStore.getState().setLang('vi')
+  const m = i.i18nMap({ A: 'Hủy', nested: { label: 'Đăng xuất' }, list: [{ label: 'Hủy' }] })
+  assert.equal(m.A, 'Hủy')
+  i.useLangStore.getState().setLang('en')
+  assert.equal(m.A, 'Cancel')
+  assert.equal(m.nested.label, 'Sign out')
+  assert.deepEqual(m.list.map(x => x.label), ['Cancel'])
+  assert.deepEqual(Object.entries(m).filter(([, v]) => typeof v === 'string'), [['A', 'Cancel']])
+  i.useLangStore.getState().setLang('vi')
+})
