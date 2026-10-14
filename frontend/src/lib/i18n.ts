@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { EN } from './i18n-en'
+import { EN_UI } from './i18n-en-ui'
 
 // Vietnamese-first i18n (scope D). The Vietnamese text is the key and the default, so untranslated text
 // never shows a raw key; English comes from the EN catalog. Kept per browser and per account.
@@ -35,7 +36,7 @@ if (typeof document !== 'undefined') document.documentElement.lang = useLangStor
 
 export type Vars = Record<string, string | number | null | undefined>
 export function translate(lang: Lang, vi: string, vars?: Vars) {
-  const text = lang === 'en' ? EN[vi] ?? vi : vi
+  const text = lang === 'en' ? EN[vi] ?? EN_UI[vi] ?? vi : vi
   return vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k] ?? '') : m)) : text
 }
 
