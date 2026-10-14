@@ -18,5 +18,12 @@ public class ExamOutboxEvent {
     public ExamOutboxEvent(UUID eventId,String eventType,String payload,Instant occurredAt) {
         this.eventId=eventId;this.eventType=eventType;this.payload=payload;this.occurredAt=occurredAt;this.delivered=false;
     }
-    public void markDelivered(){delivered=true;}
+    @Column(name="attempt_count",nullable=false) private int attemptCount;
+    @Column(name="next_attempt_at") private Instant nextAttemptAt;
+    @Column(name="last_error",length=500) private String lastError;
+    @Column(nullable=false) private boolean parked;
+    public void markDelivered(){delivered=true;nextAttemptAt=null;lastError=null;}
+    public void attempted(){attemptCount++;}
+    /** Failed attempt: skipped until nextAttempt, or for good once parked (reset parked=false to replay). */
+    public void failed(String error,Instant nextAttempt,boolean park){lastError=error;nextAttemptAt=nextAttempt;parked=park;}
 }
