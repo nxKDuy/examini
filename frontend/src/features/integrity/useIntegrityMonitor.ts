@@ -169,6 +169,8 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
     fullscreenUnavailable: !!current?.requireFullscreen && !supported,
     duplicate: !!sessionId && active && duplicate,
     takeOver,
+    /** Camera proctoring is part of the frozen policy but runs separately (useCameraProctor). */
+    camera: !!sessionId && active && !!p?.requireCamera,
     /** Copying is blocked: the page also disables text selection on questions. */
     noCopy: !!current?.monitorCopy,
     ack: on && ack,

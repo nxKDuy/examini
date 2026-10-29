@@ -256,6 +256,9 @@ services:
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
+      CAMERA_STORAGE_DIR: /data/camera
+    volumes:
+      - camera_data:/data/camera
     depends_on:
       postgres:
         condition: service_healthy
@@ -378,6 +381,7 @@ services:
 
 volumes:
   ollama_data:
+  camera_data:
   postgres_data:
   redis_data:
   rabbitmq_data:

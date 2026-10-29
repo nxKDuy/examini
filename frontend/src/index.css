@@ -319,6 +319,29 @@ a.stat:hover { background: var(--color-subtle); }
 
 /* Exam taking (focus mode) */
 .take-shell { min-height: 100dvh; display: flex; flex-direction: column; background: #fff; }
+/* Camera proctoring: enrollment preview, self-view dock, live warning. */
+.camera-video { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); background: #000; }
+.camera-enroll { position: relative; width: min(360px, 100%); aspect-ratio: 4 / 3; border: 1px solid #000; overflow: hidden; }
+.camera-frame { position: absolute; inset: 14% 26%; border: 2px dashed var(--color-hover); border-radius: 50%; pointer-events: none; }
+.camera-dock { position: fixed; right: 16px; bottom: 16px; z-index: 35; display: grid; justify-items: end; gap: 8px; }
+.camera-pip { position: relative; width: 132px; aspect-ratio: 4 / 3; padding: 0; border: 1px solid #000; background: #000; cursor: pointer; overflow: hidden; }
+.camera-pip[aria-pressed="false"] { width: 72px; aspect-ratio: auto; height: 28px; background: #fff; }
+.camera-rec { position: absolute; left: 6px; top: 4px; display: inline-flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #fff; text-shadow: 0 0 2px #000; }
+.camera-pip[aria-pressed="false"] .camera-rec { color: #000; text-shadow: none; }
+.camera-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-danger); animation: camera-blink 1.4s ease-in-out infinite; }
+.camera-dock[data-warning] .camera-pip { outline: 3px solid var(--color-danger); }
+.camera-warning { max-width: min(320px, calc(100vw - 32px)); padding: 8px 12px; background: var(--color-danger); color: #fff; font-size: 0.9rem; display: inline-flex; gap: 6px; align-items: center; box-shadow: var(--shadow-hard); }
+@keyframes camera-blink { 50% { opacity: .25; } }
+.camera-review-top { display: grid; gap: 20px; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 640px) { .camera-review-top { grid-template-columns: minmax(0, 1fr); } }
+.camera-player { width: 100%; max-height: 300px; background: #000; border: 1px solid #000; }
+.camera-thumb { display: block; width: 128px; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid #000; background: var(--color-subtle); }
+.camera-thumb-lg { width: 100%; max-width: 240px; }
+.camera-thumb-empty { display: grid; place-items: center; font-size: 0.75rem; color: var(--color-muted); text-align: center; padding: 4px; }
+.camera-events { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.camera-event { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; padding-bottom: 10px; border-bottom: 1px solid var(--color-hairline); }
+@media (max-width: 900px) { .camera-dock { bottom: calc(var(--dock-h, 0px) + 12px); right: 10px; } .camera-pip { width: 96px; } }
+@media (prefers-reduced-motion: reduce) { .camera-rec-dot { animation: none; } }
 .take-bar { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 14px; padding: 10px 24px; min-height: 64px; flex-wrap: wrap; }
 .take-body { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 28px 24px 56px; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 270px; align-items: start; }
 @media (max-width: 900px) { .take-body { grid-template-columns: minmax(0, 1fr); padding: 16px 12px 40px; } }

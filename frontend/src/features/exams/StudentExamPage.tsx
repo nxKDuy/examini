@@ -8,6 +8,8 @@ import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
 import { useIntegrityMonitor } from '../integrity/useIntegrityMonitor'
+import { useCameraProctor } from '../integrity/camera/useCameraProctor'
+import { CameraDock, CameraGate } from '../integrity/camera/CameraViews'
 import { signalState, type StudentSignalState } from '../integrity/integrityModel'
 import { ConfirmDialog } from '../../components/Dialog'
 import { ErrorState, Notice, Spinner } from '../../components/ui'
@@ -105,6 +107,7 @@ export default function StudentExamPage() {
     if (next.stage === 'submitted') { autoSubmittedRef.current = true; setAutoSubmitted(true); setConfirming(false); return }
     if (r.warningRecommended) setAnnouncement(tt('Đã ghi nhận {0}/{1} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.', { 0: next.count, 1: next.limit }))
   })
+  const camera = useCameraProctor(id, integrity.camera)
   if (integrity.fullscreen) wasFullscreen.current = true
   // Leaving the attempt (result, auto-submit, navigation) gives the screen back.
   useEffect(() => { if (autoSubmitted) exitFullscreen() }, [autoSubmitted])
@@ -239,7 +242,7 @@ export default function StudentExamPage() {
   const errors = states.filter(s => s === 'error').length
   const busy = states.some(s => s === 'saving' || s === 'pending')
   const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
-  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack || integrity.duplicate
+  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack || integrity.duplicate || camera.blocking
   const locked = expired || submitting || blocked
   const lastLine = signals?.stage === 'last' ? <p><strong>{t('Thêm một tín hiệu nữa, bài sẽ được tự động nộp.')}</strong></p> : null
   const countLine = signals ? <p><strong>{t('Đã ghi nhận {count}/{limit} tín hiệu rời khỏi bài.', { count: signals.count, limit: signals.limit })}</strong></p> : null
@@ -327,7 +330,9 @@ export default function StudentExamPage() {
           {neutral}
         </BlockingOverlay>
       )}
-      {!integrity.duplicate && !integrity.needsFullscreen && integrity.ack && (
+      {!integrity.duplicate && !integrity.needsFullscreen && camera.blocking && <CameraGate camera={camera} remaining={remaining} />}
+      {!blocked && <CameraDock camera={camera} />}
+      {!integrity.duplicate && !integrity.needsFullscreen && !camera.blocking && integrity.ack && (
         <BlockingOverlay title={t('Bạn vừa rời khỏi trang làm bài')} remaining={remaining}
           actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.acknowledge}>{t('Tôi đã hiểu')}</button>}>
           {countLine ?? <p>{t('Đang ghi nhận tín hiệu…')}</p>}{lastLine}

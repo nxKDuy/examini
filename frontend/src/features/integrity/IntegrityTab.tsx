@@ -11,6 +11,7 @@ import { formatDateTime, shortId } from '../../lib/format'
 import '../participants/participants.css'
 import { t as tt, useT } from '../../lib/i18n'
 import Select from '../../components/Select'
+import CameraReview from './camera/CameraReview'
 
 const TYPES = Object.keys(SIGNAL_LABEL) as SignalType[]
 
@@ -34,6 +35,7 @@ export default function IntegrityTab({ examId, policy, manage, live }: { examId:
       <Section title={tt('Giám sát trình duyệt')} description={tt('Cấu hình đã cố định: {0}.', { 0: policySummary(policy) })}>
         <p className="small muted">{tt('Tín hiệu do trình duyệt của thí sinh báo về, là dữ liệu ghi nhận và không phải kết luận gian lận. Chỉ giáo viên có vai trò trong kỳ thi xem được.')}</p>
       </Section>
+      {policy?.requireCamera && <CameraReview examId={examId} live={live} />}
       <Section title={tt('Tín hiệu đã ghi nhận')} bodyClassName=""
         description={events.data ? tt('{0} tín hiệu · theo thời điểm máy chủ nhận', { 0: events.data.totalElements }) : undefined}
         actions={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void events.refetch()} disabled={events.isFetching}><RefreshCw size={14} aria-hidden /> {tt('Làm mới')}</button>}>

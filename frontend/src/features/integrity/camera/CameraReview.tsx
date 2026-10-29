@@ -1,0 +1,97 @@
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Film, RefreshCw } from 'lucide-react'
+import { cameraApi, type CameraEvent, type SessionCameraSummary } from './cameraApi'
+import { Dialog } from '../../../components/Dialog'
+import { Badge, EmptyState, ErrorState, LoadingState, Section, Spinner } from '../../../components/ui'
+import { formatDateTime, shortId } from '../../../lib/format'
+import { t, useT } from '../../../lib/i18n'
+import { CAMERA_LABEL, VIOLATIONS, bytesText, detailText } from './cameraLabels'
+
+/** Proctor view of camera evidence for an exam: attempts ranked by violations, then one attempt in detail. */
+export default function CameraReview({ examId, live }: { examId: string; live: boolean }) {
+  useT()
+  const [open, setOpen] = useState<SessionCameraSummary | null>(null)
+  const list = useQuery({ queryKey: ['camera', 'exam', examId], queryFn: () => cameraApi.exam(examId), refetchInterval: live ? 15_000 : false, retry: false })
+  return (
+    <Section title={t('Giám sát bằng camera')} bodyClassName=""
+      description={t('Ảnh chụp và video là bằng chứng để giám thị xem xét, không phải kết luận gian lận. Hệ thống không tự xử lý theo camera.')}
+      actions={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void list.refetch()} disabled={list.isFetching}><RefreshCw size={14} aria-hidden /> {t('Làm mới')}</button>}>
+      {list.isLoading ? <LoadingState rows={2} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+        : !list.data?.length ? <EmptyState title={t('Chưa có dữ liệu camera')} description={t('Dữ liệu xuất hiện khi thí sinh bắt đầu làm bài có bật camera.')} />
+        : <div className="table-wrap"><table className="pt-table">
+          <thead><tr><th scope="col">{t('Thí sinh')}</th><th scope="col">{t('Cảnh báo')}</th><th scope="col">{t('Chi tiết')}</th><th scope="col">{t('Video')}</th><th scope="col">{t('Gần nhất')}</th></tr></thead>
+          <tbody>{list.data.map(s => <tr key={s.sessionId}>
+            <td><button type="button" className="pt-row-btn mono small" onClick={() => setOpen(s)}>{shortId(s.userId)}</button></td>
+            <td>{s.violations > 0 ? <Badge tone="danger">{s.violations}</Badge> : <Badge tone="muted">0</Badge>}</td>
+            <td className="xsmall">{VIOLATIONS.filter(v => s.counts[v]).map(v => `${CAMERA_LABEL[v]} ${s.counts[v]}`).join(' · ') || '–'}</td>
+            <td className="xsmall muted">{s.recording ? bytesText(s.recording.bytes) : t('Chưa có')}</td>
+            <td className="xsmall muted">{s.lastEventAt ? formatDateTime(s.lastEventAt) : '–'}</td>
+          </tr>)}</tbody>
+        </table></div>}
+      {open && <SessionCameraDialog summary={open} onClose={() => setOpen(null)} />}
+    </Section>
+  )
+}
+
+/** Fetches binary evidence with the user's token and exposes it as an object URL. */
+function useBlobUrl(key: unknown[], load: () => Promise<Blob>, enabled = true) {
+  const q = useQuery({ queryKey: key, queryFn: load, enabled, staleTime: Infinity, retry: false })
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!q.data) return
+    const u = URL.createObjectURL(q.data); setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [q.data])
+  return { url, loading: q.isLoading && enabled, error: q.error }
+}
+
+function Snapshot({ sessionId, event, large }: { sessionId: string; event: CameraEvent; large?: boolean }) {
+  const img = useBlobUrl(['camera', 'snapshot', event.id], () => cameraApi.snapshot(sessionId, event.id), event.hasSnapshot)
+  if (!event.hasSnapshot) return <div className="camera-thumb camera-thumb-empty">{t('Không có ảnh')}</div>
+  return img.url ? <img className={large ? 'camera-thumb camera-thumb-lg' : 'camera-thumb'} src={img.url} alt={`${CAMERA_LABEL[event.type]} · ${formatDateTime(event.receivedAt)}`} />
+    : <div className="camera-thumb camera-thumb-empty">{img.loading ? <Spinner size={14} /> : t('Không tải được ảnh')}</div>
+}
+
+function SessionCameraDialog({ summary, onClose }: { summary: SessionCameraSummary; onClose: () => void }) {
+  useT()
+  const [wantVideo, setWantVideo] = useState(false)
+  const detail = useQuery({ queryKey: ['camera', 'session', summary.sessionId], queryFn: () => cameraApi.session(summary.sessionId), retry: false })
+  const video = useBlobUrl(['camera', 'video', summary.sessionId, summary.recording?.chunks], () => cameraApi.video(summary.sessionId), wantVideo)
+  const d = detail.data
+  return (
+    <Dialog size="lg" title={t('Camera · thí sinh {0}', { 0: shortId(summary.userId) })} onClose={onClose}
+      description={t('Lượt {0} · {1} cảnh báo', { 0: shortId(summary.sessionId), 1: summary.violations })}
+      footer={<button type="button" className="btn btn-secondary" onClick={onClose}>{t('Đóng')}</button>}>
+      {detail.isLoading ? <LoadingState rows={3} /> : detail.isError ? <ErrorState error={detail.error} onRetry={() => void detail.refetch()} /> : d && <div className="stack-lg">
+        <div className="camera-review-top">
+          <figure className="stack-sm" style={{ margin: 0 }}>
+            <figcaption className="field-label">{t('Ảnh xác nhận lúc bắt đầu')}</figcaption>
+            {d.reference ? <Snapshot sessionId={d.sessionId} event={d.reference} large /> : <p className="small muted">{t('Thí sinh chưa chụp ảnh xác nhận.')}</p>}
+          </figure>
+          <div className="stack-sm" style={{ minWidth: 0 }}>
+            <span className="field-label">{t('Video quay lại')}</span>
+            {!d.recording ? <p className="small muted">{t('Chưa có video.')}</p>
+              : video.url ? <video className="camera-player" src={video.url} controls preload="metadata" />
+              : <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} disabled={video.loading} aria-busy={video.loading} onClick={() => setWantVideo(true)}>
+                  <Film size={16} aria-hidden /> {video.loading ? t('Đang tải video…') : t('Tải video ({0})', { 0: bytesText(d.recording.bytes) })}</button>}
+            {d.recording && <p className="xsmall muted">{t('{0} đoạn · bắt đầu {1}', { 0: d.recording.chunks, 1: formatDateTime(d.recording.startedAt) })}</p>}
+            {video.error ? <p className="field-error">{t('Không tải được video.')}</p> : null}
+          </div>
+        </div>
+        <section className="stack-sm" aria-label={t('Cảnh báo camera')}>
+          <span className="field-label">{t('Cảnh báo ({0})', { 0: d.events.length })}</span>
+          {!d.events.length ? <p className="small muted">{t('Không có cảnh báo nào.')}</p>
+            : <ol className="camera-events">{d.events.map(e => <li key={e.id} className="camera-event">
+              <Snapshot sessionId={d.sessionId} event={e} />
+              <div className="stack-sm" style={{ gap: 2, minWidth: 0 }}>
+                <strong className="small">{e.reason}</strong>
+                <span className="xsmall muted">{formatDateTime(e.occurredAt ?? e.receivedAt)}</span>
+                {detailText(e) && <span className="xsmall">{detailText(e)}</span>}
+              </div>
+            </li>)}</ol>}
+        </section>
+      </div>}
+    </Dialog>
+  )
+}
