@@ -40,6 +40,7 @@ export const importApi = {
   items: (id: string, filter: ItemFilter, page = 0, size = 50) => api.get<Page<ImportItem>>(`/question-imports/${id}/items`, { params: { filter, page, size } }).then(r => r.data),
   update: (id: string, itemId: string, patch: ItemPatch) => api.put<ImportItem>(`/question-imports/${id}/items/${itemId}`, patch).then(r => r.data),
   validate: (id: string) => api.post<ImportSummary>(`/question-imports/${id}/validate`).then(r => r.data),
-  importItems: (id: string, itemIds?: string[]) => api.post<ImportResult>(`/question-imports/${id}/import`, itemIds ? { itemIds } : {}).then(r => r.data),
+  /** activate=true makes the questions ACTIVE right away (usable in exams); otherwise they stay DRAFT. */
+  importItems: (id: string, itemIds?: string[], activate = false) => api.post<ImportResult>(`/question-imports/${id}/import`, { ...(itemIds ? { itemIds } : {}), activate }).then(r => r.data),
   discard: (id: string) => api.delete(`/question-imports/${id}`).then(() => undefined),
 }

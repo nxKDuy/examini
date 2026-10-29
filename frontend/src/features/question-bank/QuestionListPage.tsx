@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BookOpenCheck, FileUp, Plus } from 'lucide-react'
+import { BookOpenCheck, CheckCircle2, FileUp, Plus } from 'lucide-react'
 import { questionBankApi, type Filters, type ImportResult, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
@@ -13,6 +13,8 @@ import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime, shortId } from '
 import SubjectCategoryFields from './SubjectCategoryFields'
 import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
+import { activateMany, canActivate, type BulkResult } from './bulkActivate'
+import { bankApi } from '../banks/bankApi'
 import PersonalQuestionSets from '../banks/PersonalQuestionSets'
 import { t as tt, useT, i18nMap } from '../../lib/i18n'
 import Select from '../../components/Select'
@@ -32,6 +34,11 @@ export default function QuestionListPage() {
   const [selectedId, setSelectedId] = useState(() => params.get('q') ?? '')
   const [editing, setEditing] = useState<Question | null | 'new'>(null)
   const [importing, setImporting] = useState(false)
+  // Bulk activation of the actor's own drafts (Personal ACTIVE needs no review).
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [progress, setProgress] = useState(0)
+  const [bulk, setBulk] = useState<BulkResult | null>(null)
+  const qc = useQueryClient()
   const detailRef = useRef<HTMLDivElement>(null)
   // Single questions are the default view; Question Sets live in their own tab so the list is never pushed below the fold.
   const view = !admin && params.get('view') === 'sets' ? 'sets' : 'questions'
@@ -43,6 +50,13 @@ export default function QuestionListPage() {
 
   const list = useQuery({ queryKey: ['questions', user?.id, filters], queryFn: () => questionBankApi.getQuestions(filters), placeholderData: prev => prev })
   const set = (key: keyof Filters, value: string) => setFilters(f => ({ ...f, [key]: value || undefined, page: 0 }))
+  const drafts = (list.data?.content ?? []).filter(q => canActivate(q, user?.id))
+  const picked = drafts.filter(q => checked.has(q.id))
+  const toggle = (id: string, on: boolean) => setChecked(prev => { const next = new Set(prev); if (on) next.add(id); else next.delete(id); return next })
+  const activateAll = useMutation({
+    mutationFn: () => { setProgress(0); setBulk(null); return activateMany(picked, bankApi.activate, errorText, setProgress) },
+    onSuccess: async r => { setBulk(r); setChecked(new Set(r.failed.map(f => f.id))); await qc.invalidateQueries({ queryKey: ['questions'] }); await qc.invalidateQueries({ queryKey: ['question'] }) },
+  })
 
   function select(id: string) {
     setSelectedId(id)
@@ -101,6 +115,18 @@ export default function QuestionListPage() {
         <section className="card" aria-label={tt('Danh sách câu hỏi')} style={{ overflow: 'hidden' }}>
           <div className="card-header"><h2 className="small" style={{ fontSize: '0.9375rem' }}>{list.data ? tt('{0} câu hỏi', { 0: list.data.totalElements }) : tt('Câu hỏi')}</h2>
             {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">{tt('Đang cập nhật…')}</span>}</div>
+          {!admin && drafts.length > 0 && <div className="bulk-bar" role="group" aria-label={tt('Kích hoạt hàng loạt')}>
+            <label className="check small"><input type="checkbox" checked={picked.length === drafts.length}
+              ref={el => { if (el) el.indeterminate = picked.length > 0 && picked.length < drafts.length }}
+              onChange={e => setChecked(e.target.checked ? new Set(drafts.map(q => q.id)) : new Set())} /> {tt('Chọn {0} bản nháp trên trang', { 0: drafts.length })}</label>
+            <button type="button" className="btn btn-primary btn-sm" disabled={!picked.length || activateAll.isPending} aria-busy={activateAll.isPending} onClick={() => activateAll.mutate()}>
+              <CheckCircle2 size={14} aria-hidden /> {activateAll.isPending ? tt('Đang kích hoạt {0}/{1}…', { 0: progress, 1: picked.length }) : tt('Kích hoạt {0} câu', { 0: picked.length })}</button>
+          </div>}
+          {bulk && <div style={{ padding: '0 16px' }}><Notice tone={bulk.failed.length ? 'warning' : 'success'} live
+            title={tt('Đã kích hoạt {0} câu; có thể dùng ngay cho đề thi.', { 0: bulk.activated.length })}>
+            {bulk.failed.length > 0 && <><span>{tt('{0} câu chưa kích hoạt được (vẫn được chọn để sửa):', { 0: bulk.failed.length })}</span>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{bulk.failed.map(f => <li key={f.id} className="small"><span className="truncate-2">{f.content}</span> — {f.reason}</li>)}</ul></>}
+          </Notice></div>}
           {list.isLoading ? <LoadingState rows={6} /> : list.isError ? <ErrorState error={list.error} onRetry={() => void list.refetch()} />
             : list.data!.content.length === 0
               ? <EmptyState icon={<BookOpenCheck size={30} />} title={tt('Không có câu hỏi phù hợp')}
@@ -108,7 +134,9 @@ export default function QuestionListPage() {
                   action={!admin && <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><Plus size={14} aria-hidden /> {tt('Tạo câu hỏi')}</button>} />
               : <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {list.data!.content.map(item => (
-                    <li key={item.id}><button type="button" className="list-item" aria-current={selectedId === item.id} onClick={() => select(item.id)}>
+                    <li key={item.id} className="list-row">{canActivate(item, user?.id) && !admin &&
+                      <label className="check list-check"><input type="checkbox" aria-label={tt('Chọn để kích hoạt')} checked={checked.has(item.id)} onChange={e => toggle(item.id, e.target.checked)} /></label>}
+                      <button type="button" className="list-item" aria-current={selectedId === item.id} onClick={() => select(item.id)}>
                       <div className="row" style={{ marginBottom: 6 }}>
                         <QuestionStatusBadge status={item.status} />
                         <span className="xsmall muted">{QUESTION_TYPE_LABEL[item.questionType]} · {DIFFICULTY_LABEL[item.difficultyLevel]} · v{item.questionVersion}</span>

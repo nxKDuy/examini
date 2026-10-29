@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
+import { bankApi } from '../banks/bankApi'
 import { questionBankApi, type Question, type QuestionInput, type QuestionType, type SourceType } from './questionApi'
 import { Dialog } from '../../components/Dialog'
 import { Field, Notice } from '../../components/ui'
@@ -30,7 +31,8 @@ function initialTrueIsCorrect(q?: Question | null) {
   return text === 'đúng' ? true : text === 'sai' ? false : q.options.indexOf(correct) === 0
 }
 
-export default function QuestionEditor({ initial, onClose, onSaved }: { initial?: Question | null; onClose: () => void; onSaved: (q: Question) => void }) {
+/** `activateOnly` (exam builder): the only action is "save and activate", so the question can be used at once. */
+export default function QuestionEditor({ initial, onClose, onSaved, activateOnly }: { initial?: Question | null; onClose: () => void; onSaved: (q: Question) => void; activateOnly?: boolean }) {
   useT()
   const qc = useQueryClient()
   const [subjectId, setSubjectId] = useState('')
@@ -51,8 +53,16 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
   const [sourceExcerpt, setSourceExcerpt] = useState(initial?.sourceExcerpt ?? '')
   const [error, setError] = useState('')
 
+  // Which submit button was pressed; a ref so the submit handler reads it in the same event.
+  const activateRef = useRef(!!activateOnly)
+  const [activateAfter, setActivateAfter] = useState(!!activateOnly)
+  const choose = (activate: boolean) => { activateRef.current = activate; setActivateAfter(activate) }
   const save = useMutation({
-    mutationFn: (data: QuestionInput) => initial ? questionBankApi.updateQuestion(initial.id, data) : questionBankApi.createQuestion(data),
+    mutationFn: async ({ data, activate }: { data: QuestionInput; activate: boolean }) => {
+      const saved = initial ? await questionBankApi.updateQuestion(initial.id, data) : await questionBankApi.createQuestion(data)
+      // Personal questions need no review: activating right after saving spares a second step.
+      return activate && saved.status === 'DRAFT' ? bankApi.activate(saved.id, saved.questionVersion) : saved
+    },
     onSuccess: async q => {
       await qc.invalidateQueries({ queryKey: ['questions'] })
       await qc.invalidateQueries({ queryKey: ['question'] })
@@ -76,27 +86,28 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
     } else if (type === 'SHORT_ANSWER' && !expectedAnswer.trim()) {
       return setError(tt('Câu trả lời ngắn cần đáp án chuẩn.'))
     }
-    save.mutate({
+    save.mutate({ activate: activateRef.current, data: {
       categoryId, content: content.trim(), questionType: type, difficultyLevel: difficulty, options: opts,
       expectedAnswer: type === 'SHORT_ANSWER' || type === 'ESSAY' ? expectedAnswer.trim() : '',
       explanation,
       sourceType, sourceLabel: sourceType === 'NONE' ? '' : sourceLabel, sourceRefId: sourceType === 'NONE' ? '' : sourceRefId,
       sourceUrl: sourceType === 'NONE' ? '' : sourceUrl, sourceExcerpt: sourceType === 'NONE' ? '' : sourceExcerpt,
       questionVersion: initial?.questionVersion,
-    })
+    } })
   }
 
   const sources = SOURCES.some(s => s.value === sourceType) ? SOURCES : [...SOURCES, { value: sourceType, label: sourceType }]
 
   return (
     <Dialog size="lg" title={initial ? tt('Sửa câu hỏi (phiên bản {0})', { 0: initial.questionVersion }) : tt('Tạo câu hỏi mới')} onClose={onClose} busy={save.isPending}
-      description={tt('Câu hỏi được lưu ở trạng thái Bản nháp. Kích hoạt khi đã hoàn chỉnh để dùng; không cần gửi duyệt.')}
+      description={activateOnly ? tt('Câu hỏi được lưu vào Kho cá nhân, kích hoạt và chọn sẵn cho đề thi.') : tt('“Lưu và kích hoạt” để dùng ngay cho đề thi; “Lưu bản nháp” nếu chưa hoàn chỉnh. Không cần gửi duyệt.')}
       footer={<>
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={save.isPending}>{tt('Hủy')}</button>
-        <button type="submit" form="question-form" className="btn btn-primary" disabled={save.isPending}>{save.isPending ? tt('Đang lưu…') : tt('Lưu bản nháp')}</button>
+        {!activateOnly && <button type="submit" form="question-form" className="btn btn-secondary" disabled={save.isPending} onClick={() => choose(false)}>{save.isPending && !activateAfter ? tt('Đang lưu…') : tt('Lưu bản nháp')}</button>}
+        <button type="submit" form="question-form" className="btn btn-primary" disabled={save.isPending} onClick={() => choose(true)}>{save.isPending && activateAfter ? tt('Đang lưu…') : tt('Lưu và kích hoạt')}</button>
       </>}>
       <form id="question-form" onSubmit={submit} className="stack-lg">
-        {initial?.status === 'ACTIVE' && <Notice tone="warning">{tt('Câu hỏi đang dùng. Lưu thay đổi tạo phiên bản mới ở trạng thái Bản nháp; cần kích hoạt lại. Đề thi đã xuất bản vẫn giữ phiên bản cũ.')}</Notice>}
+        {initial?.status === 'ACTIVE' && <Notice tone="warning">{tt('Câu hỏi đang dùng. Lưu thay đổi tạo phiên bản mới; “Lưu và kích hoạt” giữ câu ở trạng thái đang dùng. Đề thi đã xuất bản vẫn giữ phiên bản cũ.')}</Notice>}
         <div className="grid-2">
           <SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={setSubjectId} onCategory={setCategoryId} required />
         </div>

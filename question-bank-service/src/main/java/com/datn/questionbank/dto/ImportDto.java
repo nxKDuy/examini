@@ -31,7 +31,8 @@ public class ImportDto {
     public record ItemUpdate(@NotNull Long version, @Size(min = 1, max = 5000) String content, QuestionType questionType,
             DifficultyLevel difficultyLevel, UUID categoryId, @Size(max = 26) List<@NotNull @Valid ImportOption> options,
             @Size(max = 10000) String expectedAnswer, @Size(max = 10000) String explanation, Boolean reviewed, Boolean excluded) {}
-    public record ImportRequest(@Size(max = 300) List<@NotNull UUID> itemIds, UUID bankId) {}
+    /** activate=true activates each imported question right away (Personal ACTIVE needs no review); default false = DRAFT. */
+    public record ImportRequest(@Size(max = 300) List<@NotNull UUID> itemIds, UUID bankId, Boolean activate) {}
     public record ImportedItem(UUID itemId, UUID questionId) {}
     public record SkippedItem(UUID itemId, String reason) {}
     public record ImportJobResult(List<ImportedItem> imported, List<SkippedItem> skipped, ImportSummary summary) {}

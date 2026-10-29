@@ -218,6 +218,10 @@ legend { padding: 0; }
 .list-item { display: block; width: 100%; text-align: left; padding: 14px 16px; background: #fff; border: 0; border-bottom: 1px solid #000; cursor: pointer; color: inherit; }
 .list-item:hover { background: var(--color-subtle); }
 .list-item[aria-current="true"] { background: var(--color-subtle); box-shadow: inset 6px 0 0 var(--color-accent); }
+.list-row { display: flex; align-items: stretch; }
+.list-row > .list-item { flex: 1 1 auto; min-width: 0; }
+.list-check { display: flex; align-items: flex-start; padding: 16px 0 0 14px; border-bottom: 1px solid #000; }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #000; background: var(--color-subtle); }
 
 /* Metadata: "Label:" over value */
 .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 16px 24px; margin: 0; }
