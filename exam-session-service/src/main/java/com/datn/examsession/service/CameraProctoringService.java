@@ -37,6 +37,8 @@ public class CameraProctoringService {
     private final CameraRecordingRepository recordings;
     private final CameraStorage storage;
     private final ExamClient exams;
+    private final CameraMediaPurgeRepository purges;
+    private final CameraRetention retention;
     @Value("${exam.internal-token:}") private String token;
     @Value("${exam.camera.events-per-minute:30}") private int perMinute;
     @Value("${exam.camera.max-events-per-session:2000}") private int maxEvents;
@@ -131,7 +133,8 @@ public class CameraProctoringService {
         var all = events.findBySessionIdOrderByReceivedAtAscIdAsc(sessionId);
         var reference = all.stream().filter(e -> e.getType() == CameraEvent.Type.REFERENCE).reduce((a, b) -> b).map(this::dto).orElse(null);
         return new SessionCamera(sessionId, s.getUserId(), reference, recordings.findById(sessionId).map(CameraProctoringService::recording).orElse(null),
-                all.stream().filter(e -> e.getType() != CameraEvent.Type.REFERENCE).map(this::dto).toList());
+                all.stream().filter(e -> e.getType() != CameraEvent.Type.REFERENCE).map(this::dto).toList(),
+                retention(s.getExpiresAt(), purges.findById(sessionId).map(CameraMediaPurge::getPurgedAt).orElse(null)));
     }
 
     @Transactional(readOnly = true)
@@ -146,9 +149,14 @@ public class CameraProctoringService {
         }
         var recs = new HashMap<UUID, CameraRecording>();
         for (var r : recordings.findByExamId(examId)) { recs.put(r.getSessionId(), r); users.putIfAbsent(r.getSessionId(), r.getUserId()); bySession.putIfAbsent(r.getSessionId(), new EnumMap<>(CameraEvent.Type.class)); }
+        var deadlines = new HashMap<UUID, Instant>();
+        for (var s : sessions.findAllById(bySession.keySet())) deadlines.put(s.getId(), s.getExpiresAt());
+        var purged = new HashMap<UUID, Instant>();
+        for (var p : purges.findByExamId(examId)) purged.put(p.getSessionId(), p.getPurgedAt());
         return bySession.entrySet().stream().map(e -> new SessionSummary(e.getKey(), users.get(e.getKey()), e.getValue(),
                         e.getValue().entrySet().stream().filter(x -> violation(x.getKey())).mapToLong(Map.Entry::getValue).sum(),
-                        last.get(e.getKey()), recs.containsKey(e.getKey()) ? recording(recs.get(e.getKey())) : null))
+                        last.get(e.getKey()), recs.containsKey(e.getKey()) ? recording(recs.get(e.getKey())) : null,
+                        retention(deadlines.get(e.getKey()), purged.get(e.getKey()))))
                 .sorted(Comparator.comparingLong(SessionSummary::violations).reversed().thenComparing(x -> x.sessionId().toString())).toList();
     }
 
@@ -156,7 +164,7 @@ public class CameraProctoringService {
     public byte[] snapshot(UUID sessionId, UUID eventId, UUID actor, String role) {
         reviewed(sessionId, actor, role);
         var e = events.findByIdAndSessionId(eventId, sessionId).orElseThrow(() -> error(404, "Event not found"));
-        if (e.getSnapshotPath() == null) throw error(404, "No snapshot");
+        if (e.getSnapshotPath() == null) throw purges.existsById(sessionId) ? error(410, "Snapshot deleted by the retention policy") : error(404, "No snapshot");
         try { return storage.readSnapshot(e.getSnapshotPath()); } catch (IOException ex) { throw error(404, "Snapshot missing"); }
     }
 
@@ -164,6 +172,7 @@ public class CameraProctoringService {
     @Transactional(readOnly = true)
     public Video video(UUID sessionId, UUID actor, String role) {
         var s = reviewed(sessionId, actor, role);
+        if (purges.existsById(sessionId)) throw error(410, "Recording deleted by the retention policy");
         var rec = recordings.findById(sessionId).orElseThrow(() -> error(404, "No recording"));
         try { var files = storage.chunks(s.getExamId(), sessionId); if (files.isEmpty()) throw error(404, "No recording"); return new Video(rec.getMimeType(), storage.size(files), files); }
         catch (IOException e) { throw error(503, "Recording storage unavailable"); }
@@ -176,6 +185,7 @@ public class CameraProctoringService {
         return new Event(e.getId(), e.getSessionId(), e.getUserId(), e.getType(), reason(e.getType()), e.getOccurredAt(), e.getReceivedAt(),
                 e.getDetail(), e.getSnapshotPath() != null);
     }
+    private Retention retention(Instant deadline, Instant purgedAt) { return new Retention(retention.days(), retention.deleteAt(deadline), purgedAt); }
     private static Recording recording(CameraRecording r) { return new Recording(r.getMimeType(), r.getChunks(), r.getBytes(), r.getStartedAt(), r.getLastChunkAt()); }
 
     /** Only small numeric measurements are kept: no free text, images or identifiers from the client. */

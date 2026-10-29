@@ -7,8 +7,10 @@ export interface CameraEvent {
   detail: Record<string, number>; hasSnapshot: boolean
 }
 export interface CameraRecording { mimeType: string; chunks: number; bytes: number; startedAt: string; lastChunkAt: string | null }
-export interface SessionCamera { sessionId: string; userId: string; reference: CameraEvent | null; recording: CameraRecording | null; events: CameraEvent[] }
-export interface SessionCameraSummary { sessionId: string; userId: string; counts: Partial<Record<CameraEventType, number>>; violations: number; lastEventAt: string | null; recording: CameraRecording | null }
+/** Media are deleted `days` after the attempt's deadline (0 = kept); the violation log stays. */
+export interface CameraRetention { days: number; deleteAt: string | null; purgedAt: string | null }
+export interface SessionCamera { sessionId: string; userId: string; reference: CameraEvent | null; recording: CameraRecording | null; events: CameraEvent[]; retention?: CameraRetention }
+export interface SessionCameraSummary { sessionId: string; userId: string; counts: Partial<Record<CameraEventType, number>>; violations: number; lastEventAt: string | null; recording: CameraRecording | null; retention?: CameraRetention }
 export interface CameraReport { clientEventId: string; type: CameraEventType; occurredAt: string; detail?: Record<string, number> }
 
 export const cameraApi = {

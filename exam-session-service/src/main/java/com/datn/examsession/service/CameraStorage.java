@@ -55,6 +55,25 @@ public class CameraStorage {
 
     public void copyChunks(List<Path> files, OutputStream out) throws IOException { for (Path f : files) Files.copy(f, out); }
 
+    public record Deleted(int files, long bytes) {}
+
+    /** Deletes every snapshot and video chunk of one attempt (idempotent). */
+    public Deleted deleteSession(UUID exam, UUID session) throws IOException {
+        Path dir = sessionDir(exam, session);
+        if (!Files.isDirectory(dir)) return new Deleted(0, 0);
+        int files = 0; long bytes = 0;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
+                if (Files.isRegularFile(p)) { files++; bytes += Files.size(p); }
+                Files.deleteIfExists(p);
+            }
+        }
+        Path examDir = dir.getParent();
+        try (Stream<Path> rest = Files.list(examDir)) { if (rest.findAny().isEmpty()) Files.deleteIfExists(examDir); }
+        catch (IOException | UncheckedIOException ignored) { /* another attempt of the exam is being written */ }
+        return new Deleted(files, bytes);
+    }
+
     private static void write(Path file, byte[] data) throws IOException {
         Files.createDirectories(file.getParent());
         Path tmp = file.resolveSibling(file.getFileName() + ".part");

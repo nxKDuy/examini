@@ -38,7 +38,7 @@ class CameraProctoringTest {
     @DynamicPropertySource static void storage(DynamicPropertyRegistry r) throws Exception {
         var dir = Files.createTempDirectory("camera-test"); r.add("exam.camera.storage-dir", dir::toString);
     }
-    @Autowired SessionService core; @Autowired MockMvc mvc; @Autowired ObjectMapper json; @Autowired JdbcTemplate db;
+    @Autowired CameraRetention retention; @Autowired SessionService core; @Autowired MockMvc mvc; @Autowired ObjectMapper json; @Autowired JdbcTemplate db;
     @MockBean ExamClient exams; @MockBean SessionMaintenance maintenance;
     UUID exam, user, owner, proctor, other, session;
     static final byte[] JPEG = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 1, 2, 3, 4, (byte) 0xFF, (byte) 0xD9};
@@ -143,5 +143,42 @@ class CameraProctoringTest {
         db.update("update exam_sessions set end_time=end_time - interval '10 minutes', expires_at=expires_at - interval '20 minutes' where id=?", session);
         chunk(session, 3, "video/webm", new byte[]{8}).andExpect(status().isConflict());
         mvc.perform(get("/sessions/" + session + "/camera/video").header("Authorization", token(user, "STUDENT"))).andExpect(status().isForbidden());
+    }
+
+    @Test void retentionDeletesMediaAfterTheDeadlineButKeepsTheLog() throws Exception {
+        event(session, user, "REFERENCE", JPEG, "{\"faces\":1}").andExpect(status().isOk());
+        event(session, user, "NO_FACE", JPEG, "{\"seconds\":12}").andExpect(status().isOk());
+        chunk(session, 0, "video/webm", new byte[]{0x1A, 0x45, (byte) 0xDF, (byte) 0xA3, 1, 2}).andExpect(status().isOk());
+        UUID recent = start(policy(true), other);
+        event(recent, other, "REFERENCE", JPEG, "{\"faces\":1}").andExpect(status().isOk());
+
+        String fresh = mvc.perform(get("/sessions/" + session + "/camera").header("Authorization", token(proctor, "TEACHER"))).andReturn().getResponse().getContentAsString();
+        assertEquals(30, json.readTree(fresh).at("/retention/days").asInt());
+        assertFalse(json.readTree(fresh).at("/retention/deleteAt").isNull());
+        assertTrue(json.readTree(fresh).at("/retention/purgedAt").isNull());
+        assertEquals(0, retention.purge(Instant.now()), "attempts in progress keep their media");
+
+        // The first attempt ended 31 days ago, the other one is still within the retention period.
+        db.update("update exam_sessions set status='SUBMITTED', expires_at=now() - interval '31 days' where id=?", session);
+        db.update("update exam_sessions set status='SUBMITTED', expires_at=now() - interval '2 days' where id=?", recent);
+        assertEquals(1, retention.purge(Instant.now()));
+        assertEquals(0, retention.purge(Instant.now()), "idempotent");
+
+        String body = mvc.perform(get("/sessions/" + session + "/camera").header("Authorization", token(proctor, "TEACHER")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode cam = json.readTree(body);
+        assertFalse(cam.at("/retention/purgedAt").isNull());
+        assertEquals(1, cam.at("/events").size(), "the violation log stays");
+        assertFalse(cam.at("/events/0/hasSnapshot").asBoolean());
+        assertFalse(cam.at("/reference/hasSnapshot").asBoolean());
+        assertEquals(0, cam.at("/recording/bytes").asLong());
+        mvc.perform(get("/sessions/" + session + "/camera/video").header("Authorization", token(proctor, "TEACHER"))).andExpect(status().isGone());
+        mvc.perform(get("/sessions/" + session + "/camera/events/" + cam.at("/events/0/id").asText() + "/snapshot").header("Authorization", token(proctor, "TEACHER"))).andExpect(status().isGone());
+        assertEquals(3, db.queryForObject("select files from camera_media_purges where session_id=?", Integer.class, session), "2 snapshots + 1 chunk");
+
+        String list = mvc.perform(get("/sessions/exam/" + exam + "/camera").header("Authorization", token(owner, "TEACHER"))).andReturn().getResponse().getContentAsString();
+        for (JsonNode row : json.readTree(list)) assertEquals(row.get("sessionId").asText().equals(session.toString()), !row.at("/retention/purgedAt").isNull());
+        String kept = mvc.perform(get("/sessions/" + recent + "/camera").header("Authorization", token(proctor, "TEACHER"))).andReturn().getResponse().getContentAsString();
+        assertTrue(json.readTree(kept).at("/reference/hasSnapshot").asBoolean());
     }
 }

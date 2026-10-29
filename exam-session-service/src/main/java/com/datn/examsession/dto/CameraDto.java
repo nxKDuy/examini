@@ -14,11 +14,13 @@ public final class CameraDto {
     public record Receipt(Event event, boolean duplicate) {}
     public record Recording(String mimeType, int chunks, long bytes, Instant startedAt, Instant lastChunkAt) {}
     public record ChunkReceipt(int seq, boolean stored, int chunks, long bytes) {}
+    /** Retention of the media: days kept after the deadline (0 = forever), when they go, when they went. */
+    public record Retention(int days, Instant deleteAt, Instant purgedAt) {}
     /** Staff view of one attempt. */
-    public record SessionCamera(UUID sessionId, UUID userId, Event reference, Recording recording, List<Event> events) {}
+    public record SessionCamera(UUID sessionId, UUID userId, Event reference, Recording recording, List<Event> events, Retention retention) {}
     /** Staff overview per attempt of an exam. */
     public record SessionSummary(UUID sessionId, UUID userId, Map<CameraEvent.Type, Long> counts, long violations,
-                                 Instant lastEventAt, Recording recording) {}
+                                 Instant lastEventAt, Recording recording, Retention retention) {}
 
     /** Reason shown to proctors, in Vietnamese (the UI language of record). */
     public static String reason(CameraEvent.Type type) {

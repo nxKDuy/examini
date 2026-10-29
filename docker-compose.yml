@@ -258,6 +258,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
       CAMERA_STORAGE_DIR: /data/camera
+      CAMERA_RETENTION_DAYS: ${CAMERA_RETENTION_DAYS:-30}
     volumes:
       - camera_data:/data/camera
     depends_on:

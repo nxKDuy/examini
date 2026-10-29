@@ -43,7 +43,7 @@ export function CameraGate({ camera, remaining }: { camera: Camera; remaining: n
     <BlockingOverlay title={title} remaining={remaining} actions={actions}>
       {status === 'lost'
         ? <p>{t('Camera bị tắt hoặc mất kết nối nên câu hỏi tạm ẩn. Việc này đã được ghi nhận. Bật lại camera để tiếp tục; đồng hồ vẫn chạy.')}</p>
-        : <p>{t('Kỳ thi này giám sát bằng camera: video được quay và nén trong suốt bài làm; hệ thống kiểm tra khuôn mặt có khớp với ảnh lúc bắt đầu, có người khác hoặc bạn rời khỏi màn hình hay không. Ảnh chụp lúc có cảnh báo được gửi cho giám thị kèm lý do.')}</p>}
+        : <p>{t('Kỳ thi này giám sát bằng camera: video được quay và nén trong suốt bài làm; hệ thống kiểm tra khuôn mặt có khớp với ảnh lúc bắt đầu, có người khác hoặc bạn rời khỏi màn hình hay không. Ảnh chụp lúc có cảnh báo được gửi cho giám thị kèm lý do. Ảnh và video được tự động xóa sau thời hạn lưu trữ.')}</p>}
       {(status === 'enroll' || status === 'loading') && camera.stream && <div className="camera-enroll"><LiveVideo stream={camera.stream} className="camera-video" /><span className="camera-frame" aria-hidden /></div>}
       {status === 'enroll' && <p className="small muted">{t('Ngồi thẳng, đủ sáng, chỉ một mình trong khung hình và nhìn vào camera.')}</p>}
       {enrollError && <Notice tone="danger" live>{enrollError}</Notice>}

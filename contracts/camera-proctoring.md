@@ -42,3 +42,12 @@ Files on the `camera_data` volume (`CAMERA_STORAGE_DIR`, default `/data/camera`)
 `{examId}/{sessionId}/snapshots/{eventId}.jpg`, `{examId}/{sessionId}/video/{seq}.webm`. Paths are built from server
 UUIDs only. Students see a notice before the camera starts; only exam staff can read the evidence. A retention policy
 (deleting evidence N days after the exam) is not implemented yet.
+
+## Retention (auto-delete)
+
+- `exam.camera.retention-days` (`CAMERA_RETENTION_DAYS`, default 30; 0 keeps media forever). A daily job
+  (`exam.camera.retention-cron`, default 03:30 Asia/Ho_Chi_Minh) deletes the snapshots and video chunks of finished
+  attempts whose `expiresAt` is older than the retention period, then records the purge in `camera_media_purges`.
+- The violation log (type, time, measurements) is kept; events get `hasSnapshot=false`, the recording reports 0 bytes.
+- Staff views carry `retention: { days, deleteAt, purgedAt }` on `SessionCamera` and `SessionSummary`.
+- After a purge, `GET …/camera/video` and `GET …/camera/events/{id}/snapshot` return **410 Gone**.
