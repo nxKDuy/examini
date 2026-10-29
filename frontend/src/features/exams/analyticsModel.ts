@@ -25,7 +25,7 @@ export function headlineKpis(s: ExamSummary): Kpi[] {
   const k = s.kpi
   const why = (field: string) => k?.unavailable?.[field] ?? t(k ? NO_DATA : NO_KPI)
   return [
-    { key: 'students', label: 'Student tham gia', value: k?.participatedStudents == null ? null : String(k.participatedStudents), reason: why('participatedStudents') },
+    { key: 'students', label: t('Thí sinh tham gia'), value: k?.participatedStudents == null ? null : String(k.participatedStudents), reason: why('participatedStudents') },
     { key: 'completion', label: t('Tỷ lệ hoàn thành'), value: percent(k?.completionRate), reason: why('completionRate'),
       detail: k ? t('{0} đã nộp hợp lệ / {1} đủ điều kiện', { 0: k.submittedStudents, 1: k.eligibleCount ?? '—' }) : undefined },
     { key: 'published', label: t('Điểm TB đã công bố'), value: k?.publishedAverageScore == null ? null : formatScore(k.publishedAverageScore), reason: why('publishedAverageScore') },
@@ -46,4 +46,11 @@ export function attemptMetrics(s: ExamSummary): Kpi[] {
 export const STUDENT_FILTERS = ['', 'PENDING', 'NEEDS_REVIEW', 'GRADED'] as const
 export function filterStudents(rows: StudentSummary[], status: AnalyticsStatus | '') {
   return status ? rows.filter(r => r.latestGradingStatus === status) : rows
+}
+
+export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD' | 'UNKNOWN'
+/** Classical item difficulty from the share of correct answers (p-value): ≥ 70 % easy, < 30 % hard; needs 5 graded answers. */
+export function difficultyOf(correctRate: number | null, graded: number): Difficulty {
+  if (correctRate === null || graded < 5) return 'UNKNOWN'
+  return correctRate >= 0.7 ? 'EASY' : correctRate < 0.3 ? 'HARD' : 'MEDIUM'
 }

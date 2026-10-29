@@ -6,6 +6,8 @@ import { Dialog } from '../../../components/Dialog'
 import { Badge, EmptyState, ErrorState, LoadingState, Notice, Section, Spinner } from '../../../components/ui'
 import { formatDateTime, shortId } from '../../../lib/format'
 import { errorText } from '../../../lib/errors'
+import { nameOf, useParticipantNames, type NameMap } from '../../participants/useParticipantNames'
+import { PersonCell } from '../../participants/PersonCell'
 import { t, useT } from '../../../lib/i18n'
 import { CAMERA_LABEL, VIOLATIONS, bytesText, detailText } from './cameraLabels'
 
@@ -15,6 +17,7 @@ export default function CameraReview({ examId, live }: { examId: string; live: b
   const [open, setOpen] = useState<SessionCameraSummary | null>(null)
   const list = useQuery({ queryKey: ['camera', 'exam', examId], queryFn: () => cameraApi.exam(examId), refetchInterval: live ? 15_000 : false, retry: false })
   const days = list.data?.find(s => s.retention)?.retention?.days
+  const names = useParticipantNames(examId)
   return (
     <Section title={t('Giám sát bằng camera')} bodyClassName=""
       description={<>{t('Ảnh chụp và video là bằng chứng để giám thị xem xét, không phải kết luận gian lận. Hệ thống không tự xử lý theo camera.')}
@@ -25,14 +28,14 @@ export default function CameraReview({ examId, live }: { examId: string; live: b
         : <div className="table-wrap"><table className="pt-table">
           <thead><tr><th scope="col">{t('Thí sinh')}</th><th scope="col">{t('Cảnh báo')}</th><th scope="col">{t('Chi tiết')}</th><th scope="col">{t('Video')}</th><th scope="col">{t('Gần nhất')}</th></tr></thead>
           <tbody>{list.data.map(s => <tr key={s.sessionId}>
-            <td><button type="button" className="pt-row-btn mono small" onClick={() => setOpen(s)}>{shortId(s.userId)}</button></td>
+            <td><button type="button" className="pt-row-btn small" onClick={() => setOpen(s)}><PersonCell names={names.data} userId={s.userId} /></button></td>
             <td>{s.violations > 0 ? <Badge tone="danger">{s.violations}</Badge> : <Badge tone="muted">0</Badge>}</td>
             <td className="xsmall">{s.identity && <><IdentityBadge outcome={s.identity} />{' '}</>}{VIOLATIONS.filter(v => s.counts[v]).map(v => `${CAMERA_LABEL[v]} ${s.counts[v]}`).join(' · ') || '–'}</td>
             <td className="xsmall muted">{s.retention?.purgedAt ? t('Đã xóa') : s.recording ? bytesText(s.recording.bytes) : t('Chưa có')}</td>
             <td className="xsmall muted">{s.lastEventAt ? formatDateTime(s.lastEventAt) : '–'}</td>
           </tr>)}</tbody>
         </table></div>}
-      {open && <SessionCameraDialog summary={open} onClose={() => setOpen(null)} />}
+      {open && <SessionCameraDialog summary={open} names={names.data} onClose={() => setOpen(null)} />}
     </Section>
   )
 }
@@ -104,7 +107,7 @@ function IdentityPanel({ camera }: { camera: SessionCamera }) {
   )
 }
 
-function SessionCameraDialog({ summary, onClose }: { summary: SessionCameraSummary; onClose: () => void }) {
+function SessionCameraDialog({ summary, names, onClose }: { summary: SessionCameraSummary; names?: NameMap; onClose: () => void }) {
   useT()
   const [wantVideo, setWantVideo] = useState(false)
   const detail = useQuery({ queryKey: ['camera', 'session', summary.sessionId], queryFn: () => cameraApi.session(summary.sessionId), retry: false })
@@ -112,7 +115,7 @@ function SessionCameraDialog({ summary, onClose }: { summary: SessionCameraSumma
   const d = detail.data
   const purged = Boolean(d?.retention?.purgedAt)
   return (
-    <Dialog size="lg" title={t('Camera · thí sinh {0}', { 0: shortId(summary.userId) })} onClose={onClose}
+    <Dialog size="lg" title={t('Camera · {0}', { 0: nameOf(names, summary.userId) })} onClose={onClose}
       description={t('Lượt {0} · {1} cảnh báo', { 0: shortId(summary.sessionId), 1: summary.violations })}
       footer={<button type="button" className="btn btn-secondary" onClick={onClose}>{t('Đóng')}</button>}>
       {detail.isLoading ? <LoadingState rows={3} /> : detail.isError ? <ErrorState error={detail.error} onRetry={() => void detail.refetch()} /> : d && <div className="stack-lg">

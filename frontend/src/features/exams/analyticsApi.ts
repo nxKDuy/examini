@@ -7,6 +7,12 @@ export interface ExamSummary {
   averagePercent: number | null; scoreDistribution: ScoreBucket[]; registeredCount: number | null; eligibleCount: number | null
   invalidatedCount: number; submissionRate: number | null; gradingCompletionRate: number | null
   kpi?: SummaryKpi
+  /** Latest released valid attempt per Student; `distribution` is in percent buckets. */
+  published?: PublishedStats
+}
+export interface PublishedStats {
+  students: number; averageScore: number | null; highScore: number | null; lowScore: number | null
+  averagePercent: number | null; highPercent: number | null; lowPercent: number | null; distribution: ScoreBucket[]
 }
 /** Header KPI block; a null value means the source data is missing (reason in `unavailable`), never 0. */
 export interface SummaryKpi {
@@ -36,7 +42,21 @@ export const analyticsApi = {
   results: (examId: string, candidateId: string, page = 0, size = 50) => api.get<AnalyticsPage<CandidateResult>>(
     `/analytics/exams/${examId}/results`, { params: { candidateId, page, size } },
   ).then(r => r.data),
+  allResults: (examId: string, page: number, size = 100) => api.get<AnalyticsPage<CandidateResult>>(
+    `/analytics/exams/${examId}/results`, { params: { page, size } },
+  ).then(r => r.data),
   students: (examId: string, page: number, size = 20) => api.get<AnalyticsPage<StudentSummary>>(
     `/analytics/exams/${examId}/students`, { params: { page, size } },
   ).then(r => r.data),
+}
+
+/** Every attempt of the exam (all pages of /results). */
+export async function allResults(examId: string): Promise<CandidateResult[]> {
+  const out: CandidateResult[] = []
+  for (let page = 0; page < 200; page++) {
+    const r = await analyticsApi.allResults(examId, page, 100)
+    out.push(...r.content)
+    if (page + 1 >= r.totalPages) break
+  }
+  return out
 }

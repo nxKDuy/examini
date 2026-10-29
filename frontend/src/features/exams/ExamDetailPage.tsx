@@ -19,6 +19,8 @@ import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
 import ScheduleDialog from '../calendar/ScheduleDialog'
 import LifecycleDialog, { type LifecycleKind } from '../calendar/LifecycleDialog'
 import ExamAnalyticsPanel from './ExamAnalyticsPanel'
+import { useParticipantNames } from '../participants/useParticipantNames'
+import { PersonCell } from '../participants/PersonCell'
 import IntegrityTab from '../integrity/IntegrityTab'
 import IntegrityLockControl from '../integrity/IntegrityLockControl'
 import { policySummary } from '../integrity/integrityModel'
@@ -157,7 +159,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         {tab === 'collaborators' && <Collaborators exam={exam} owner={role === 'OWNER'} members={members} />}
         {tab === 'attempts' && <Attempts exam={exam} />}
         {tab === 'integrity' && staff && <IntegrityTab examId={exam.id} policy={exam.integrityPolicy} manage={manage} live={exam.status === 'OPEN'} />}
-        {tab === 'analytics' && manage && <ExamAnalyticsPanel examId={exam.id} actorId={actorId} />}
+        {tab === 'analytics' && manage && <ExamAnalyticsPanel examId={exam.id} actorId={actorId} examTitle={exam.title} />}
         {tab === 'audit' && <Audit exam={exam} />}
       </div>
 
@@ -340,6 +342,7 @@ function Attempts({ exam }: { exam: Exam }) {
   useT()
   const sessions = useQuery({ queryKey: ['exam-sessions', exam.id], queryFn: () => examApi.sessions(exam.id), refetchInterval: exam.status === 'OPEN' ? 15_000 : false })
   const active = sessions.data?.filter(s => s.status === 'IN_PROGRESS').length ?? 0
+  const names = useParticipantNames(exam.id)
   return (
     <Section title={t('Lượt làm bài')} bodyClassName=""
       description={sessions.data ? t('{0} lượt · {1}/{2} phiên đang làm', { 0: sessions.data.length, 1: active, 2: exam.maxConcurrentSessions }) : undefined}
@@ -350,7 +353,7 @@ function Attempts({ exam }: { exam: Exam }) {
             <thead><tr><th scope="col">{t('Thí sinh')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Trạng thái')}</th><th scope="col">{t('Hiệu lực')}</th><th scope="col">{t('Bắt đầu')}</th><th scope="col">{t('Hết giờ')}</th></tr></thead>
             <tbody>{sessions.data!.map(s => (
               <tr key={s.sessionId}>
-                <td className="mono small">{shortId(s.userId)}</td><td className="mono">{s.attemptNumber}</td><td><SessionStatusBadge status={s.status} /></td>
+                <td className="small"><PersonCell names={names.data} userId={s.userId} /></td><td className="mono">{s.attemptNumber}</td><td><SessionStatusBadge status={s.status} /></td>
                 <td className="small">{s.invalidated ? <><Badge tone="danger">{t('Đã vô hiệu')}</Badge>{s.invalidationReason && <span className="xsmall muted" style={{ display: 'block' }}>{s.invalidationReason}</span>}</> : t('Hợp lệ')}</td>
                 <td className="small">{formatDateTime(s.startedAt)}</td><td className="small">{formatDateTime(s.expiresAt)}</td>
               </tr>

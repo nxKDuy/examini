@@ -58,3 +58,30 @@ test('student filter keys on latest grading status', () => {
   assert.equal(m.filterStudents(rows, '').length, 2)
   assert.equal(m.filterStudents(rows, 'GRADED').length, 1)
 })
+
+test('item difficulty from the correct rate, only with enough graded answers', () => {
+  assert.equal(m.difficultyOf(0.9, 20), 'EASY')
+  assert.equal(m.difficultyOf(0.5, 20), 'MEDIUM')
+  assert.equal(m.difficultyOf(0.1, 20), 'HARD')
+  assert.equal(m.difficultyOf(0.9, 3), 'UNKNOWN')
+  assert.equal(m.difficultyOf(null, 50), 'UNKNOWN')
+})
+
+test('score CSV: BOM, names, safe cells, sorted by name then attempt', async () => {
+  globalThis.localStorage ??= { getItem: () => null, setItem() {}, removeItem() {} }
+  const x = await import('../src/features/exams/scoreExport.ts')
+  assert.equal(x.csvCell('=HYPERLINK("x")'), `"'=HYPERLINK(""x"")"`)
+  assert.equal(x.csvCell('a,b'), '"a,b"')
+  assert.equal(x.csvCell(null), '')
+  const r = (candidateId, attemptNumber, score) => ({ sessionId: 's' + candidateId + attemptNumber, resultId: 'r', candidateId, attemptNumber, status: 'GRADED', score, maxScore: 10, submittedAt: null, gradedAt: null, invalidated: attemptNumber === 2 })
+  const names = new Map([['u2', { name: 'An', email: 'an@x.vn' }], ['u1', { name: 'Bình', email: 'binh@x.vn' }]])
+  const csv = x.scoreCsv([r('u1', 1, 7.5), r('u2', 2, 4), r('u2', 1, 9)], names)
+  assert.ok(csv.startsWith('﻿'))
+  const lines = csv.slice(1).trim().split('\r\n')
+  assert.equal(lines.length, 4)
+  assert.match(lines[1], /^1,An,an@x\.vn,u2,1,.*,9,10,90,/)
+  assert.match(lines[2], /^2,An,an@x\.vn,u2,2,.*,4,10,40,.*vô hiệu|^2,An,an@x\.vn,u2,2,/)
+  assert.match(lines[3], /^3,Bình,binh@x\.vn,u1,1,.*,7\.5,10,75,/)
+  assert.equal(x.csvDate('2026-10-29T03:05:00Z'), '29/10/2026 10:05')
+  assert.equal(x.fileSlug('Kiểm tra Toán 12 – Đề 1'), 'Kiem-tra-Toan-12-De-1')
+})
