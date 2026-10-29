@@ -155,7 +155,7 @@ class IntegrityTest {
     }
     @Test void leaveTransitionCoalescesNetworkIsAuditOnlyAndStaleIsNeverCounted() {
         Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
+        setStartTimeUtc(t0.minusSeconds(1));
         var leave=integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0));
         assertTrue(leave.counted());assertNull(leave.notCountedReason());assertEquals(1,leave.warningCount());
         // Window blur of the same leave transition (within 1.5s) is one budget unit.
@@ -179,7 +179,7 @@ class IntegrityTest {
     static void sleepPastCoalesceWindow(){try{Thread.sleep(400);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
     @Test void clientTimeCannotMergeANewLeaveIntoAnEarlierCountedUnit() {
         Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
+        setStartTimeUtc(t0.minusSeconds(1));
         var first=integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0));assertTrue(first.counted());
         sleepPastCoalesceWindow();
         // A new leave claims the old unit's client time; receipt time decides, so it is still counted.
@@ -187,11 +187,14 @@ class IntegrityTest {
         assertTrue(forged.counted());assertNull(forged.notCountedReason());assertEquals(2,forged.warningCount());
         assertEquals(t0.plusMillis(100),forged.event().occurredAt()); // client time kept as evidence only
     }
+    // start_time is a UTC wall-clock TIMESTAMP (see SessionService); write it as UTC LocalDateTime so the
+    // fixture does not depend on the JVM default time zone (java.sql.Timestamp uses it).
+    void setStartTimeUtc(Instant when){db.update("update exam_sessions set start_time=? where id=?",LocalDateTime.ofInstant(when,ZoneOffset.UTC),session);}
     Ingest at(EventType type,Instant when){return new Ingest(UUID.randomUUID(),type,when,null);}
     @Test void budgetWarnsAtLimitThenAutoSubmitsOnceWithSystemAudit() {
         core.saveAnswer(session,user,qid,"saved");
         Instant t0=Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        db.update("update exam_sessions set start_time=? where id=?",java.sql.Timestamp.from(t0.minusSeconds(1)),session);
+        setStartTimeUtc(t0.minusSeconds(1));
         assertEquals(1,integrity.ingest(session,user,"STUDENT",at(EventType.TAB_SWITCH,t0)).warningCount());
         sleepPastCoalesceWindow();
         assertEquals(2,integrity.ingest(session,user,"STUDENT",at(EventType.WINDOW_BLUR,t0.plusSeconds(10))).warningCount()); // a separate leave
