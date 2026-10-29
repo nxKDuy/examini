@@ -4,9 +4,9 @@ import type { CameraEventType, Violation } from './cameraModel'
 
 export const CAMERA_LABEL: Record<CameraEventType, string> = i18nMap({
   REFERENCE: 'Ảnh lúc bắt đầu', NO_FACE: 'Không thấy khuôn mặt', MULTIPLE_FACES: 'Nhiều người', FACE_MISMATCH: 'Khuôn mặt không khớp',
-  LOOKING_AWAY: 'Nhìn ra ngoài', CAMERA_OFF: 'Camera tắt', CAMERA_ON: 'Camera bật lại',
+  LOOKING_AWAY: 'Nhìn ra ngoài', CAMERA_OFF: 'Camera tắt', CAMERA_ON: 'Camera bật lại', PROFILE_MISMATCH: 'Không khớp hồ sơ',
 })
-export const VIOLATIONS: CameraEventType[] = ['FACE_MISMATCH', 'MULTIPLE_FACES', 'NO_FACE', 'LOOKING_AWAY', 'CAMERA_OFF']
+export const VIOLATIONS: CameraEventType[] = ['PROFILE_MISMATCH', 'FACE_MISMATCH', 'MULTIPLE_FACES', 'NO_FACE', 'LOOKING_AWAY', 'CAMERA_OFF']
 
 export const bytesText = (n: number) => n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
 export function detailText(e: Pick<CameraEvent, 'type' | 'detail'>) {

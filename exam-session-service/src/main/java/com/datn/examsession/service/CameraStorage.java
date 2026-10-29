@@ -55,6 +55,19 @@ public class CameraStorage {
 
     public void copyChunks(List<Path> files, OutputStream out) throws IOException { for (Path f : files) Files.copy(f, out); }
 
+    /** A student's face profile photo: {root}/profiles/{userId}-{random}.jpg (a new name each time it is re-taken). */
+    public String saveProfilePhoto(UUID user, byte[] jpeg) throws IOException {
+        Path file = root.resolve("profiles").resolve(user + "-" + UUID.randomUUID() + ".jpg");
+        write(file, jpeg);
+        return root.relativize(file).toString();
+    }
+
+    public void deleteFile(String relative) throws IOException {
+        Path file = root.resolve(relative).normalize();
+        if (!file.startsWith(root)) throw new IOException("Outside storage root");
+        Files.deleteIfExists(file);
+    }
+
     public record Deleted(int files, long bytes) {}
 
     /** Deletes every snapshot and video chunk of one attempt (idempotent). */

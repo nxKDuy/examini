@@ -1,6 +1,7 @@
 package com.datn.examsession.dto;
 
 import com.datn.examsession.entity.CameraEvent;
+import com.datn.examsession.entity.CameraIdentityCheck;
 import java.time.Instant;
 import java.util.*;
 
@@ -16,11 +17,17 @@ public final class CameraDto {
     public record ChunkReceipt(int seq, boolean stored, int chunks, long bytes) {}
     /** Retention of the media: days kept after the deadline (0 = forever), when they go, when they went. */
     public record Retention(int days, Instant deleteAt, Instant purgedAt) {}
-    /** Staff view of one attempt. */
-    public record SessionCamera(UUID sessionId, UUID userId, Event reference, Recording recording, List<Event> events, Retention retention) {}
+    /** Enrollment descriptor (128 numbers from the browser's face recognition model). */
+    public record IdentityRequest(List<Double> descriptor) {}
+    /** Face verification at exam entry against the student's profile. */
+    public record Identity(CameraIdentityCheck.Outcome outcome, Double distance, double threshold, int attempts, int maxAttempts,
+                           boolean mayContinue, Instant checkedAt, Instant profileCreatedAt) {}
+    /** Staff view of one attempt; {@code profile} tells whether the student's profile photo can be fetched. */
+    public record SessionCamera(UUID sessionId, UUID userId, Event reference, Recording recording, List<Event> events, Retention retention,
+                                Identity identity, boolean profile) {}
     /** Staff overview per attempt of an exam. */
     public record SessionSummary(UUID sessionId, UUID userId, Map<CameraEvent.Type, Long> counts, long violations,
-                                 Instant lastEventAt, Recording recording, Retention retention) {}
+                                 Instant lastEventAt, Recording recording, Retention retention, CameraIdentityCheck.Outcome identity) {}
 
     /** Reason shown to proctors, in Vietnamese (the UI language of record). */
     public static String reason(CameraEvent.Type type) {
@@ -32,6 +39,7 @@ public final class CameraDto {
             case LOOKING_AWAY -> "Quay mặt hoặc nhìn ra ngoài màn hình lâu";
             case CAMERA_OFF -> "Camera bị tắt hoặc mất kết nối";
             case CAMERA_ON -> "Camera hoạt động lại";
+            case PROFILE_MISMATCH -> "Khuôn mặt không khớp với hồ sơ khuôn mặt của thí sinh";
         };
     }
     public static boolean violation(CameraEvent.Type type) { return type != CameraEvent.Type.REFERENCE && type != CameraEvent.Type.CAMERA_ON; }

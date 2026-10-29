@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { cameraApi, type CameraReport } from './cameraApi'
+import { cameraApi, type CameraIdentity, type CameraReport } from './cameraApi'
 import { CameraRules, RECORDING, distance, recorderMime, type CameraEventType, type Violation } from './cameraModel'
 import { analyse, loadFaceEngine, snapshot } from './faceEngine'
-import { errorText } from '../../../lib/errors'
+import { errorInfo, errorText } from '../../../lib/errors'
 
 export type CameraStatus = 'off' | 'idle' | 'starting' | 'denied' | 'unsupported' | 'loading' | 'enroll' | 'active' | 'lost' | 'error'
 const ANALYSE_MS = 1500
@@ -17,6 +17,7 @@ export function useCameraProctor(sessionId: string | undefined, required: boolea
   const [warning, setWarning] = useState<Violation | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [uploaded, setUploaded] = useState(0)
+  const [identity, setIdentity] = useState<CameraIdentity | null>(null)
   const video = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const reference = useRef<{ descriptor: Float32Array; yaw: number; pitch: number } | null>(null)
@@ -120,7 +121,10 @@ export function useCameraProctor(sessionId: string | undefined, required: boolea
     }, ANALYSE_MS)
   }, [report])
 
-  /** Enrollment: exactly one face, then the photo becomes the reference for the rest of the attempt. */
+  /**
+   * Enrollment: exactly one face, verified against the student's face profile (created at their first camera exam),
+   * then the photo becomes the reference for the rest of the attempt.
+   */
   const enroll = useCallback(async (): Promise<string | null> => {
     if (!video.current || !stream || !sessionId) return 'NO_CAMERA'
     const faceapi = await loadFaceEngine()
@@ -129,6 +133,16 @@ export function useCameraProctor(sessionId: string | undefined, required: boolea
     if (a.faces > 1) return 'MULTIPLE_FACES'
     try {
       const image = await snapshot(video.current)
+      if (!image) return 'NO_CAMERA'
+      try {
+        const checked = await cameraApi.identity(sessionId, a.descriptor, image)
+        setIdentity(checked)
+        if (!checked.mayContinue) return 'PROFILE_MISMATCH'
+      } catch (e) {
+        // A verification outage must not keep the student out of the exam; client errors are shown.
+        const status = errorInfo(e).status
+        if (status && status < 500 && status !== 404) return errorText(e)
+      }
       await cameraApi.report(sessionId, { clientEventId: crypto.randomUUID(), type: 'REFERENCE', occurredAt: new Date().toISOString(), detail: { faces: 1 } }, image)
     } catch (e) { return errorText(e) }
     reference.current = { descriptor: a.descriptor, yaw: a.yaw ?? 0, pitch: a.pitch ?? 0 }
@@ -149,7 +163,7 @@ export function useCameraProctor(sessionId: string | undefined, required: boolea
   useEffect(() => { stopped.current = false; return () => { stopped.current = true; stopAll() } }, [stopAll])
 
   return {
-    status, error, warning, stream, uploaded,
+    status, error, warning, stream, uploaded, identity,
     /** Questions stay hidden until the camera runs and the reference photo is taken. */
     blocking: required && status !== 'active',
     start, enroll, resume,

@@ -39,27 +39,30 @@ public class CameraProctoringService {
     private final ExamClient exams;
     private final CameraMediaPurgeRepository purges;
     private final CameraRetention retention;
+    private final CameraIdentityCheckRepository identities;
+    private final FaceProfileRepository profiles;
     @Value("${exam.internal-token:}") private String token;
     @Value("${exam.camera.events-per-minute:30}") private int perMinute;
     @Value("${exam.camera.max-events-per-session:2000}") private int maxEvents;
 
-    private static ResponseStatusException error(int status, String message) { return new ResponseStatusException(HttpStatus.valueOf(status), message); }
+    static ResponseStatusException error(int status, String message) { return new ResponseStatusException(HttpStatus.valueOf(status), message); }
     private static Instant now() { return Instant.now().truncatedTo(ChronoUnit.MICROS); }
 
     // ── Student side ─────────────────────────────────────────────────────────────
 
-    private ExamSession owned(UUID sessionId, UUID actor, boolean lock) {
+    ExamSession owned(UUID sessionId, UUID actor, boolean lock) {
         var s = (lock ? sessions.lockById(sessionId) : sessions.findById(sessionId)).orElseThrow(() -> error(404, "Session not found"));
         if (!s.getUserId().equals(actor)) throw error(403, "Not your session");
         if (s.getIntegrityPolicy() == null || !s.getIntegrityPolicy().requireCamera()) throw error(409, "Camera proctoring is not enabled for this attempt");
         return s;
     }
-    private static boolean active(ExamSession s, Instant now) { return s.getStatus() == ExamSession.Status.IN_PROGRESS && now.isBefore(s.getExpiresAt()); }
+    static boolean active(ExamSession s, Instant now) { return s.getStatus() == ExamSession.Status.IN_PROGRESS && now.isBefore(s.getExpiresAt()); }
 
     /** Enrollment photo and violations. Snapshot is required except for camera on/off. */
     @Transactional
     public Receipt report(UUID sessionId, UUID actor, Report input, byte[] snapshot) {
         if (input == null || input.clientEventId() == null || input.type() == null) throw error(400, "clientEventId and type required");
+        if (input.type() == CameraEvent.Type.PROFILE_MISMATCH) throw error(400, "PROFILE_MISMATCH is recorded by the server");
         var s = owned(sessionId, actor, true);
         var existing = events.findBySessionIdAndClientEventId(sessionId, input.clientEventId());
         if (existing.isPresent()) {
@@ -115,13 +118,17 @@ public class CameraProctoringService {
 
     // ── Staff side ──────────────────────────────────────────────────────────────
 
-    private void review(UUID exam, UUID actor, String role) {
+    private void review(UUID exam, UUID actor, String role) { review(exam, actor, role, Set.of("OWNER", "MANAGER", "PROCTOR")); }
+    /** @return the actor's permission on the exam, one of {@code allowed} */
+    String review(UUID exam, UUID actor, String role, Set<String> allowed) {
         if (!Set.of("TEACHER", "ADMIN").contains(role)) throw error(403, "Camera review requires exam staff");
         if (token == null || token.isBlank()) throw error(503, "Exam permission service not configured");
         String permission = exams.permission(exam, actor, false, token);
-        if (!Set.of("OWNER", "MANAGER", "PROCTOR").contains(permission == null ? "" : permission)) throw error(403, "Exam camera review permission denied");
+        if (!allowed.contains(permission == null ? "" : permission)) throw error(403, "Exam camera review permission denied");
+        return permission;
     }
-    private ExamSession reviewed(UUID sessionId, UUID actor, String role) {
+    ExamSession sessionOf(UUID sessionId) { return sessions.findById(sessionId).orElseThrow(() -> error(404, "Session not found")); }
+    ExamSession reviewed(UUID sessionId, UUID actor, String role) {
         var s = sessions.findById(sessionId).orElseThrow(() -> error(404, "Session not found"));
         review(s.getExamId(), actor, role);
         return s;
@@ -134,7 +141,8 @@ public class CameraProctoringService {
         var reference = all.stream().filter(e -> e.getType() == CameraEvent.Type.REFERENCE).reduce((a, b) -> b).map(this::dto).orElse(null);
         return new SessionCamera(sessionId, s.getUserId(), reference, recordings.findById(sessionId).map(CameraProctoringService::recording).orElse(null),
                 all.stream().filter(e -> e.getType() != CameraEvent.Type.REFERENCE).map(this::dto).toList(),
-                retention(s.getExpiresAt(), purges.findById(sessionId).map(CameraMediaPurge::getPurgedAt).orElse(null)));
+                retention(s.getExpiresAt(), purges.findById(sessionId).map(CameraMediaPurge::getPurgedAt).orElse(null)),
+                identities.findById(sessionId).map(FaceIdentityService::dto).orElse(null), profiles.existsById(s.getUserId()));
     }
 
     @Transactional(readOnly = true)
@@ -151,12 +159,14 @@ public class CameraProctoringService {
         for (var r : recordings.findByExamId(examId)) { recs.put(r.getSessionId(), r); users.putIfAbsent(r.getSessionId(), r.getUserId()); bySession.putIfAbsent(r.getSessionId(), new EnumMap<>(CameraEvent.Type.class)); }
         var deadlines = new HashMap<UUID, Instant>();
         for (var s : sessions.findAllById(bySession.keySet())) deadlines.put(s.getId(), s.getExpiresAt());
+        var outcomes = new HashMap<UUID, CameraIdentityCheck.Outcome>();
+        for (var c : identities.findBySessionIdIn(bySession.keySet())) outcomes.put(c.getSessionId(), c.getOutcome());
         var purged = new HashMap<UUID, Instant>();
         for (var p : purges.findByExamId(examId)) purged.put(p.getSessionId(), p.getPurgedAt());
         return bySession.entrySet().stream().map(e -> new SessionSummary(e.getKey(), users.get(e.getKey()), e.getValue(),
                         e.getValue().entrySet().stream().filter(x -> violation(x.getKey())).mapToLong(Map.Entry::getValue).sum(),
                         last.get(e.getKey()), recs.containsKey(e.getKey()) ? recording(recs.get(e.getKey())) : null,
-                        retention(deadlines.get(e.getKey()), purged.get(e.getKey()))))
+                        retention(deadlines.get(e.getKey()), purged.get(e.getKey())), outcomes.get(e.getKey())))
                 .sorted(Comparator.comparingLong(SessionSummary::violations).reversed().thenComparing(x -> x.sessionId().toString())).toList();
     }
 
@@ -200,6 +210,19 @@ public class CameraProctoringService {
         }
         return out;
     }
+    /** Saves an evidence event created by the server itself (e.g. PROFILE_MISMATCH). */
+    CameraEvent record(ExamSession s, CameraEvent.Type type, Map<String, Object> detail, byte[] snapshot) {
+        UUID id = UUID.randomUUID();
+        String path = null;
+        if (snapshot != null) {
+            try { path = storage.saveSnapshot(s.getExamId(), s.getId(), id, snapshot); }
+            catch (IOException e) { throw error(503, "Snapshot storage unavailable"); }
+        }
+        return events.saveAndFlush(CameraEvent.builder().id(id).sessionId(s.getId()).examId(s.getExamId()).userId(s.getUserId())
+                .clientEventId(UUID.randomUUID()).type(type).occurredAt(now()).receivedAt(now()).detail(detail)
+                .snapshotPath(path).snapshotBytes(path == null ? null : snapshot.length).build());
+    }
+
     static void jpeg(byte[] data) {
         if (data.length > MAX_SNAPSHOT_BYTES) throw error(413, "Snapshot too large");
         if (data.length < 4 || (data[0] & 0xFF) != 0xFF || (data[1] & 0xFF) != 0xD8 || (data[2] & 0xFF) != 0xFF) throw error(415, "Snapshot must be JPEG");

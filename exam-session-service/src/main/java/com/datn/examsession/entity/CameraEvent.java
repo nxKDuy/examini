@@ -28,6 +28,8 @@ public class CameraEvent {
         REFERENCE,
         NO_FACE, MULTIPLE_FACES, FACE_MISMATCH, LOOKING_AWAY,
         /** Camera stopped (track ended, permission revoked, device unplugged) / came back. */
-        CAMERA_OFF, CAMERA_ON
+        CAMERA_OFF, CAMERA_ON,
+        /** Enrollment photo does not match the face profile from the student's first camera exam. */
+        PROFILE_MISMATCH
     }
 }

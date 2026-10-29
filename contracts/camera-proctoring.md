@@ -51,3 +51,21 @@ UUIDs only. Students see a notice before the camera starts; only exam staff can 
 - The violation log (type, time, measurements) is kept; events get `hasSnapshot=false`, the recording reports 0 bytes.
 - Staff views carry `retention: { days, deleteAt, purgedAt }` on `SessionCamera` and `SessionSummary`.
 - After a purge, `GET …/camera/video` and `GET …/camera/events/{id}/snapshot` return **410 Gone**.
+
+## Face verification at exam entry
+
+Only for attempts whose policy has `requireCamera`. The browser sends the enrollment descriptor before the
+`REFERENCE` event:
+
+- `POST /sessions/{id}/camera/identity` (owner, attempt in progress), multipart `identity` = `{"descriptor":[128 numbers]}`,
+  `photo` = JPEG → `Identity { outcome: ENROLLED|MATCH|MISMATCH, distance, threshold, attempts, maxAttempts, mayContinue, checkedAt, profileCreatedAt }`.
+  - No profile yet → the profile is created from this photo (`ENROLLED`).
+  - Euclidean distance ≤ `exam.camera.profile-threshold` (default 0.6) → `MATCH`.
+  - Otherwise `MISMATCH`, `attempts` + 1 and a server-recorded `PROFILE_MISMATCH` event with the photo.
+    `mayContinue` turns true after 3 mismatches: the attempt continues and is flagged, never blocked or failed.
+  - A settled `ENROLLED`/`MATCH` is returned as is (no re-enrollment within the attempt).
+- `GET /sessions/{id}/camera/profile-photo` (exam staff) — the student's profile photo.
+- `DELETE /sessions/{id}/camera/profile` (exam OWNER/MANAGER) — forget the profile; the next camera exam re-creates it.
+- `SessionCamera` gains `identity` and `profile` (photo available); `SessionSummary` gains `identity` (outcome).
+- Clients cannot report `PROFILE_MISMATCH` through `/camera/events` (400).
+- Descriptors are computed in the browser, so this is a deterrent plus evidence for proctors, not proof of identity.

@@ -31,7 +31,9 @@ export function CameraGate({ camera, remaining }: { camera: Camera; remaining: n
     setBusy(true); setEnrollError('')
     const problem = await camera.enroll()
     setBusy(false)
-    if (problem) setEnrollError(ENROLL_ERROR[problem] ?? problem)
+    if (problem === 'PROFILE_MISMATCH') setEnrollError(t('Khuôn mặt chưa khớp với hồ sơ khuôn mặt của bạn (lần {0}/{1}). Ngồi thẳng, đủ sáng, bỏ khẩu trang/kính râm rồi thử lại. Hết số lần thử bạn vẫn được làm bài nhưng giám thị sẽ được báo để kiểm tra.',
+      { 0: camera.identity?.attempts ?? 1, 1: camera.identity?.maxAttempts ?? 3 }))
+    else if (problem) setEnrollError(ENROLL_ERROR[problem] ?? problem)
   }
   const title = status === 'lost' ? t('Camera đã ngắt') : status === 'enroll' ? t('Chụp ảnh xác nhận') : t('Bật camera để làm bài')
   const actions = status === 'enroll'
@@ -46,6 +48,7 @@ export function CameraGate({ camera, remaining }: { camera: Camera; remaining: n
         : <p>{t('Kỳ thi này giám sát bằng camera: video được quay và nén trong suốt bài làm; hệ thống kiểm tra khuôn mặt có khớp với ảnh lúc bắt đầu, có người khác hoặc bạn rời khỏi màn hình hay không. Ảnh chụp lúc có cảnh báo được gửi cho giám thị kèm lý do. Ảnh và video được tự động xóa sau thời hạn lưu trữ.')}</p>}
       {(status === 'enroll' || status === 'loading') && camera.stream && <div className="camera-enroll"><LiveVideo stream={camera.stream} className="camera-video" /><span className="camera-frame" aria-hidden /></div>}
       {status === 'enroll' && <p className="small muted">{t('Ngồi thẳng, đủ sáng, chỉ một mình trong khung hình và nhìn vào camera.')}</p>}
+      {status === 'enroll' && <p className="xsmall muted">{t('Ảnh được so với hồ sơ khuôn mặt của bạn. Ở kỳ thi có camera đầu tiên, ảnh này trở thành hồ sơ để xác minh các kỳ thi sau.')}</p>}
       {enrollError && <Notice tone="danger" live>{enrollError}</Notice>}
       {status === 'denied' && <Notice tone="danger" live title={t('Trình duyệt chặn camera')}>{t('Mở cài đặt quyền của trang (biểu tượng ổ khóa trên thanh địa chỉ), cho phép Camera rồi bấm “Bật camera”.')}</Notice>}
       {status === 'unsupported' && <Notice tone="danger" live>{t('Trình duyệt này không hỗ trợ quay camera. Hãy dùng Chrome, Edge, Firefox hoặc Safari bản mới.')}</Notice>}

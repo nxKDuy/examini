@@ -1,7 +1,7 @@
 // Pure rules of camera proctoring, testable without a camera. The browser measures, these rules decide when a
 // measurement is a violation worth reporting: one frame never is, a sustained condition is.
 
-export type CameraEventType = 'REFERENCE' | 'NO_FACE' | 'MULTIPLE_FACES' | 'FACE_MISMATCH' | 'LOOKING_AWAY' | 'CAMERA_OFF' | 'CAMERA_ON'
+export type CameraEventType = 'REFERENCE' | 'NO_FACE' | 'MULTIPLE_FACES' | 'FACE_MISMATCH' | 'LOOKING_AWAY' | 'CAMERA_OFF' | 'CAMERA_ON' | 'PROFILE_MISMATCH'
 export type Violation = 'NO_FACE' | 'MULTIPLE_FACES' | 'FACE_MISMATCH' | 'LOOKING_AWAY'
 
 /** One analysed frame. distance: face descriptor distance to the enrollment photo (lower = same person). */

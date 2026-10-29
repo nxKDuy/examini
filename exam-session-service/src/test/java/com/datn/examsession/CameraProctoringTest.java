@@ -52,14 +52,18 @@ class CameraProctoringTest {
         return core.startExam(exam, student).sessionId();
     }
     @BeforeEach void setup() {
-        exam = UUID.randomUUID(); user = UUID.randomUUID(); owner = UUID.randomUUID(); proctor = UUID.randomUUID(); other = UUID.randomUUID();
+        user = UUID.randomUUID(); owner = UUID.randomUUID(); proctor = UUID.randomUUID(); other = UUID.randomUUID();
+        stubExam(UUID.randomUUID());
+        session = start(policy(true), user);
+    }
+    void stubExam(UUID id) {
+        exam = id;
         when(exams.safe(eq(exam), eq("test-internal"))).thenReturn(List.of(new ExamClient.Question(UUID.randomUUID(), 1, "SHORT_ANSWER", "Q", List.of(), BigDecimal.TEN, 0)));
         when(exams.reserveStart(any(), any(), eq("test-internal"))).thenAnswer(c -> new ExamClient.StartReservation(c.getArgument(0), UUID.randomUUID(), 1));
         when(exams.claimStart(any(), any(), any(), eq("test-internal"))).thenAnswer(c -> { Instant now = Instant.now(); return new ExamClient.ScheduleAdmission(c.getArgument(1), 1, now, now.plusSeconds(600)); });
         when(exams.permission(eq(exam), any(), eq(false), eq("test-internal"))).thenAnswer(c -> {
             UUID a = c.getArgument(1); if (a.equals(owner)) return "OWNER"; if (a.equals(proctor)) return "PROCTOR";
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No exam access"); });
-        session = start(policy(true), user);
     }
     org.springframework.test.web.servlet.ResultActions event(UUID s, UUID actor, String type, byte[] image, String detail) throws Exception {
         String body = "{\"clientEventId\":\"" + UUID.randomUUID() + "\",\"type\":\"" + type + "\",\"occurredAt\":\"" + Instant.now() + "\"" + (detail == null ? "" : ",\"detail\":" + detail) + "}";
@@ -180,5 +184,65 @@ class CameraProctoringTest {
         for (JsonNode row : json.readTree(list)) assertEquals(row.get("sessionId").asText().equals(session.toString()), !row.at("/retention/purgedAt").isNull());
         String kept = mvc.perform(get("/sessions/" + recent + "/camera").header("Authorization", token(proctor, "TEACHER"))).andReturn().getResponse().getContentAsString();
         assertTrue(json.readTree(kept).at("/reference/hasSnapshot").asBoolean());
+    }
+
+    String vector(double base, double step) {
+        var sb = new StringBuilder("{\"descriptor\":[");
+        for (int i = 0; i < 128; i++) sb.append(i == 0 ? "" : ",").append(base + step * Math.sin(i));
+        return sb.append("]}").toString();
+    }
+    org.springframework.test.web.servlet.ResultActions verify(UUID s, UUID actor, String identity) throws Exception {
+        return mvc.perform(multipart("/sessions/" + s + "/camera/identity")
+                .file(new MockMultipartFile("identity", "", "application/json", identity.getBytes(StandardCharsets.UTF_8)))
+                .file(new MockMultipartFile("photo", "p.jpg", "image/jpeg", JPEG)).header("Authorization", token(actor, "STUDENT")));
+    }
+    void finish(UUID s) { db.update("update exam_sessions set status='SUBMITTED' where id=?", s); }
+
+    @Test void faceProfileIsCreatedOnceThenEveryCameraExamIsVerifiedAgainstIt() throws Exception {
+        verify(session, user, "{\"descriptor\":[0.1,0.2]}").andExpect(status().isBadRequest());
+        verify(session, other, vector(0, 0.1)).andExpect(status().isForbidden());
+        event(session, user, "PROFILE_MISMATCH", JPEG, null).andExpect(status().isBadRequest());
+        verify(session, user, vector(0, 0.1)).andExpect(status().isOk()).andExpect(jsonPath("$.outcome").value("ENROLLED")).andExpect(jsonPath("$.mayContinue").value(true));
+        verify(session, user, vector(5, 0.1)).andExpect(jsonPath("$.outcome").value("ENROLLED")); // settled: not re-enrolled
+        finish(session);
+
+        // Second camera exam, same person (small distance).
+        stubExam(UUID.randomUUID());
+        UUID second = start(policy(true), user);
+        verify(second, user, vector(0.01, 0.1)).andExpect(status().isOk()).andExpect(jsonPath("$.outcome").value("MATCH"))
+                .andExpect(jsonPath("$.distance").value(org.hamcrest.Matchers.lessThan(0.2)));
+        finish(second);
+
+        // Third exam, someone else: three mismatches, then the student may continue and the attempt is flagged.
+        stubExam(UUID.randomUUID());
+        UUID third = start(policy(true), user);
+        verify(third, user, vector(0.3, 0.1)).andExpect(jsonPath("$.outcome").value("MISMATCH")).andExpect(jsonPath("$.attempts").value(1)).andExpect(jsonPath("$.mayContinue").value(false));
+        verify(third, user, vector(0.3, 0.1)).andExpect(jsonPath("$.attempts").value(2));
+        verify(third, user, vector(0.3, 0.1)).andExpect(jsonPath("$.attempts").value(3)).andExpect(jsonPath("$.mayContinue").value(true));
+        String body = mvc.perform(get("/sessions/" + third + "/camera").header("Authorization", token(proctor, "TEACHER"))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode cam = json.readTree(body);
+        assertEquals("MISMATCH", cam.at("/identity/outcome").asText());
+        assertTrue(cam.at("/profile").asBoolean());
+        assertEquals(3, cam.at("/events").size());
+        assertEquals("PROFILE_MISMATCH", cam.at("/events/0/type").asText());
+        assertTrue(cam.at("/events/0/hasSnapshot").asBoolean());
+        String list = mvc.perform(get("/sessions/exam/" + exam + "/camera").header("Authorization", token(owner, "TEACHER"))).andReturn().getResponse().getContentAsString();
+        assertEquals("MISMATCH", json.readTree(list).at("/0/identity").asText());
+        assertEquals(3, json.readTree(list).at("/0/violations").asInt());
+
+        // Staff compare with the profile photo; only the owner/manager may reset it.
+        mvc.perform(get("/sessions/" + third + "/camera/profile-photo").header("Authorization", token(proctor, "TEACHER"))).andExpect(status().isOk()).andExpect(content().bytes(JPEG));
+        mvc.perform(get("/sessions/" + third + "/camera/profile-photo").header("Authorization", token(other, "TEACHER"))).andExpect(status().isForbidden());
+        mvc.perform(delete("/sessions/" + third + "/camera/profile").header("Authorization", token(proctor, "TEACHER"))).andExpect(status().isForbidden());
+        mvc.perform(delete("/sessions/" + third + "/camera/profile").header("Authorization", token(owner, "TEACHER"))).andExpect(status().isNoContent());
+        mvc.perform(get("/sessions/" + third + "/camera/profile-photo").header("Authorization", token(proctor, "TEACHER"))).andExpect(status().isNotFound());
+        assertEquals(0, db.queryForObject("select count(*) from face_profiles where user_id=?", Integer.class, user));
+    }
+
+    @Test void identityCheckNeedsCameraProctoring() throws Exception {
+        finish(session);
+        stubExam(UUID.randomUUID());
+        UUID plain = start(policy(false), user);
+        verify(plain, user, vector(0, 0.1)).andExpect(status().isConflict());
     }
 }
