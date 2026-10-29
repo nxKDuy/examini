@@ -195,6 +195,9 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
       QB_AI_WEB_KNOWLEDGE: ${QB_AI_WEB_KNOWLEDGE:-true}
+      QB_MEDIA_DIR: /data/question-media
+    volumes:
+      - question_media:/data/question-media
     depends_on:
       postgres:
         condition: service_healthy
@@ -266,8 +269,10 @@ services:
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
       CAMERA_STORAGE_DIR: /data/camera
       CAMERA_RETENTION_DAYS: ${CAMERA_RETENTION_DAYS:-30}
+      ANSWER_AUDIO_DIR: /data/answer-audio
     volumes:
       - camera_data:/data/camera
+      - answer_audio:/data/answer-audio
     depends_on:
       postgres:
         condition: service_healthy
@@ -391,6 +396,8 @@ services:
 volumes:
   ollama_data:
   camera_data:
+  question_media:
+  answer_audio:
   postgres_data:
   redis_data:
   rabbitmq_data:

@@ -18,7 +18,21 @@ public interface ExamClient {
     record ExamDto(UUID id,String title,int durationMinutes,int maxConcurrentSessions,int attemptLimit,LocalDateTime endTime,boolean shuffleQuestions,boolean shuffleOptions,com.datn.examsession.dto.IntegrityPolicy integrityPolicy){
         public ExamDto(UUID id,String title,int durationMinutes,int maxConcurrentSessions,int attemptLimit,LocalDateTime endTime,boolean shuffleQuestions,boolean shuffleOptions){this(id,title,durationMinutes,maxConcurrentSessions,attemptLimit,endTime,shuffleQuestions,shuffleOptions,com.datn.examsession.dto.IntegrityPolicy.disabled());}
     }
-    record Question(UUID questionId,long questionVersion,String questionType,String content,List<Option> options,BigDecimal points,int position){}
+    /** presentation: media ids, reading passage and per-type limits from Question Bank, passed to the student as is. */
+    record Question(UUID questionId,long questionVersion,String questionType,String content,List<Option> options,BigDecimal points,int position,
+                    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) java.util.Map<String,Object> presentation){
+        public Question(UUID questionId,long questionVersion,String questionType,String content,List<Option> options,BigDecimal points,int position){
+            this(questionId,questionVersion,questionType,content,options,points,position,null);
+        }
+        /** Questions under the same reading/listening passage share this key; null for a standalone question. */
+        public String passageKey(){
+            if(presentation==null || !(presentation.get("passage") instanceof java.util.Map<?,?> p))return null;
+            Object k=p.get("key");return k==null?null:k.toString();
+        }
+        public Integer maxRecordSeconds(){
+            Object v=presentation==null?null:presentation.get("maxRecordSeconds");return v instanceof Number n?n.intValue():null;
+        }
+    }
     record Option(UUID id,String content,int displayOrder){}
     record StartReservation(UUID examId,UUID admissionId,long scheduleRevision){}
     record ScheduleAdmission(UUID admissionId,long scheduleRevision,Instant startedAt,Instant deadlineAt){}

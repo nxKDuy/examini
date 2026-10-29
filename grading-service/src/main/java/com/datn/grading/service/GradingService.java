@@ -57,6 +57,8 @@ public class GradingService {
                 validateScore(score,q.points().floatValue());grade.setAutoScore(score);grade.setFeedback(aiGrade.feedback());
             }catch(RuntimeException unavailable){grade.setAutoScore(null);
             }finally{grade.setScore(null);grade.setNeedsReview(true);result.setStatus(ExamResult.Status.NEEDS_REVIEW);}
+            // Voice answers are always graded by a teacher (no automatic or AI score).
+            else if("SPEAKING".equals(q.questionType())&&answer!=null&&!answer.isBlank()){grade.setAutoScore(null);grade.setScore(null);grade.setNeedsReview(true);result.setStatus(ExamResult.Status.NEEDS_REVIEW);}
             else {float score=ObjectiveScoring.score(q,answer);grade.setAutoScore(score);grade.setScore(score);}
             if(answer!=null)q.options().stream().filter(o->o.id().toString().equals(answer)).findFirst().ifPresent(o->grade.setSelectedOptionContent(o.content()));
             result.getQuestionGrades().add(grade);
@@ -107,7 +109,7 @@ public class GradingService {
             if(change==null||change.questionId()==null||!seen.add(change.questionId()))throw error(400,"Missing or duplicate questionId");
             var item=Optional.ofNullable(byId.get(change.questionId())).orElseThrow(()->error(400,"Question outside frozen snapshot"));
             Float oldScore=item.getScore();String oldFeedback=item.getFeedback();String newFeedback=text(change.feedback(),10000,"Item feedback");
-            boolean override=change.score()!=null&&!"ESSAY".equals(item.getQuestionType())&&item.getAutoScore()!=null&&!Objects.equals(change.score(),item.getAutoScore());String overrideReason=override?required(change.overrideReason(),1000,"Objective score override reason"):text(change.overrideReason(),1000,"Override reason");
+            boolean override=change.score()!=null&&!Set.of("ESSAY","SPEAKING").contains(item.getQuestionType())&&item.getAutoScore()!=null&&!Objects.equals(change.score(),item.getAutoScore());String overrideReason=override?required(change.overrideReason(),1000,"Objective score override reason"):text(change.overrideReason(),1000,"Override reason");
             if(change.score()!=null){validateScore(change.score(),item.getPointValue());item.setManualScore(change.score());item.setScore(change.score());item.setNeedsReview(false);item.setManualGradedBy(actor);item.setManualGradedAt(now);}
             item.setFeedback(newFeedback);
             if(!Objects.equals(oldScore,item.getScore())||!Objects.equals(oldFeedback,newFeedback))changes.add(new AuditChange(item.getQuestionId(),oldScore,item.getScore(),oldFeedback,newFeedback,overrideReason,override?"OBJECTIVE_SCORE_OVERRIDDEN":"ITEM_UPDATED"));

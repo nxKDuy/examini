@@ -63,6 +63,17 @@ class ExamCoreTest {
         mvc.perform(get("/exams/public").header("X-User-Id",student)).andExpect(status().isUnauthorized());
         mvc.perform(put("/exams/"+id+"/open").header("Authorization",token(proctor,"TEACHER"))).andExpect(status().isForbidden());
     }
+    @Test void presentationAndSpeakingTypeAreFrozenIntoTheSafeSnapshot()throws Exception {
+        var presentation=Map.<String,Object>of("media",List.of(Map.of("id",UUID.randomUUID().toString(),"kind","AUDIO")),"maxPlays",2,
+                "passage",Map.of("key",UUID.randomUUID().toString(),"title","Bài đọc","content","Ngày xửa ngày xưa"));
+        var speaking=new QuestionBankClient.Question(qid,1L,"ACTIVE","SPEAKING","Nói về gia đình",List.of(),null,true,"PERSONAL",null,null,presentation);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(speaking));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(speaking));
+        UUID id=create();core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].questionType").value("SPEAKING")).andExpect(jsonPath("$[0].presentation.maxPlays").value(2))
+            .andExpect(jsonPath("$[0].presentation.passage.title").value("Bài đọc"));
+    }
     @Test void paperExportNeedsAPublishedSnapshotAndAManagerAndIsAudited()throws Exception {
         UUID id=create();
         core.member(id,owner,proctor,Exam.MemberRole.PROCTOR,false);core.accept(id,proctor,"TEACHER");

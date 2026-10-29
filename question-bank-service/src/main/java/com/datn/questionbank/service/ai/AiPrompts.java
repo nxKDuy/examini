@@ -18,6 +18,7 @@ final class AiPrompts {
                 - TRUE_FALSE: exactly 2 options, "%s" and "%s", exactly one correct.
                 - SHORT_ANSWER: no options; expectedAnswer is a short exact answer (a word, number or short phrase).
                 - ESSAY: no options; expectedAnswer is a brief marking guide.
+                - SPEAKING: no options; an oral task the student answers aloud in about 1-2 minutes; expectedAnswer is a brief marking guide (content, fluency, vocabulary).
                 - explanation: why the answer is correct, 1-3 sentences.
                 - difficulty: your honest estimate (EASY, MEDIUM, HARD) of how hard the question is for the target learners.
                 - When SOURCE MATERIAL is given, every question must be answerable from it; do not invent facts outside it.
@@ -34,6 +35,8 @@ final class AiPrompts {
         sb.append("Allowed question types (spread them evenly): ")
                 .append(p.types().stream().map(QuestionType::name).collect(Collectors.joining(", "))).append('\n');
         sb.append("Target difficulty: ").append(p.difficulty().name()).append('\n');
+        String bloom = bloom(p.cognitiveLevel());
+        if (bloom != null) sb.append("Cognitive level (Bloom's taxonomy): ").append(bloom).append('\n');
         if (p.material() != null && !p.material().isBlank())
             sb.append("\n<<<SOURCE MATERIAL\n").append(p.material().strip()).append("\nSOURCE MATERIAL>>>\n");
         if (p.examples() != null && !p.examples().isEmpty()) {
@@ -43,5 +46,20 @@ final class AiPrompts {
             sb.append("EXISTING QUESTIONS>>>\n");
         }
         return sb.toString();
+    }
+
+    /** Bloom level → instruction; MIXED spreads the questions over the six levels. Null/unknown = no constraint. */
+    static String bloom(String level) {
+        if (level == null) return null;
+        return switch (level) {
+            case "REMEMBER" -> "REMEMBER - recall facts, terms and definitions";
+            case "UNDERSTAND" -> "UNDERSTAND - explain ideas, interpret, summarise, compare";
+            case "APPLY" -> "APPLY - use the knowledge in a new concrete situation or calculation";
+            case "ANALYZE" -> "ANALYZE - break information into parts, find causes, relationships and evidence";
+            case "EVALUATE" -> "EVALUATE - judge, justify a choice or critique an argument with criteria";
+            case "CREATE" -> "CREATE - design, propose or produce something new from the knowledge";
+            case "MIXED" -> "spread the questions across REMEMBER, UNDERSTAND, APPLY, ANALYZE, EVALUATE and CREATE, from easier to harder";
+            default -> null;
+        };
     }
 }

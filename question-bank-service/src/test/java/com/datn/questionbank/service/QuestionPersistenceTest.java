@@ -229,6 +229,52 @@ class QuestionPersistenceTest {
                 .header("X-Question-Owner-Id",owner.userId()).contentType("application/json").content(ids)).andExpect(status().isConflict());
         assertEquals("Internal eligible",service.version(q.id(),1,true,owner).question().content());
     }
+    static final byte[] PNG={(byte)0x89,'P','N','G',13,10,26,10,0,0,0,13,'I','H','D','R'};
+    static final byte[] MP3={'I','D','3',4,0,0,0,0,0,0,0,0,1,2,3,4};
+    String upload(QuestionActor who,byte[] data,String name,int expect) throws Exception {
+        var r=http.perform(multipart("/question-media").file(new MockMultipartFile("file",name,"application/octet-stream",data)).header("Authorization",jwt(who)))
+                .andExpect(status().is(expect)).andReturn().getResponse().getContentAsString();
+        return expect==201?json.readTree(r).get("id").asText():null;
+    }
+    @Test void questionsCarryMediaPassagesAndTypeLimitsIntoEverySnapshot() throws Exception {
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        String image=upload(owner,PNG,"hinh.png",201), audio=upload(owner,MP3,"bai-nghe.mp3",201);
+        upload(student,PNG,"x.png",403);
+        upload(owner,"not media at all".getBytes(),"x.txt",415);
+        http.perform(get("/question-media/"+image).header("Authorization",jwt(student))).andExpect(status().isOk())
+                .andExpect(content().contentType("image/png")).andExpect(content().bytes(PNG));
+        UUID passageKey=UUID.randomUUID();
+        String body="{\"categoryId\":\""+category+"\",\"content\":\"Nghe và chọn đáp án đúng\",\"questionType\":\"MULTIPLE_CHOICE\",\"difficultyLevel\":\"EASY\","
+            +"\"options\":[{\"content\":\"Hình 1\",\"correct\":true,\"displayOrder\":0},{\"content\":\"Hình 2\",\"correct\":false,\"displayOrder\":1}],"
+            +"\"presentation\":{\"media\":[{\"id\":\""+audio+"\",\"kind\":\"AUDIO\",\"name\":\"bai-nghe.mp3\"}],\"optionMedia\":{\"0\":\""+image+"\"},"
+            +"\"passage\":{\"key\":\""+passageKey+"\",\"title\":\"Bài đọc 1\",\"content\":\"Ngày xửa ngày xưa…\"},\"maxPlays\":2,\"minWords\":50}}";
+        String created=http.perform(post("/questions").header("Authorization",jwt(owner)).contentType("application/json").content(body))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.presentation.maxPlays").value(2))
+                .andExpect(jsonPath("$.presentation.optionMedia.0").value(image)).andExpect(jsonPath("$.presentation.passage.title").value("Bài đọc 1"))
+                .andExpect(jsonPath("$.presentation.minWords").doesNotExist()) // word limits only belong to essays
+                .andReturn().getResponse().getContentAsString();
+        UUID id=UUID.fromString(json.readTree(created).get("id").asText());
+        service.activate(id,1,owner);
+        http.perform(post("/questions/batch").header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId())
+                .contentType("application/json").content("[\""+id+"\"]")).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].presentation.media[0].kind").value("AUDIO")).andExpect(jsonPath("$[0].presentation.passage.key").value(passageKey.toString()));
+        http.perform(get("/questions/passages").header("Authorization",jwt(owner))).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].key").value(passageKey.toString()));
+        // A missing file, an option image for no option and a play limit without audio are refused.
+        http.perform(post("/questions").header("Authorization",jwt(owner)).contentType("application/json").content(body.replace(audio,UUID.randomUUID().toString())))
+                .andExpect(status().isBadRequest());
+        http.perform(post("/questions").header("Authorization",jwt(owner)).contentType("application/json").content(body.replace("\"0\":\""+image,"\"7\":\""+image)))
+                .andExpect(status().isBadRequest());
+        // Speaking: no options, default recording limit.
+        var speaking=service.create(new CreateRequest(category,"Giới thiệu bản thân trong 1 phút",QuestionType.SPEAKING,DifficultyLevel.MEDIUM,null,List.of(),null,
+                QuestionScope.PERSONAL,SourceType.NONE,null,null,null,null,null,null),owner);
+        assertEquals(120,speaking.presentation().maxRecordSeconds());
+        var essay=service.create(new CreateRequest(category,"Viết đoạn văn về môi trường",QuestionType.ESSAY,DifficultyLevel.MEDIUM,null,List.of(),null,
+                QuestionScope.PERSONAL,SourceType.NONE,null,null,null,null,null,new com.datn.questionbank.dto.Presentation(null,null,null,null,80,150,null)),owner);
+        assertEquals(80,essay.presentation().minWords());assertEquals(150,essay.presentation().maxWords());
+        assertThrows(ResponseStatusException.class,()->service.create(new CreateRequest(category,"x",QuestionType.ESSAY,DifficultyLevel.MEDIUM,null,List.of(),null,
+                QuestionScope.PERSONAL,SourceType.NONE,null,null,null,null,null,new com.datn.questionbank.dto.Presentation(null,null,null,null,200,100,null)),owner));
+    }
     @Test void matrixCountsGroupEligibleQuestionsByTopicAndDifficulty() throws Exception {
         for(var d:List.of(DifficultyLevel.EASY,DifficultyLevel.EASY,DifficultyLevel.HARD)){var q=create("Matrix "+d+" "+UUID.randomUUID(),d);service.activate(q.id(),1,owner);}
         create("Matrix draft stays out",DifficultyLevel.MEDIUM);

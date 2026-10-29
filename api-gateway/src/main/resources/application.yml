@@ -26,7 +26,7 @@ spring:
         - id: question-bank-service
           uri: lb://question-bank-service
           predicates:
-            - Path=/subjects/**, /categories/**, /questions/**, /question-banks/**, /question-sets/**, /public-questions/**, /public-contributions/**, /organization-questions/**, /organization-contributions/**, /question-imports/**
+            - Path=/subjects/**, /categories/**, /questions/**, /question-media/**, /question-banks/**, /question-sets/**, /public-questions/**, /public-contributions/**, /organization-questions/**, /organization-contributions/**, /question-imports/**
 
         - id: exam-service
           uri: lb://exam-service

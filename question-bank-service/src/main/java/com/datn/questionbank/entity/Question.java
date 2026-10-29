@@ -89,6 +89,11 @@ public class Question {
     @Column(columnDefinition = "TEXT")
     private String explanation;
 
+    /** Media, reading passage and per-type limits; null for a plain text question. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private com.datn.questionbank.dto.Presentation presentation;
+
     @Column(name = "question_version", nullable = false)
     @Builder.Default
     private long questionVersion = 1;
@@ -109,7 +114,9 @@ public class Question {
     private List<QuestionOption> options = new ArrayList<>();
 
     public enum QuestionType {
-        MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY
+        MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY,
+        /** Answered with a voice recording; graded by a teacher. */
+        SPEAKING
     }
 
     public enum DifficultyLevel {

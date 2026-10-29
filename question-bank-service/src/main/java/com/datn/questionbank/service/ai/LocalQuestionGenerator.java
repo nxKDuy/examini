@@ -76,6 +76,7 @@ public class LocalQuestionGenerator implements AiProvider {
                 case TRUE_FALSE -> trueFalse(f, pools, rnd, vi, p);
                 case SHORT_ANSWER -> fillIn(f, vi, p);
                 case ESSAY -> essay(f, vi, p);
+                case SPEAKING -> null; // speaking prompts come from AI providers, not the rule-based generator
             };
             if (c == null) c = type == QuestionType.MULTIPLE_CHOICE && types.contains(QuestionType.TRUE_FALSE) ? trueFalse(f, pools, rnd, vi, p) : fillIn(f, vi, p);
             if (c == null || !types.contains(QuestionType.valueOf(c.type()))) { usedSentences.remove(f.sentence()); continue; }

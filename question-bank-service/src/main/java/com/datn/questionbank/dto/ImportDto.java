@@ -43,7 +43,14 @@ public class ImportDto {
     public record AiGenerateRequest(@NotBlank @Size(max = 500) String topic, @Size(max = AI_MAX_MATERIAL) String material,
             @NotNull UUID categoryId, @Min(1) @Max(AI_MAX_QUESTIONS) Integer count,
             @Size(min = 1, max = 4) List<@NotNull QuestionType> questionTypes, DifficultyLevel difficulty,
-            @Pattern(regexp = "vi|en") String language, Boolean useBankExamples, Boolean useWebKnowledge) {}
+            @Pattern(regexp = "vi|en") String language, Boolean useBankExamples, Boolean useWebKnowledge,
+            /** Bloom level: REMEMBER, UNDERSTAND, APPLY, ANALYZE, EVALUATE, CREATE or MIXED; null = no constraint. */
+            @Pattern(regexp = "REMEMBER|UNDERSTAND|APPLY|ANALYZE|EVALUATE|CREATE|MIXED") String cognitiveLevel) {
+        public AiGenerateRequest(String topic, String material, UUID categoryId, Integer count, List<QuestionType> questionTypes,
+                DifficultyLevel difficulty, String language, Boolean useBankExamples, Boolean useWebKnowledge) {
+            this(topic, material, categoryId, count, questionTypes, difficulty, language, useBankExamples, useWebKnowledge, null);
+        }
+    }
     public record KnowledgeSource(String title, String url) {}
     /** Provenance shown on an AI job; null on document jobs. */
     public record AiGeneration(String topic, String model, int requestedCount, List<QuestionType> questionTypes,

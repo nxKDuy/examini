@@ -26,7 +26,13 @@ public interface AiQuestionGenerator {
      * @param examples    existing questions of the same category, used for style and to avoid duplicates
      */
     record Prompt(String topic, String material, List<String> examples, int count, List<QuestionType> types,
-                  DifficultyLevel difficulty, String language) {}
+                  DifficultyLevel difficulty, String language, String cognitiveLevel) {
+        public Prompt(String topic, String material, List<String> examples, int count, List<QuestionType> types,
+                      DifficultyLevel difficulty, String language) {
+            this(topic, material, examples, count, types, difficulty, language, null);
+        }
+        public Prompt withMaterial(String text) { return new Prompt(topic, text, examples, count, types, difficulty, language, cognitiveLevel); }
+    }
     record Candidate(String type, String content, List<CandidateOption> options, String expectedAnswer,
                      String explanation, String difficulty, String raw) {}
     record CandidateOption(String content, Boolean correct) {}

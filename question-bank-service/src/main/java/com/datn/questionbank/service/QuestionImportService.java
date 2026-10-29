@@ -67,7 +67,7 @@ public class QuestionImportService {
         try { bytes = file.getBytes(); } catch (IOException e) { throw bad("Không đọc được tệp"); }
         String name = fileName(file.getOriginalFilename());
         var kind = DocumentExtractor.detect(bytes, name);
-        if (kind == null) throw bad("Chỉ hỗ trợ DOCX, PDF, PNG, JPG");
+        if (kind == null) throw bad("Chỉ hỗ trợ Excel (.xlsx), CSV, Word (.docx), PDF, PNG, JPG");
         if (categoryId != null && !categories.existsById(categoryId)) throw bad("Danh mục không tồn tại");
         var now = LocalDateTime.now();
         var job = jobs.saveAndFlush(QuestionImportJob.builder().ownerUserId(actor.userId()).fileName(name).fileKind(kind)
@@ -88,6 +88,14 @@ public class QuestionImportService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
     public void process(UUID jobId, byte[] bytes, UUID actor) {
         var job = jobs.findById(jobId).orElseThrow();
+        if (job.getFileKind() == QuestionImportJob.FileKind.XLSX || job.getFileKind() == QuestionImportJob.FileKind.CSV) {
+            List<ImportParser.Parsed> rows;
+            try { rows = SheetImport.parse(bytes, job.getFileKind() == QuestionImportJob.FileKind.CSV, job.getDefaultDifficulty()); }
+            catch (DocumentExtractor.ExtractionException e) { finish(jobId, actor, e.getMessage(), null); return; }
+            catch (RuntimeException e) { finish(jobId, actor, "Không đọc được bảng tính", null); return; }
+            finishRows(jobId, actor, rows);
+            return;
+        }
         DocumentExtractor.Extraction extraction;
         try { extraction = extractor.extract(bytes, job.getFileKind()); }
         catch (DocumentExtractor.ExtractionException e) { finish(jobId, actor, e.getMessage(), null); return; }
@@ -117,6 +125,23 @@ public class QuestionImportService {
             stage(job, parsed);
             job.setStatus(Status.READY);
             event(jobId, null, actor, "EXTRACTED", Map.of("items", parsed.size(), "pages", extraction.pageCount(), "ocrPages", extraction.ocrPageCount()));
+        });
+    }
+
+    /** Spreadsheet rows are already structured: stage them directly (no OCR, no text splitting). */
+    private void finishRows(UUID jobId, UUID actor, List<ImportParser.Parsed> parsed) {
+        tx.executeWithoutResult(status -> {
+            var job = jobs.findByIdForUpdate(jobId).orElseThrow();
+            if (job.getStatus() != Status.PROCESSING) return;
+            job.setPageCount(1); job.setOcrPageCount(0); job.setWarnings("[]"); job.setUpdatedAt(LocalDateTime.now());
+            if (parsed.isEmpty()) {
+                job.setStatus(Status.FAILED); job.setFailureReason("Bảng tính không có câu hỏi nào dưới dòng tiêu đề");
+                event(jobId, null, actor, "FAILED", Map.of("reason", job.getFailureReason()));
+                return;
+            }
+            stage(job, parsed);
+            job.setStatus(Status.READY);
+            event(jobId, null, actor, "EXTRACTED", Map.of("items", parsed.size(), "rows", parsed.size()));
         });
     }
 
@@ -171,7 +196,7 @@ public class QuestionImportService {
                 .warnings("[]").categoryId(request.categoryId()).defaultDifficulty(difficulty).generation(write(generation))
                 .createdAt(now).updatedAt(now).build());
         event(job.getId(), null, actor.userId(), "AI_REQUESTED", generation);
-        var prompt = new AiQuestionGenerator.Prompt(topic, material, examples, count, types, difficulty, language);
+        var prompt = new AiQuestionGenerator.Prompt(topic, material, examples, count, types, difficulty, language, request.cognitiveLevel());
         UUID id = job.getId(), owner = actor.userId();
         if (TransactionSynchronizationManager.isSynchronizationActive())
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -197,7 +222,7 @@ public class QuestionImportService {
             var k = knowledge.retrieve(prompt.topic(), prompt.material(), prompt.language(), useWeb);
             notes.addAll(k.warnings());
             sources = k.sources().stream().map(s -> new KnowledgeSource(s.title(), s.url())).toList();
-            var grounded = new AiQuestionGenerator.Prompt(prompt.topic(), k.text(), prompt.examples(), prompt.count(), prompt.types(), prompt.difficulty(), prompt.language());
+            var grounded = prompt.withMaterial(k.text());
             var result = ai.generate(grounded);
             model = result.model();
             drafts = AiDrafts.build(result.candidates(), prompt.count(), prompt.difficulty(), existing);

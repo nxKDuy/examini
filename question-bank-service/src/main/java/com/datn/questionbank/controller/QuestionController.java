@@ -50,6 +50,11 @@ public class QuestionController {
     public EligibleIdsResponse eligibleIds(@Valid @RequestBody EligibleFilter body, HttpServletRequest req) {
         return eligibility.ids(body, actor(req));
     }
+    /** Reading/listening passages the author already used, to put another question under the same passage. */
+    @GetMapping("/passages")
+    public java.util.List<com.datn.questionbank.dto.Presentation.Passage> passages(HttpServletRequest req) {
+        return service.passages(actor(req));
+    }
     @PostMapping("/eligible/matrix-counts")
     public List<MatrixCount> matrixCounts(@Valid @RequestBody MatrixCountsRequest body, HttpServletRequest req) {
         return eligibility.matrixCounts(body, actor(req));

@@ -81,6 +81,16 @@ class GradingCoreTest {
         var studentResult=service.student(session,user);assertEquals("NEEDS_REVIEW",studentResult.status());assertNull(studentResult.score());assertEquals(exam,studentResult.examId());assertEquals(1,studentResult.attemptNumber());
     }
 
+    @Test void speakingRecordingsAlwaysWaitForATeacherAndSilenceScoresZero(){
+        var spoken=question("SPEAKING",null,0);var silent=question("SPEAKING",null,1);
+        submitted(List.of(spoken,silent),List.of(new ExamSessionClient.AnswerDto(spoken.questionId(),"{\"audio\":true,\"seconds\":30,\"bytes\":1000,\"type\":\"audio/webm\"}")));
+        var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
+        assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());
+        assertNull(items.get(0).autoScore());assertTrue(items.get(0).needsReview());verify(ai,never()).gradeEssay(anyString(),anyString());
+        assertEquals(0f,items.get(1).autoScore());assertFalse(items.get(1).needsReview());
+        var reviewed=service.saveDraft(result.getId(),new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(spoken.questionId(),1.5f,"Phát âm tốt"))),teacher);assertEquals("PENDING",reviewed.status());
+    }
+
     @Test void aiEssayScoreIsSuggestionAndTeacherMustResolve(){
         var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenReturn(new GeminiClient.GeminiGradeResponse(.8f,"AI suggestion"));
         submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));

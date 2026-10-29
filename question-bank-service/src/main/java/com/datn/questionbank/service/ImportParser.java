@@ -41,6 +41,8 @@ public final class ImportParser {
     private static final Pattern INLINE_OPTION = Pattern.compile("\\s+([B-H])\\s*[.)]\\s*(?=\\S)");
     private static final Pattern ANSWER = Pattern.compile("^(?:đáp\\s*án(?:\\s*đúng)?|dap\\s*an|đa|answer|ans)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern EXPLANATION = Pattern.compile("^(?:giải\\s*thích|lời\\s*giải|hướng\\s*dẫn(?:\\s*giải)?|explanation)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    /** Optional explicit type, needed for speaking and for essays given with a marking guide: "Loại: Nói". */
+    private static final Pattern TYPE = Pattern.compile("^(?:loại(?:\\s*câu(?:\\s*hỏi)?)?|dạng(?:\\s*câu)?|type)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern DIFFICULTY = Pattern.compile("^(?:mức\\s*độ|độ\\s*khó|difficulty)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern ANSWER_LETTERS = Pattern.compile("^([A-H])(?:\\s*(?:,|;|/|&|và|and)\\s*([A-H]))*\\s*[.)]?$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern SINGLE_LETTER = Pattern.compile("(?<!\\p{L})([A-Ha-h])(?!\\p{L})");
@@ -53,7 +55,7 @@ public final class ImportParser {
         final List<String[]> options = new ArrayList<>(); // [letter, text]
         final EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
         StringBuilder answer, explanation;
-        String difficulty;
+        String difficulty, typeHint;
         Section section = Section.CONTENT;
     }
     /** A physical line, or the tail of one split at a merged boundary; uncertain = numeric split guessed from sequence only. */
@@ -108,6 +110,7 @@ public final class ImportParser {
             }
             else if ((m = EXPLANATION.matcher(text)).matches()) { current.explanation = new StringBuilder(m.group(1).strip()); current.section = Section.EXPLANATION; }
             else if ((m = DIFFICULTY.matcher(text)).matches()) current.difficulty = m.group(1).strip();
+            else if ((m = TYPE.matcher(text)).matches()) current.typeHint = m.group(1).strip();
             else if (OPTION.matcher(text).matches() && current.section == Section.ANSWER) {
                 // Options after the answer: the next question's header was lost. Flag; the options stay with this item for review.
                 current.flags.add(Flag.POSSIBLE_MERGED_QUESTIONS);
@@ -211,7 +214,10 @@ public final class ImportParser {
         var correct = new HashSet<Integer>();
         String expected = null;
         QuestionType type;
-        if (!d.options.isEmpty()) {
+        QuestionType hinted = d.typeHint == null ? null : SheetImport.type(d.typeHint, !d.options.isEmpty());
+        String guide = null;
+        if (d.options.isEmpty() && (hinted == QuestionType.SPEAKING || hinted == QuestionType.ESSAY)) { type = hinted; guide = answer; }
+        else if (!d.options.isEmpty()) {
             type = isTrueFalse(d.options) ? QuestionType.TRUE_FALSE : QuestionType.MULTIPLE_CHOICE;
             if (d.options.size() < 2) penalty += 0.3;
             if (answer == null) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
@@ -245,6 +251,7 @@ public final class ImportParser {
         if (confidence < REVIEW_THRESHOLD) flags.add(Flag.LOW_CONFIDENCE);
         boolean review = ocr || flags.stream().anyMatch(f -> f != Flag.MISSING_CORRECT_ANSWER);
         String explanation = d.explanation == null || d.explanation.isEmpty() ? null : d.explanation.toString().strip();
+        if (guide != null) explanation = (explanation == null ? "" : explanation + "\n") + "Gợi ý chấm: " + guide;
         String raw = String.join("\n", d.lines.stream().map(Line::text).toList());
         return new Parsed(content, type, difficulty(d.difficulty, defaultDifficulty), options, expected, explanation,
                 d.lines.getFirst().page(), ocr ? SourceMethod.OCR : SourceMethod.TEXT, confidence,

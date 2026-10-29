@@ -8,6 +8,9 @@ exam:
   capacity:
     platform-limit: ${EXAM_PLATFORM_CONCURRENT_LIMIT:100}
   # Camera proctoring evidence (snapshots + recordings) on a local volume.
+  # Voice answers of speaking questions (kept with the attempt, not deleted by camera retention).
+  answer-audio:
+    storage-dir: ${ANSWER_AUDIO_DIR:${java.io.tmpdir}/examini-answer-audio}
   camera:
     storage-dir: ${CAMERA_STORAGE_DIR:${java.io.tmpdir}/examini-camera}
     events-per-minute: ${CAMERA_EVENTS_PER_MINUTE:30}

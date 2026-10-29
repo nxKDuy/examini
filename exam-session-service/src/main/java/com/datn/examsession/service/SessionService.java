@@ -61,8 +61,8 @@ public class SessionService {
             throw error(409,"Kỳ thi hiện đã đạt giới hạn người đang làm bài. Vui lòng thử lại sau.");
         var questions=new ArrayList<>(exams.safe(examId,token));
         if(questions.isEmpty())throw error(409,"Published snapshot unavailable");
-        if(exam.shuffleQuestions())Collections.shuffle(questions);
-        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position()));}
+        if(exam.shuffleQuestions()){var mixed=shuffleKeepingPassages(questions,new Random());questions.clear();questions.addAll(mixed);}
+        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position(),q.presentation()));}
         var admission=exams.claimStart(examId,reservation.admissionId(),user,token);
         Instant now=admission.startedAt();
         var s=ExamSession.builder().examId(examId).userId(user).startTime(LocalDateTime.ofInstant(now,ZoneOffset.UTC))
@@ -122,6 +122,23 @@ public class SessionService {
         examLock(examId);var existing=integrityLocks.findById(examId);existing.ifPresent(integrityLocks::delete);
         return new IntegrityLockResult(examId,false,existing.isEmpty(),0,Instant.now());
     }
+    /**
+     * Shuffles question order but keeps the questions of one reading/listening passage together, in their own order,
+     * as one block where the first of them stood.
+     */
+    static List<ExamClient.Question> shuffleKeepingPassages(List<ExamClient.Question> questions,Random random){
+        var blocks=new ArrayList<List<ExamClient.Question>>();var byPassage=new HashMap<String,List<ExamClient.Question>>();
+        for(var q:questions){
+            String key=q.passageKey();
+            if(key==null){blocks.add(new ArrayList<>(List.of(q)));continue;}
+            var block=byPassage.get(key);
+            if(block==null){block=new ArrayList<>();byPassage.put(key,block);blocks.add(block);}
+            block.add(q);
+        }
+        Collections.shuffle(blocks,random);
+        return blocks.stream().flatMap(List::stream).toList();
+    }
+
     // Do not roll back AUTO_SUBMITTED when rejecting a late answer.
     @Transactional(noRollbackFor=ResponseStatusException.class)
     public void saveAnswer(UUID sessionId,UUID userId,UUID questionId,String content){
@@ -130,6 +147,7 @@ public class SessionService {
         var q=s.getQuestions().stream().filter(v->v.questionId().equals(questionId)).findFirst().orElseThrow(()->error(400,"Question outside this exam"));
         if(content==null || content.length()>20000)throw error(400,"Invalid answer length");
         if(Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.questionType()) && !content.isEmpty() && q.options().stream().noneMatch(o->o.id().toString().equals(content)))throw error(400,"Option outside this question");
+        if("SPEAKING".equals(q.questionType()) && !content.isEmpty())throw error(400,"Speaking answers are recorded through the audio upload");
         var a=answers.findBySessionIdAndQuestionId(sessionId,questionId).orElseGet(()->SessionAnswer.builder().session(s).questionId(questionId).build());
         a.setAnswerContent(content);answers.save(a);
     }

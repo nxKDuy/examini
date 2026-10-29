@@ -3,6 +3,8 @@ jwt:
   secret: ${JWT_SECRET:}
 question-bank:
   internal-token: ${QB_INTERNAL_TOKEN:}
+  # Images and audio attached to questions.
+  media-dir: ${QB_MEDIA_DIR:${java.io.tmpdir}/examini-media}
   identity-token: ${QUESTION_BANK_IDENTITY_TOKEN:}
   # AI question generation; blank key disables it (GET /question-imports/ai/status → available=false).
   ai:

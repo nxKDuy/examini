@@ -34,6 +34,18 @@ public class QuestionImportController {
             @RequestParam(required = false) DifficultyLevel defaultDifficulty, HttpServletRequest req) {
         return service.upload(file, categoryId, defaultDifficulty, actor(req));
     }
+    /** Templates to fill in: excel = one question per row, word = the "Câu N:" text format (also for PDF). */
+    @GetMapping("/templates/{kind}")
+    public org.springframework.http.ResponseEntity<byte[]> template(@PathVariable String kind, HttpServletRequest req) {
+        actor(req);
+        boolean excel = kind.equals("excel");
+        if (!excel && !kind.equals("word")) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không có mẫu này");
+        byte[] body = excel ? com.datn.questionbank.service.ImportTemplates.excel() : com.datn.questionbank.service.ImportTemplates.word();
+        String name = excel ? "mau-nhap-cau-hoi.xlsx" : "mau-nhap-cau-hoi.docx";
+        String type = excel ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        return org.springframework.http.ResponseEntity.ok().contentType(MediaType.parseMediaType(type))
+                .header("Content-Disposition", "attachment; filename=\"" + name + "\"").body(body);
+    }
     /** AI generation (contracts/question-import.md "AI generation"): a JSON request instead of a file. */
     @GetMapping("/ai/status")
     public AiStatus aiStatus(HttpServletRequest req) { return service.aiStatus(actor(req)); }

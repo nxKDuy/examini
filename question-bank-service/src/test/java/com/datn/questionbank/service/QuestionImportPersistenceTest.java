@@ -108,6 +108,34 @@ class QuestionImportPersistenceTest {
         assertEquals(List.of("ALREADY_IMPORTED","INVALID"),imports.importItems(job.id(),new ImportRequest(null,null,true),owner).skipped().stream().map(SkippedItem::reason).toList());
     }
 
+    @Test void excelAndWordTemplatesImportEveryQuestionTypeIncludingSpeaking() throws Exception {
+        var sheet=run("mau.xlsx",ImportTemplates.excel(),category);
+        assertEquals(Status.READY,sheet.status());assertEquals(FileKind.XLSX,sheet.fileKind());
+        var rows=items(sheet.id(),ItemFilter.ALL);
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING),
+                rows.stream().map(ImportItemResponse::questionType).toList());
+        assertTrue(rows.get(0).options().get(0).correct());assertEquals(4,rows.get(0).options().size());
+        assertTrue(rows.get(1).options().get(0).correct());assertEquals("Đúng",rows.get(1).options().get(0).content());
+        assertEquals("14",rows.get(2).expectedAnswer());assertEquals(DifficultyLevel.HARD,rows.get(3).difficultyLevel());
+        assertTrue(rows.get(3).explanation().contains("Gợi ý chấm"));
+        assertTrue(rows.stream().allMatch(ImportItemResponse::valid));
+        var result=imports.importItems(sheet.id(),null,owner);assertEquals(5,result.imported().size());
+        var speaking=questionRepo.findById(result.imported().get(4).questionId()).orElseThrow();
+        assertEquals(QuestionType.SPEAKING,speaking.getQuestionType());assertEquals(120,speaking.getPresentation().maxRecordSeconds());
+
+        var word=run("mau.docx",ImportTemplates.word(),category);
+        assertEquals(Status.READY,word.status());
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING),
+                items(word.id(),ItemFilter.ALL).stream().map(ImportItemResponse::questionType).toList());
+
+        String csv="\uFEFFCâu hỏi;Loại;Độ khó;A;B;Đáp án\nMặt trời mọc ở hướng nào?;trắc nghiệm;dễ;Đông;Tây;A\nThiếu đáp án;Trắc nghiệm;;X;Y;\n";
+        var c=run("cau-hoi.csv",csv.getBytes(java.nio.charset.StandardCharsets.UTF_8),category);
+        assertEquals(FileKind.CSV,c.fileKind());
+        var csvRows=items(c.id(),ItemFilter.ALL);assertEquals(2,csvRows.size());
+        assertTrue(csvRows.get(0).valid());assertTrue(csvRows.get(1).flags().contains("MISSING_CORRECT_ANSWER"));
+        assertEquals(DifficultyLevel.MEDIUM,csvRows.get(1).difficultyLevel()); // default difficulty
+    }
+
     @Test void docxReviewEditValidateAndImportAsPersonalDraftWithAudit() throws Exception {
         var job=run("de-kiem-tra.docx",docx(TEMPLATE,true),category);
         assertEquals(Status.READY,job.status());assertEquals(FileKind.DOCX,job.fileKind());assertEquals(2,job.pageCount());
