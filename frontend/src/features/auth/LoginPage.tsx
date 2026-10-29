@@ -5,6 +5,7 @@ import { authApi } from './authApi'
 import { errorInfo } from '../../lib/errors'
 import { Field, Notice } from '../../components/ui'
 import { AuthCard } from './AuthCard'
+import GoogleSignIn from './GoogleSignIn'
 import { t, useT } from '../../lib/i18n'
 
 export default function LoginPage() {
@@ -16,14 +17,18 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const goOn = () => {
+    const from = location.state?.from
+    navigate(typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true })
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
     try {
       await authApi.login(form)
-      const from = location.state?.from
-      navigate(typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true })
+      goOn()
     } catch (err) {
       const info = errorInfo(err)
       setError(info.status === 401 ? t('Email hoặc mật khẩu không đúng.') : info.message)
@@ -55,6 +60,7 @@ export default function LoginPage() {
           <LogIn size={18} aria-hidden /> {loading ? t('Đang đăng nhập…') : t('Đăng nhập hệ thống')}
         </button>
       </form>
+      <GoogleSignIn onDone={goOn} />
     </AuthCard>
   )
 }

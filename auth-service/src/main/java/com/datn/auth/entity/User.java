@@ -31,6 +31,10 @@ public class User {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    /** Google account id ("sub") once the user has signed in with Google; null otherwise. */
+    @Column(name = "google_subject", unique = true, length = 255)
+    private String googleSubject;
+
     @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
 

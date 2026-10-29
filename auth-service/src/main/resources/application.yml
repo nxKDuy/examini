@@ -39,6 +39,9 @@ jwt:
   refresh-expiry-ms: ${JWT_REFRESH_EXPIRY_MS:604800000}
 
 auth:
+  google:
+    # OAuth 2.0 Web client id(s) from Google Cloud Console, comma separated. Blank = Google sign-in off.
+    client-ids: ${GOOGLE_CLIENT_ID:}
   bootstrap:
     email: ${AUTH_BOOTSTRAP_EMAIL:}
     password: ${AUTH_BOOTSTRAP_PASSWORD:}

@@ -32,6 +32,18 @@ public class AuthController {
         return authService.login(req);
     }
 
+    @PostMapping("/google")
+    @Operation(summary = "Đăng nhập/đăng ký bằng tài khoản Google (ID token từ Google Identity Services)")
+    public AuthResponse.TokenResponse google(@Valid @RequestBody AuthRequest.GoogleRequest req) {
+        return authService.google(req);
+    }
+
+    @GetMapping("/providers")
+    @Operation(summary = "Các cách đăng nhập đang bật")
+    public AuthResponse.ProvidersResponse providers() {
+        return authService.providers();
+    }
+
     @PostMapping("/refresh")
     @Operation(summary = "Đổi refresh token lấy access token mới")
     public AuthResponse.TokenResponse refresh(@Valid @RequestBody AuthRequest.RefreshRequest req) {

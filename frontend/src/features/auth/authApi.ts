@@ -4,6 +4,8 @@ import { pushCleanupSettled } from '../notifications/pushClient'
 
 interface LoginPayload { email: string; password: string }
 interface RegisterPayload { email: string; password: string; fullName: string; accountType: 'PERSONAL'; persona: 'STUDENT' | 'TEACHER' }
+interface GooglePayload { credential: string; persona?: 'STUDENT' | 'TEACHER' }
+export interface AuthProviders { google: boolean; googleClientId: string | null }
 let hydration: Promise<void> | null = null
 
 async function hydrate() {
@@ -19,7 +21,7 @@ async function hydrate() {
   }
 }
 
-async function authenticate(path: string, data: LoginPayload | RegisterPayload) {
+async function authenticate(path: string, data: LoginPayload | RegisterPayload | GooglePayload) {
   useAuthStore.getState().logout()
   const sessionVersion = useAuthStore.getState().sessionVersion
   try {
@@ -37,6 +39,9 @@ async function authenticate(path: string, data: LoginPayload | RegisterPayload) 
 
 export const authApi = {
   login: (data: LoginPayload) => authenticate('/auth/login', data),
+  /** Google Identity Services credential; persona only when the server asks for it (409 PERSONA_REQUIRED). */
+  google: (credential: string, persona?: 'STUDENT' | 'TEACHER') => authenticate('/auth/google', persona ? { credential, persona } : { credential }),
+  providers: () => api.get<AuthProviders>('/auth/providers').then(r => r.data),
   register: (data: RegisterPayload) => {
     if (data.accountType !== 'PERSONAL' || !['STUDENT', 'TEACHER'].includes(data.persona)) {
       return Promise.reject(new Error('Only personal Student/Teacher registration is supported'))

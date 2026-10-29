@@ -33,6 +33,12 @@ public class AuthRequest {
         public enum Persona { STUDENT, TEACHER }
     }
 
+    /** credential = Google ID token from Google Identity Services; persona only when creating a new account. */
+    public record GoogleRequest(
+            @NotBlank @Size(max = 4096) String credential,
+            RegisterRequest.Persona persona
+    ) {}
+
     public record RefreshRequest(
             @NotBlank String refreshToken
     ) {}

@@ -1869,4 +1869,13 @@ export const EN_UI: Record<string, string> = {
   'Ảnh chụp và video là bằng chứng để giám thị xem xét, không phải kết luận gian lận. Hệ thống không tự xử lý theo camera.': 'Snapshots and video are evidence for proctors to review, not a finding of cheating. The system takes no automatic action based on the camera.',
   'Ảnh lúc bắt đầu': 'Start photo',
   'Ảnh xác nhận lúc bắt đầu': 'Identity photo at start',
+  'Bạn dùng EXAMINI với vai trò nào? Có thể chọn một lần duy nhất.': 'How will you use EXAMINI? You can choose only once.',
+  'Chọn loại tài khoản': 'Choose an account type',
+  'Không tải được nút đăng nhập Google. Kiểm tra mạng hoặc trình chặn quảng cáo.': 'Could not load the Google sign-in button. Check your connection or ad blocker.',
+  'Lần đầu đăng nhập bằng Google': 'First Google sign-in',
+  'hoặc': 'or',
+  'Đang đăng nhập bằng Google…': 'Signing in with Google…',
+  'Đã đổi tài khoản': 'Account changed',
+  'Đã hiểu': 'Got it',
+  'Một tab khác vừa đăng nhập bằng tài khoản khác. Mỗi trình duyệt chỉ dùng một tài khoản, nên tab này đã chuyển sang tài khoản {0}.': 'Another tab just signed in with a different account. A browser uses one account at a time, so this tab switched to {0}.',
 }

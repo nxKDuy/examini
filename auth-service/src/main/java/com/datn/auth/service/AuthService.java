@@ -25,6 +25,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final StringRedisTemplate redis;
+    private final GoogleTokenVerifier google;
 
     private static final String REFRESH_KEY_PREFIX = "refresh:";
 
@@ -70,6 +71,45 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sai email hoặc mật khẩu");
         }
         return issueTokens(user);
+    }
+
+    /**
+     * Google Sign-In. Known Google account → sign in. Existing account with the same verified email → link and sign in.
+     * Otherwise a new personal account is created with the chosen persona (409 PERSONA_REQUIRED asks the client to choose).
+     * Google accounts get an unusable random password; privileged accounts are never created here.
+     */
+    @Transactional
+    public AuthResponse.TokenResponse google(AuthRequest.GoogleRequest req) {
+        var id = google.verify(req.credential());
+        var known = userRepository.findByGoogleSubject(id.subject());
+        if (known.isPresent()) return issueTokens(known.get());
+        if (id.email() == null || !id.emailVerified())
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email Google chưa được xác minh");
+        var byEmail = userRepository.findByEmail(id.email());
+        if (byEmail.isPresent()) {
+            User user = byEmail.get();
+            if (user.getGoogleSubject() != null && !user.getGoogleSubject().equals(id.subject()))
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Email này đã liên kết với một tài khoản Google khác");
+            user.setGoogleSubject(id.subject());
+            return issueTokens(userRepository.save(user));
+        }
+        if (req.persona() == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "PERSONA_REQUIRED");
+        User.Persona persona = User.Persona.valueOf(req.persona().name());
+        String name = id.name() == null || id.name().isBlank() ? id.email().substring(0, id.email().indexOf('@')) : id.name().strip();
+        User user = User.builder()
+                .email(id.email())
+                .passwordHash(passwordEncoder.encode(UUID.randomUUID() + ":" + UUID.randomUUID()))
+                .fullName(name.length() > 255 ? name.substring(0, 255) : name)
+                .googleSubject(id.subject())
+                .role(User.Role.valueOf(persona.name()))
+                .personalPersona(persona)
+                .systemPrivilege(User.SystemPrivilege.NONE)
+                .build();
+        return issueTokens(userRepository.save(user));
+    }
+
+    public AuthResponse.ProvidersResponse providers() {
+        return new AuthResponse.ProvidersResponse(google.enabled(), google.publicClientId());
     }
 
     public AuthResponse.TokenResponse refresh(AuthRequest.RefreshRequest req) {
