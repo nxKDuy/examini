@@ -11,10 +11,11 @@ import { errorStatus, errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib/format'
 import './import.css'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh', AI: 'Tạo bằng AI' } as const)
 
-/** Review → edit → validate → import (Personal DRAFT). Nothing is activated or published. */
+/** Review → edit → validate → import into the Personal bank, as DRAFT or activated right away. Nothing is published. */
 export default function ImportJobPage() {
   useT()
   const { id } = useParams()
@@ -25,6 +26,9 @@ export default function ImportJobPage() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [flash, setFlash] = useState<{ tone: 'success' | 'danger' | 'info'; text: string } | null>(null)
   const [discarding, setDiscarding] = useState(false)
+  // Reviewed questions usually go straight into exams: activating on import saves one click per question.
+  const [activate, setActivate] = useState(true)
+  const [resultActive, setResultActive] = useState(false)
   const job = useQuery({ queryKey: ['import-job', id], queryFn: () => importApi.job(id!), refetchInterval: q => q.state.data?.status === 'PROCESSING' ? 1500 : false })
   const ready = job.data?.status === 'READY'
   const items = useQuery({ queryKey: ['import-items', id, filter], queryFn: () => importApi.items(id!, filter, 0, 100), enabled: !!job.data && job.data.status !== 'PROCESSING' })
@@ -32,7 +36,7 @@ export default function ImportJobPage() {
   const selected = items.data?.content.find(i => i.id === selectedId) ?? null
 
   const validate = useMutation({ mutationFn: () => importApi.validate(id!), onSuccess: async s => { await refresh(); setFlash({ tone: 'info', text: t('Đã kiểm tra lại: {0}/{1} hợp lệ, {2} cần xem lại, {3} sẵn sàng nhập.', { 0: s.valid, 1: s.total, 2: s.needsReview, 3: s.importable }) }) }, onError: e => setFlash({ tone: 'danger', text: errorText(e) }) })
-  const run = useMutation({ mutationFn: () => importApi.importItems(id!), onSuccess: async r => { setResult(r); setFlash(null); await refresh(); await qc.invalidateQueries({ queryKey: ['questions'] }) }, onError: e => setFlash({ tone: 'danger', text: errorText(e) }) })
+  const run = useMutation({ mutationFn: () => importApi.importItems(id!, undefined, activate), onSuccess: async r => { setResult(r); setResultActive(activate); setFlash(null); await refresh(); await qc.invalidateQueries({ queryKey: ['questions'] }) }, onError: e => setFlash({ tone: 'danger', text: errorText(e) }) })
   const discard = useMutation({ mutationFn: () => importApi.discard(id!), onSuccess: () => navigate('/questions/imports'), onError: e => { setDiscarding(false); setFlash({ tone: 'danger', text: errorText(e) }) } })
 
   if (job.isLoading) return <LoadingState rows={5} />
@@ -51,7 +55,8 @@ export default function ImportJobPage() {
         actions={ready && <>
           <button type="button" className="btn btn-danger-ghost" onClick={() => setDiscarding(true)}><Trash2 size={16} aria-hidden /> {t('Hủy lô')}</button>
           <button type="button" className="btn btn-secondary" disabled={validate.isPending} onClick={() => validate.mutate()}><CheckCircle2 size={16} aria-hidden /> {t('Kiểm tra lại')}</button>
-          <button type="button" className="btn btn-primary" disabled={!s.importable || run.isPending} aria-busy={run.isPending} onClick={() => run.mutate()}><Plus size={16} aria-hidden /> {t('Nhập')} {s.importable} {t('câu (bản nháp)')}</button>
+          <button type="button" className="btn btn-primary" disabled={!s.importable || run.isPending} aria-busy={run.isPending} onClick={() => run.mutate()}><Plus size={16} aria-hidden /> {t('Nhập')} {s.importable} {activate ? t('câu và kích hoạt') : t('câu (bản nháp)')}</button>
+          <label className="check small" style={{ alignSelf: 'center' }}><input type="checkbox" checked={activate} onChange={e => setActivate(e.target.checked)} /> {t('Kích hoạt luôn để dùng cho đề thi')}</label>
         </>} />
 
       {j.status === 'PROCESSING' && <Notice tone="info" live title={ai ? t('AI đang soạn câu hỏi') : t('Đang xử lý tài liệu')}><span className="row" style={{ gap: 8 }}><Spinner size={14} /> {ai ? t('Thường mất 10–60 giây. Trang tự cập nhật khi xong.') : t('Đang đọc chữ và tách câu hỏi. Trang tự cập nhật khi xong.')}</span></Notice>}
@@ -62,9 +67,11 @@ export default function ImportJobPage() {
       {j.status === 'DISCARDED' && <Notice tone="warning">{t('Lô này đã bị hủy; các câu đã nhập trước đó vẫn giữ trong kho.')}</Notice>}
       {j.warnings.length > 0 && <Notice tone="warning" title={ai ? t('Lưu ý từ AI') : t('Lưu ý khi đọc tài liệu')}><ul style={{ margin: 0, paddingLeft: 18 }}>{j.warnings.map(w => <li key={w} className="small">{w}</li>)}</ul></Notice>}
       {flash && <Notice tone={flash.tone} live>{flash.text}</Notice>}
-      {result && <Notice tone="success" live title={t('Đã nhập {0} câu vào Kho cá nhân dưới dạng bản nháp', { 0: result.imported.length })}
+      {result && <Notice tone="success" live title={resultActive
+          ? t('Đã nhập và kích hoạt {0} câu; có thể dùng ngay cho đề thi', { 0: result.imported.length })
+          : t('Đã nhập {0} câu vào Kho cá nhân dưới dạng bản nháp', { 0: result.imported.length })}
         action={<Link className="btn btn-secondary btn-sm" to="/questions">{t('Mở Kho cá nhân')}</Link>}>
-        {t('Câu chưa được kích hoạt hay công khai; kích hoạt từng câu khi đã sẵn sàng.')}{result.skipped.length ? t(' {0} câu bỏ qua (chưa hợp lệ, cần xem lại hoặc đã loại).', { 0: result.skipped.length }) : ''}</Notice>}
+        {resultActive ? t('Câu đã sẵn sàng trong Kho cá nhân và chưa công khai.') : t('Câu chưa được kích hoạt hay công khai; kích hoạt từng câu khi đã sẵn sàng.')}{result.skipped.length ? t(' {0} câu bỏ qua (chưa hợp lệ, cần xem lại hoặc đã loại).', { 0: result.skipped.length }) : ''}</Notice>}
 
       {j.status !== 'PROCESSING' && <>
         <div className="tabs" role="tablist" aria-label={t('Lọc câu')}>
@@ -144,8 +151,8 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
         <fieldset className="stack" disabled={!editable || save.isPending} style={{ border: 0, padding: 0, margin: 0 }}>
           <Field label={t('Nội dung câu hỏi')} htmlFor="imp-content" required><textarea id="imp-content" className="input" rows={4} value={d.content} onChange={e => setD({ ...d, content: e.target.value })} /></Field>
           <div className="grid-2">
-            <Field label={t('Loại')} htmlFor="imp-type"><select id="imp-type" className="input" value={d.questionType} onChange={e => setD({ ...d, questionType: e.target.value as Draft['questionType'] })}>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-            <Field label={t('Độ khó')} htmlFor="imp-diff"><select id="imp-diff" className="input" value={d.difficultyLevel} onChange={e => setD({ ...d, difficultyLevel: e.target.value as Draft['difficultyLevel'] })}>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+            <Field label={t('Loại')} htmlFor="imp-type"><Select id="imp-type" className="input" value={d.questionType} onChange={e => setD({ ...d, questionType: e.target.value as Draft['questionType'] })}>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
+            <Field label={t('Độ khó')} htmlFor="imp-diff"><Select id="imp-diff" className="input" value={d.difficultyLevel} onChange={e => setD({ ...d, difficultyLevel: e.target.value as Draft['difficultyLevel'] })}>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
           </div>
           <div className="grid-2"><SubjectCategoryFields subjectId={subjectId} categoryId={d.categoryId} onSubject={setSubjectId} onCategory={id => setD(x => ({ ...x, categoryId: id }))} required /></div>
           {choice && <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>

@@ -9,6 +9,7 @@ import { Field, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 /** Upload step: file + optional default category/difficulty; processing continues on the job page. */
 export default function ImportUploadDialog({ onClose }: { onClose: () => void }) {
@@ -43,9 +44,9 @@ export default function ImportUploadDialog({ onClose }: { onClose: () => void })
         </div>
         <p className="xsmall muted">{t('Danh mục áp dụng cho mọi câu trong lô (sửa được từng câu). Bỏ trống thì câu chưa hợp lệ cho đến khi bạn chọn danh mục.')}</p>
         <Field label={t('Độ khó mặc định')} htmlFor="import-diff" hint={t('Dùng khi tài liệu không ghi “Mức độ”.')}>
-          <select id="import-diff" className="input" style={{ maxWidth: 220 }} value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}>
+          <Select id="import-diff" className="input" style={{ maxWidth: 220 }} value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}>
             {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
     </Dialog>

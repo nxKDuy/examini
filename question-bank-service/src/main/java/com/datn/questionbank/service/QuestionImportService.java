@@ -285,6 +285,7 @@ public class QuestionImportService {
         var byId = new LinkedHashMap<UUID, QuestionImportItem>(); all.forEach(i -> byId.put(i.getId(), i));
         var wanted = request == null || request.itemIds() == null ? new ArrayList<>(byId.keySet()) : new ArrayList<>(new LinkedHashSet<>(request.itemIds()));
         var imported = new ArrayList<ImportedItem>(); var skipped = new ArrayList<SkippedItem>();
+        boolean activate = request != null && Boolean.TRUE.equals(request.activate());
         var now = LocalDateTime.now();
         for (UUID itemId : wanted) {
             var item = byId.get(itemId);
@@ -304,12 +305,13 @@ public class QuestionImportService {
                     item.getExpectedAnswer(), QuestionScope.PERSONAL, sourceType, (aiJob ? "ai:" : "import:") + job.getId() + ":" + item.getId(),
                     truncate(label, 500), null, item.getRawText(), item.getExplanation()), bankId, actor,
                     aiJob ? CreationMethod.AI_GENERATED : CreationMethod.IMPORT);
+            if (activate) created = questions.activate(created.id(), created.questionVersion(), actor);
             item.setImportedQuestionId(created.id()); item.setImportedAt(now);
             imported.add(new ImportedItem(item.getId(), created.id()));
         }
         items.flush();
         job.setUpdatedAt(now);
-        event(job.getId(), null, actor.userId(), "IMPORTED", Map.of("bankId", bankId, "imported", imported, "skipped", skipped));
+        event(job.getId(), null, actor.userId(), "IMPORTED", Map.of("bankId", bankId, "imported", imported, "skipped", skipped, "activated", activate));
         return new ImportJobResult(imported, skipped, summary(all));
     }
 

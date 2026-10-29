@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { Question } from '../question-bank/questionApi'
+import { questionBankApi, type Question } from '../question-bank/questionApi'
+import QuestionEditor from '../question-bank/QuestionEditor'
+import { activateMany, canActivate } from '../question-bank/bulkActivate'
+import { Plus } from 'lucide-react'
 import { bankApi, type EligibleFilters, type SetEligibleItems } from '../banks/bankApi'
 import { BANK_TYPE_LABEL } from '../banks/bankModel'
 import SubjectCategoryFields from '../question-bank/SubjectCategoryFields'
@@ -11,8 +14,9 @@ import { EmptyState, ErrorState, LoadingState, Notice, Pagination } from '../../
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
-type Mode = 'filter' | 'set'
+type Mode = 'filter' | 'set' | 'drafts'
 type Flash = { tone: 'info' | 'warning' | 'danger'; text: string } | null
 
 /**
@@ -26,6 +30,7 @@ export default function QuestionPicker({ excluded, onAdd, onClose }: { excluded:
   const [known, setKnown] = useState<Map<string, Question>>(new Map())
   const [flash, setFlash] = useState<Flash>(null)
   const [busy, setBusy] = useState(false)
+  const [creating, setCreating] = useState(false)
   const room = Math.max(0, MAX_EXAM_QUESTIONS - excluded.length - order.length)
 
   function add(qs: Question[]) {
@@ -59,12 +64,15 @@ export default function QuestionPicker({ excluded, onAdd, onClose }: { excluded:
         <div className="tabs" role="tablist" aria-label={t('Nguồn câu hỏi')}>
           <button type="button" role="tab" className="tab" aria-selected={mode === 'filter'} onClick={() => setMode('filter')}>{t('Lọc câu hỏi')}</button>
           <button type="button" role="tab" className="tab" aria-selected={mode === 'set'} onClick={() => setMode('set')}>{t('Từ bộ câu hỏi')}</button>
+          <button type="button" role="tab" className="tab" aria-selected={mode === 'drafts'} onClick={() => setMode('drafts')}>{t('Câu nháp của tôi')}</button>
+          <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: 'center', marginLeft: 8 }} onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> {t('Tạo câu mới')}</button>
           <span className="small muted" style={{ marginLeft: 'auto', alignSelf: 'center', paddingRight: 8 }}>{t('Lựa chọn giữ nguyên khi đổi trang, bộ lọc hoặc nguồn')}</span>
         </div>
         {flash && <Notice tone={flash.tone} live>{flash.text}</Notice>}
         {mode === 'filter'
           ? <FilterSource excluded={excluded} order={order} busy={busy} setBusy={setBusy} onToggle={toggle} onAdd={add} onReport={report} onRemove={remove} onError={text => setFlash({ tone: 'danger', text })} />
-          : <SetSource excluded={excluded} order={order} onAdd={add} onReport={report} />}
+          : mode === 'set' ? <SetSource excluded={excluded} order={order} onAdd={add} onReport={report} />
+          : <DraftSource busy={busy} setBusy={setBusy} onAdd={add} onReport={report} onError={text => setFlash({ tone: 'danger', text })} />}
         {order.length > 0 && <details>
           <summary className="field-label" style={{ cursor: 'pointer' }}>{t('Xem {n} câu đã chọn (chưa thêm vào đề)', { n: order.length })}</summary>
           <ol className="stack-sm" style={{ margin: '10px 0 0', paddingLeft: 22 }}>
@@ -73,8 +81,50 @@ export default function QuestionPicker({ excluded, onAdd, onClose }: { excluded:
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOrder([])}>{t('Bỏ chọn tất cả')}</button>
         </details>}
       </div>
+      {creating && <QuestionEditor activateOnly onClose={() => setCreating(false)}
+        onSaved={q => { setCreating(false); report(add([q])) }} />}
     </Dialog>
   )
+}
+
+/** The actor's own DRAFT questions: activate (no review needed) and select in one step. */
+function DraftSource({ busy, setBusy, onAdd, onReport, onError }: {
+  busy: boolean; setBusy: (b: boolean) => void; onAdd: (qs: Question[]) => ReturnType<typeof addToSelection>
+  onReport: (r: ReturnType<typeof addToSelection>, extra?: string) => void; onError: (text: string) => void
+}) {
+  const userId = useAuthStore(s => s.user?.id)
+  const [page, setPage] = useState(0)
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const list = useQuery({ queryKey: ['questions', 'own-drafts', userId, page], queryFn: () => questionBankApi.getQuestions({ status: 'DRAFT', page, size: 10 }), placeholderData: prev => prev })
+  const rows = (list.data?.content ?? []).filter(q => canActivate(q, userId))
+  const picked = rows.filter(q => checked.has(q.id))
+  async function activateAndSelect() {
+    setBusy(true)
+    try {
+      const done: Question[] = []
+      const r = await activateMany(picked, async (id, version) => { done.push(await bankApi.activate(id, version)) }, errorText)
+      setChecked(new Set(r.failed.map(f => f.id)))
+      await list.refetch()
+      onReport(onAdd(done), r.failed.length ? t('{n} câu chưa kích hoạt được: {why}', { n: r.failed.length, why: r.failed.map(f => f.reason).join('; ') }) : '')
+    } catch (e) { onError(errorText(e)) } finally { setBusy(false) }
+  }
+  if (list.isLoading) return <LoadingState rows={3} />
+  if (list.isError) return <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+  if (!rows.length) return <EmptyState title={t('Không có câu nháp nào')} description={t('Câu nhập từ tài liệu, do AI tạo hoặc lưu bản nháp sẽ hiện ở đây để kích hoạt và chọn ngay.')} />
+  return <>
+    <div className="row" style={{ justifyContent: 'space-between' }}>
+      <label className="check small"><input type="checkbox" checked={picked.length === rows.length} onChange={e => setChecked(e.target.checked ? new Set(rows.map(q => q.id)) : new Set())} /> {t('Chọn tất cả trên trang')}</label>
+      <button type="button" className="btn btn-primary btn-sm" disabled={!picked.length || busy} aria-busy={busy} onClick={() => void activateAndSelect()}>{t('Kích hoạt và chọn {n} câu', { n: picked.length })}</button>
+    </div>
+    <ul className="stack-sm" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      {rows.map(q => <li key={q.id}><label className="choice" style={{ alignItems: 'flex-start' }}>
+        <input type="checkbox" checked={checked.has(q.id)} onChange={e => setChecked(prev => { const n = new Set(prev); if (e.target.checked) n.add(q.id); else n.delete(q.id); return n })} />
+        <span className="stack-sm" style={{ gap: 2 }}><span className="small truncate-2">{q.content}</span>
+          <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {DIFFICULTY_LABEL[q.difficultyLevel]} · {q.categoryName}</span></span>
+      </label></li>)}
+    </ul>
+    {list.data && list.data.totalPages > 1 && <Pagination label={t('Phân trang câu nháp')} page={page} totalPages={list.data.totalPages} onChange={setPage} />}
+  </>
 }
 
 function FilterSource({ excluded, order, busy, setBusy, onToggle, onAdd, onReport, onRemove, onError }: {
@@ -107,20 +157,20 @@ function FilterSource({ excluded, order, busy, setBusy, onToggle, onAdd, onRepor
   return <>
     <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))' }}>
       <div className="field"><label className="field-label" htmlFor="pick-bank">{t('Ngân hàng')}</label>
-        <select id="pick-bank" className="input" value={f.bankId ?? ''} onChange={e => set({ bankId: e.target.value || undefined })}>
+        <Select id="pick-bank" className="input" value={f.bankId ?? ''} onChange={e => set({ bankId: e.target.value || undefined })}>
           <option value="">{t('Tất cả ngân hàng dùng được')}</option>
           {(banks.data ?? []).map(b => <option key={b.id} value={b.id}>{BANK_TYPE_LABEL[b.type]} · {b.name}</option>)}
-        </select></div>
+        </Select></div>
       <SubjectCategoryFields subjectId={subjectId} categoryId={f.categoryId ?? ''} allowAll
         onSubject={id => { setSubjectId(id); set({ categoryId: undefined }) }} onCategory={id => set({ categoryId: id || undefined })} />
       <div className="field"><label className="field-label" htmlFor="pick-type">{t('Loại')}</label>
-        <select id="pick-type" className="input" value={f.questionType ?? ''} onChange={e => set({ questionType: e.target.value || undefined })}>
+        <Select id="pick-type" className="input" value={f.questionType ?? ''} onChange={e => set({ questionType: e.target.value || undefined })}>
           <option value="">{t('Tất cả loại')}</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-        </select></div>
+        </Select></div>
       <div className="field"><label className="field-label" htmlFor="pick-diff">{t('Độ khó')}</label>
-        <select id="pick-diff" className="input" value={f.difficulty ?? ''} onChange={e => set({ difficulty: e.target.value || undefined })}>
+        <Select id="pick-diff" className="input" value={f.difficulty ?? ''} onChange={e => set({ difficulty: e.target.value || undefined })}>
           <option value="">{t('Tất cả độ khó')}</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-        </select></div>
+        </Select></div>
     </div>
     <form className="input-group" onSubmit={e => { e.preventDefault(); set({ text: text.trim() || undefined }) }}>
       <input className="input" type="search" maxLength={200} aria-label={t('Tìm trong nội dung')} placeholder={t('Tìm trong nội dung câu hỏi')} value={text} onChange={e => setText(e.target.value)} />
@@ -157,10 +207,10 @@ function SetSource({ excluded, order, onAdd, onReport }: {
 
   return <>
     <div className="field"><label className="field-label" htmlFor="pick-set">{t('Bộ câu hỏi của bạn')}</label>
-      <select id="pick-set" className="input" value={setId} onChange={e => setSetId(e.target.value)}>
+      <Select id="pick-set" className="input" value={setId} onChange={e => setSetId(e.target.value)}>
         <option value="">{t('Chọn một bộ…')}</option>
         {(sets.data?.content ?? []).map(s => <option key={s.id} value={s.id}>{s.title} · {t('{n} câu', { n: s.items.length })}</option>)}
-      </select></div>
+      </Select></div>
     {sets.isError && <ErrorState error={sets.error} onRetry={() => void sets.refetch()} />}
     {sets.data && !sets.data.content.length && <EmptyState title={t('Chưa có bộ câu hỏi đang dùng')} description={t('Tạo bộ ở Kho cá nhân → Bộ câu hỏi.')} />}
     {setId && (items.isLoading ? <LoadingState rows={3} /> : items.isError ? <ErrorState error={items.error} onRetry={() => void items.refetch()} /> : data && <>

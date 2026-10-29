@@ -6,6 +6,7 @@ import { examApi } from '../exams/examApi'
 import { EXAM_STATUS } from '../../components/statusDefs'
 import ScheduleDialog from './ScheduleDialog'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 /** "Đặt lịch cho đề": choose one of your Exams, then open the same schedule form used everywhere else. */
 export default function ScheduleExamPicker({ onClose }: { onClose: () => void }) {
@@ -21,10 +22,10 @@ export default function ScheduleExamPicker({ onClose }: { onClose: () => void })
         : editable.length === 0 ? <EmptyState title={t('Chưa có đề thi để đặt lịch')} description={t('Tạo đề thi ở mục Đề thi, sau đó quay lại đây hoặc dùng tab Lịch trong trang đề.')} />
         : (
           <Field label={t('Đề thi')} htmlFor="pick-exam">
-            <select id="pick-exam" className="input" value={pickedId} onChange={e => setPickedId(e.target.value)} data-autofocus>
+            <Select id="pick-exam" className="input" value={pickedId} onChange={e => setPickedId(e.target.value)} data-autofocus>
               <option value="">{t('Chọn đề thi')}</option>
               {editable.map(e => <option key={e.id} value={e.id}>{e.title} ({EXAM_STATUS[e.status]?.label ?? e.status}){e.startTime || e.endTime ? t(' · đã có lịch') : ''}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
     </Dialog>

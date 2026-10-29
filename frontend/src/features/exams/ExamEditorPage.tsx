@@ -19,6 +19,7 @@ import { DISABLED_POLICY, NEW_EXAM_POLICY, counts, limitError, policySummary } f
 import { EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, DIFFICULTY_LABEL, EXAM_TYPE_LABEL, QUESTION_TYPE_LABEL, formatScore, shortId } from '../../lib/format'
+import Select from '../../components/Select'
 
 interface Info {
   title: string; description: string; type: 'PRACTICE' | 'EXAM'; durationMinutes: number; passingScore: string
@@ -160,9 +161,9 @@ function Editor({ exam }: { exam?: Exam }) {
           </Field>
           <div className="grid-2">
             <Field label={t('Loại đề')} htmlFor="exam-type">
-              <select id="exam-type" className="input" value={info.type} onChange={e => setInfo({ ...info, type: e.target.value as Info['type'] })}>
+              <Select id="exam-type" className="input" value={info.type} onChange={e => setInfo({ ...info, type: e.target.value as Info['type'] })}>
                 {Object.entries(EXAM_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label={t('Thời lượng (phút)')} htmlFor="exam-duration" required hint={t('Thời gian tính từ lúc thí sinh bắt đầu; máy chủ kiểm soát hết giờ.')}>
               <input id="exam-duration" type="number" min={1} step={1} className="input" value={info.durationMinutes || ''} onChange={e => setInfo({ ...info, durationMinutes: Math.floor(Number(e.target.value)) })} />

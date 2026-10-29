@@ -98,6 +98,16 @@ class QuestionImportPersistenceTest {
     List<ImportItemResponse> items(UUID job,ItemFilter filter){return imports.items(job,filter,PageRequest.of(0,100),owner).getContent();}
     static boolean tesseract(){try{return new ProcessBuilder("tesseract","--version").start().waitFor()==0;}catch(Exception e){return false;}}
 
+    @Test void importCanActivateRightAwayWithoutReview() throws Exception {
+        var job=run("kich-hoat.docx",docx(TEMPLATE,false),category);
+        var ready=items(job.id(),ItemFilter.IMPORTABLE);assertEquals(1,ready.size());
+        var result=imports.importItems(job.id(),new ImportRequest(List.of(ready.getFirst().id()),null,true),owner);
+        var q=questionRepo.findById(result.imported().getFirst().questionId()).orElseThrow();
+        assertEquals(QuestionStatus.ACTIVE,q.getStatus());assertEquals(CreationMethod.IMPORT,q.getCreationMethod());
+        // Invalid items are still never imported, activated or not.
+        assertEquals(List.of("ALREADY_IMPORTED","INVALID"),imports.importItems(job.id(),new ImportRequest(null,null,true),owner).skipped().stream().map(SkippedItem::reason).toList());
+    }
+
     @Test void docxReviewEditValidateAndImportAsPersonalDraftWithAudit() throws Exception {
         var job=run("de-kiem-tra.docx",docx(TEMPLATE,true),category);
         assertEquals(Status.READY,job.status());assertEquals(FileKind.DOCX,job.fileKind());assertEquals(2,job.pageCount());
@@ -126,7 +136,7 @@ class QuestionImportPersistenceTest {
         assertEquals("de-kiem-tra.docx · trang 2",created.getSourceLabel());assertEquals("import:"+job.id()+":"+second.id(),created.getSourceRefId());
         assertEquals(DifficultyLevel.HARD,created.getDifficultyLevel());assertEquals("2 chỉ chia hết cho 1 và 2",created.getExplanation());
         assertEquals(owner.userId(),created.getCreatedBy());
-        var again=imports.importItems(job.id(),new ImportRequest(List.of(second.id(),UUID.randomUUID()),null),owner);
+        var again=imports.importItems(job.id(),new ImportRequest(List.of(second.id(),UUID.randomUUID()),null,null),owner);
         assertEquals(List.of("ALREADY_IMPORTED","NOT_IN_JOB"),again.skipped().stream().map(SkippedItem::reason).toList());
         assertEquals(409,fails(()->imports.update(job.id(),second.id(),new ItemUpdate(fixed.version()+1,"x",null,null,null,null,null,null,null,null),owner)));
         var actions=jdbc.queryForList("SELECT action FROM question_import_events WHERE job_id=:job ORDER BY id",new MapSqlParameterSource("job",job.id()),String.class);

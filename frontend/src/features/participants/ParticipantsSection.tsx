@@ -10,6 +10,7 @@ import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, Pagination 
 import { formatDateTime } from '../../lib/format'
 import { useIsNarrow } from '../../lib/hooks'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const STATUS = i18nMap([{ value: 'ACTIVE', label: 'Đủ điều kiện' }, { value: 'REVOKED', label: 'Lịch sử: đã gỡ' }, { value: '', label: 'Tất cả' }])
@@ -50,10 +51,10 @@ export default function ParticipantsSection({ examId, examStatus, maxParticipant
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div className="row">
           <label className="row small" style={{ gap: 6 }}>{t('Trạng thái')}
-            <select className="input" value={status} onChange={e => reset(() => setStatus(e.target.value))} style={{ width: 'auto' }}>{STATUS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
+            <Select className="input" value={status} onChange={e => reset(() => setStatus(e.target.value))} style={{ width: 'auto' }}>{STATUS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</Select></label>
           <label className="row small" style={{ gap: 6 }}>{t('Nguồn')}
-            <select className="input" value={source} onChange={e => reset(() => setSource(e.target.value))} style={{ width: 'auto' }}>
-              <option value="">{t('Tất cả')}</option>{Object.entries(SOURCE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+            <Select className="input" value={source} onChange={e => reset(() => setSource(e.target.value))} style={{ width: 'auto' }}>
+              <option value="">{t('Tất cả')}</option>{Object.entries(SOURCE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></label>
         </div>
         {canAddParticipants(manage, examStatus) && <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}><UserPlus size={16} aria-hidden /> {t('Thêm thí sinh')}</button>}
       </div>

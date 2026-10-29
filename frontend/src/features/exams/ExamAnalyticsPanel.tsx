@@ -7,6 +7,7 @@ import { Badge, EmptyState, ErrorState, LoadingState, Section } from '../../comp
 import { formatDateTime, formatScore, shortId } from '../../lib/format'
 import './analytics.css'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const PAGE_SIZE = 20
 
@@ -47,9 +48,9 @@ export default function ExamAnalyticsPanel({ examId, actorId }: { examId: string
     </Section>
 
     <Section title={t('Kết quả Student')} description={t('Mỗi Student một dòng (chỉ lượt hợp lệ); mở dòng để xem từng lượt. Chưa có tên hiển thị nên dùng mã rút gọn.')}>
-      <div className="analytics-result-filters"><label htmlFor="analytics-status">{t('Trạng thái mới nhất')}</label><select id="analytics-status" className="input" value={status} onChange={e => setStatus(e.target.value as AnalyticsStatus | '')}>
+      <div className="analytics-result-filters"><label htmlFor="analytics-status">{t('Trạng thái mới nhất')}</label><Select id="analytics-status" className="input" value={status} onChange={e => setStatus(e.target.value as AnalyticsStatus | '')}>
         {STUDENT_FILTERS.map(v => <option key={v || 'ALL'} value={v}>{analyticsStatusLabel[v || 'ALL']}</option>)}
-      </select>{students.data && <span className="small muted">{students.data.totalElements} {t('Student · lọc áp dụng cho trang đang xem')}</span>}</div>
+      </Select>{students.data && <span className="small muted">{students.data.totalElements} {t('Student · lọc áp dụng cho trang đang xem')}</span>}</div>
       {students.isLoading ? <LoadingState rows={4} /> : students.isError ? <ErrorState error={students.error} onRetry={() => void students.refetch()} /> : !rows.length ? <EmptyState title={t('Không có Student phù hợp')} description={t('Thử trạng thái khác hoặc quay lại khi có bài nộp.')} /> : <>
         <div className="table-wrap"><table className="table analytics-table"><thead><tr><th scope="col">Student</th><th scope="col">{t('Đã nộp')}</th><th scope="col">{t('Đã chấm')}</th><th scope="col">{t('Cần chấm')}</th><th scope="col">{t('Chờ')}</th><th scope="col">{t('Mới nhất')}</th><th scope="col">{t('Nộp lúc')}</th><th scope="col">{t('Chi tiết')}</th></tr></thead>
           <tbody>{rows.map(r => <Fragment key={r.candidateId}>

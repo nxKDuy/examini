@@ -58,7 +58,8 @@ export function i18nMap<T extends object>(source: T): T {
       const v = Reflect.get(target, key, receiver)
       if (typeof v === 'string') return t(v)
       // Only plain objects and arrays are wrapped; RegExp, Date, Map and class instances are returned as they are.
-      if (v && typeof v === 'object' && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype)) return i18nMap(v as object)
+      // React elements (icons in status maps) are plain objects too, but frozen in development: never proxy them.
+      if (v && typeof v === 'object' && !('$$typeof' in v) && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype)) return i18nMap(v as object)
       return v
     },
   }) as T

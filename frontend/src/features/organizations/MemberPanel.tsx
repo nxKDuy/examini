@@ -9,6 +9,7 @@ import { Badge, Field, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { formatDateTime } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const fromMember = (m: Member): MemberEdit => ({ role: m.role, canReview: m.canReview })
 
@@ -87,9 +88,9 @@ export default function MemberPanel({ org, member, narrow, onClose, onReload }: 
           {abilities.note && <p className="xsmall muted">{abilities.note}</p>}
           {abilities.changeRole && (
             <Field label={t('Vai trò')} htmlFor="member-role">
-              <select id="member-role" className="input" value={edit.role} disabled={busy} onChange={e => setEdit({ role: e.target.value as InviteRole, canReview: e.target.value === 'MEMBER' ? edit.canReview : false })}>
+              <Select id="member-role" className="input" value={edit.role} disabled={busy} onChange={e => setEdit({ role: e.target.value as InviteRole, canReview: e.target.value === 'MEMBER' ? edit.canReview : false })}>
                 <option value="MEMBER">{ROLE_LABEL.MEMBER}</option><option value="ADMIN">{ROLE_LABEL.ADMIN}</option>
-              </select>
+              </Select>
             </Field>
           )}
           {abilities.toggleReview && isMemberRole && (

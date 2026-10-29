@@ -10,6 +10,7 @@ import { Field, Notice, Spinner } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY']
 
@@ -83,16 +84,16 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
               <input id="ai-count" type="number" className="input" min={1} max={max} value={count} onChange={e => setCount(Number(e.target.value))} />
             </Field>
             <Field label={t('Độ khó mong muốn')} htmlFor="ai-diff" hint={t('AI ước lượng lại độ khó từng câu; bạn sửa được khi xem lại.')}>
-              <select id="ai-diff" className="input" value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}>
+              <Select id="ai-diff" className="input" value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}>
                 {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <div className="grid-2">
             <Field label={t('Ngôn ngữ câu hỏi')} htmlFor="ai-lang">
-              <select id="ai-lang" className="input" value={language} onChange={e => setLanguage(e.target.value as 'vi' | 'en')}>
+              <Select id="ai-lang" className="input" value={language} onChange={e => setLanguage(e.target.value as 'vi' | 'en')}>
                 <option value="vi">Tiếng Việt</option><option value="en">English</option>
-              </select>
+              </Select>
             </Field>
             <label className="check small" style={{ alignSelf: 'end', paddingBottom: 10 }}>
               <input type="checkbox" checked={useBank} onChange={e => setUseBank(e.target.checked)} /> {t('Dùng câu hỏi sẵn có trong danh mục làm mẫu')}

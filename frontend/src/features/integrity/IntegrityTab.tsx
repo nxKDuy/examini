@@ -10,6 +10,7 @@ import { useIsNarrow } from '../../lib/hooks'
 import { formatDateTime, shortId } from '../../lib/format'
 import '../participants/participants.css'
 import { t as tt, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const TYPES = Object.keys(SIGNAL_LABEL) as SignalType[]
 
@@ -38,9 +39,9 @@ export default function IntegrityTab({ examId, policy, manage, live }: { examId:
         actions={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void events.refetch()} disabled={events.isFetching}><RefreshCw size={14} aria-hidden /> {tt('Làm mới')}</button>}>
         <div className="card-body filter-row">
           <label className="field"><span className="field-label">{tt('Loại tín hiệu')}</span>
-            <select className="input" value={type} onChange={e => { setType(e.target.value as SignalType | ''); setPage(0) }}>
+            <Select className="input" value={type} onChange={e => { setType(e.target.value as SignalType | ''); setPage(0) }}>
               <option value="">{tt('Tất cả')}</option>{TYPES.map(t => <option key={t} value={t}>{SIGNAL_LABEL[t]}</option>)}
-            </select></label>
+            </Select></label>
           <label className="field filter-grow"><span className="field-label">{tt('Thí sinh (mã)')}</span>
             <input className="input" type="search" value={student} placeholder={tt('Nhập đầu mã người dùng')} onChange={e => setStudent(e.target.value)} /></label>
         </div>
