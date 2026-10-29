@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, Copy, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import BlockingOverlay from '../integrity/BlockingOverlay'
 import { exitFullscreen } from '../../lib/fullscreen'
 import { useT, t as tt, locale } from '../../lib/i18n'
@@ -239,7 +239,7 @@ export default function StudentExamPage() {
   const errors = states.filter(s => s === 'error').length
   const busy = states.some(s => s === 'saving' || s === 'pending')
   const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
-  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack
+  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack || integrity.duplicate
   const locked = expired || submitting || blocked
   const lastLine = signals?.stage === 'last' ? <p><strong>{t('Thêm một tín hiệu nữa, bài sẽ được tự động nộp.')}</strong></p> : null
   const countLine = signals ? <p><strong>{t('Đã ghi nhận {count}/{limit} tín hiệu rời khỏi bài.', { count: signals.count, limit: signals.limit })}</strong></p> : null
@@ -262,8 +262,9 @@ export default function StudentExamPage() {
 
       {/* Questions render only while not blocked (fullscreen active, leave acknowledged): contract A. */}
       {!blocked && <>
-      <div className="take-body">
+      <div className={`take-body${integrity.noCopy ? ' no-copy' : ''}`}>
         <main className="stack">
+          {integrity.fullscreenUnavailable && <Notice tone="warning" title={t('Thiết bị không hỗ trợ toàn màn hình')}>{t('Bạn vẫn làm bài bình thường. Hệ thống ghi nhận mỗi lần bạn rời trang, chuyển ứng dụng hoặc chuyển tab.')}</Notice>}
           {expired && <Notice tone="warning" live title={t('Đã hết giờ')}>{t('Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.')}</Notice>}
           {!online && <Notice tone="warning" live title={t('Mất kết nối')}>{t('Câu trả lời sẽ được lưu khi có mạng lại. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở.')}</Notice>}
           {actionError && <Notice tone="danger" live>{actionError}</Notice>}
@@ -311,14 +312,13 @@ export default function StudentExamPage() {
       </div>
       </>}
 
-      {integrity.needsFullscreen && !integrity.supported && (
-        <BlockingOverlay title={t('Trình duyệt không hỗ trợ toàn màn hình')} remaining={remaining}
-          actions={<button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`)}>{t('Về phòng chờ')}</button>}>
-          <p>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy mở bài bằng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari).')}</p>
-          {neutral}
+      {integrity.duplicate && (
+        <BlockingOverlay title={t('Bài thi đang mở ở tab khác')} remaining={remaining}
+          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.takeOver}><Copy size={16} aria-hidden /> {t('Làm bài ở tab này')}</button>}>
+          <p>{t('Mỗi lượt làm bài chỉ được mở ở một tab. Tab kia sẽ bị khóa nếu bạn chọn tiếp tục ở đây.')}</p>
         </BlockingOverlay>
       )}
-      {integrity.needsFullscreen && integrity.supported && (
+      {!integrity.duplicate && integrity.needsFullscreen && (
         <BlockingOverlay title={t(wasFullscreen.current ? 'Bạn đã thoát toàn màn hình' : 'Bật toàn màn hình để làm bài')} remaining={remaining}
           actions={<button type="button" className="btn btn-primary" data-autofocus onClick={() => void backToFullscreen()}><Maximize size={16} aria-hidden /> {t('Quay lại toàn màn hình')}</button>}>
           <p>{t('Kỳ thi yêu cầu làm bài ở chế độ toàn màn hình. Câu hỏi được ẩn và không sửa được câu trả lời cho đến khi bạn quay lại.')}</p>
@@ -327,7 +327,7 @@ export default function StudentExamPage() {
           {neutral}
         </BlockingOverlay>
       )}
-      {!integrity.needsFullscreen && integrity.ack && (
+      {!integrity.duplicate && !integrity.needsFullscreen && integrity.ack && (
         <BlockingOverlay title={t('Bạn vừa rời khỏi trang làm bài')} remaining={remaining}
           actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.acknowledge}>{t('Tôi đã hiểu')}</button>}>
           {countLine ?? <p>{t('Đang ghi nhận tín hiệu…')}</p>}{lastLine}

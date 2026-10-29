@@ -318,6 +318,8 @@ a.stat:hover { background: var(--color-subtle); }
 .take-bar { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 14px; padding: 10px 24px; min-height: 64px; flex-wrap: wrap; }
 .take-body { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 28px 24px 56px; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 270px; align-items: start; }
 @media (max-width: 900px) { .take-body { grid-template-columns: minmax(0, 1fr); padding: 16px 12px 40px; } }
+/* Copy monitoring: question text cannot be selected (answer fields stay editable). */
+.take-body.no-copy .question-text, .take-body.no-copy .palette, .take-body.no-copy label { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .timer { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid #000; font-size: 1.5rem; line-height: 1.2;
   font-variant-numeric: tabular-nums lining-nums; color: #000; background: #fff; }
 .timer[data-level="warn"] { background: var(--color-subtle); border-style: dashed; }

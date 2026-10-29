@@ -27,10 +27,10 @@ export const SIGNAL_LABEL: Record<SignalType, string> = i18nMap({
 export const MONITORS: { key: keyof IntegrityPolicy; label: string; hint: string }[] = i18nMap([
   { key: 'monitorTabSwitch', label: 'Chuyển tab', hint: 'Ghi nhận khi trang bài thi bị ẩn. Có tính vào ngưỡng.' },
   { key: 'monitorWindowBlur', label: 'Rời cửa sổ', hint: 'Ghi nhận khi cửa sổ trình duyệt mất tiêu điểm. Có tính vào ngưỡng.' },
-  { key: 'requireFullscreen', label: 'Yêu cầu toàn màn hình', hint: 'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng.' },
+  { key: 'requireFullscreen', label: 'Yêu cầu toàn màn hình', hint: 'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng. Điện thoại không hỗ trợ (iPhone) vẫn làm bài được và vẫn bị ghi nhận khi rời trang.' },
   { key: 'monitorNetwork', label: 'Mất kết nối mạng', hint: 'Chỉ ghi nhận để đối chiếu, không tính vào ngưỡng. Thí sinh vẫn làm bài khi mất mạng.' },
-  { key: 'monitorCopy', label: 'Sao chép', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
-  { key: 'monitorPaste', label: 'Dán', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
+  { key: 'monitorCopy', label: 'Sao chép', hint: 'Chặn sao chép, cắt và chuột phải trong bài; ghi nhận nhưng không tính vào ngưỡng. Không lưu nội dung.' },
+  { key: 'monitorPaste', label: 'Dán', hint: 'Chặn dán và kéo thả chữ vào bài; ghi nhận nhưng không tính vào ngưỡng. Không lưu nội dung.' },
 ])
 
 export const monitored = (p: IntegrityPolicy | null | undefined) =>

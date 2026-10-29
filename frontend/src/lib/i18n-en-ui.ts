@@ -1718,4 +1718,13 @@ export const EN_UI: Record<string, string> = {
   'Tìm…': 'Search…',
   // Subject/category picker
   'Không tìm thấy danh mục đã chọn; hãy chọn lại môn học và danh mục.': 'The selected category was not found; choose the subject and category again.',
+  // Browser integrity hardening
+  'Bài thi đang mở ở tab khác': 'This exam is open in another tab',
+  'Bạn vẫn làm bài bình thường. Hệ thống ghi nhận mỗi lần bạn rời trang, chuyển ứng dụng hoặc chuyển tab.': 'You can take the exam as usual. Every time you leave the page, switch apps or switch tabs is recorded.',
+  'Làm bài ở tab này': 'Continue in this tab',
+  'Mỗi lượt làm bài chỉ được mở ở một tab. Tab kia sẽ bị khóa nếu bạn chọn tiếp tục ở đây.': 'Each attempt can be open in one tab only. The other tab is locked if you continue here.',
+  'Thiết bị không hỗ trợ toàn màn hình': 'This device does not support fullscreen',
+  'Chặn sao chép, cắt và chuột phải trong bài; ghi nhận nhưng không tính vào ngưỡng. Không lưu nội dung.': 'Blocks copy, cut and right-click in the exam; recorded but not counted toward the limit. Content is never stored.',
+  'Chặn dán và kéo thả chữ vào bài; ghi nhận nhưng không tính vào ngưỡng. Không lưu nội dung.': 'Blocks pasting and dropping text into the exam; recorded but not counted toward the limit. Content is never stored.',
+  'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng. Điện thoại không hỗ trợ (iPhone) vẫn làm bài được và vẫn bị ghi nhận khi rời trang.': 'Asks students to go fullscreen and records exits. Counted toward the limit. Phones without fullscreen (iPhone) can still take the exam; leaving the page is still recorded.',
 }
