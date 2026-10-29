@@ -8,6 +8,7 @@ import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL } from '../../lib/format'
 import SubjectCategoryFields from './SubjectCategoryFields'
 import { t as tt, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const TYPES: { value: QuestionType; label: string; hint: string }[] = i18nMap([
   { value: 'MULTIPLE_CHOICE', label: 'Trắc nghiệm', hint: '2 đến 26 lựa chọn, đúng một đáp án. Chấm tự động.' },
@@ -111,9 +112,9 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
           </div>
         </fieldset>
         <Field label={tt('Độ khó')} htmlFor="q-difficulty">
-          <select id="q-difficulty" className="input" style={{ maxWidth: 240 }} value={difficulty} onChange={e => setDifficulty(e.target.value as Question['difficultyLevel'])}>
+          <Select id="q-difficulty" className="input" style={{ maxWidth: 240 }} value={difficulty} onChange={e => setDifficulty(e.target.value as Question['difficultyLevel'])}>
             {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label={tt('Nội dung câu hỏi')} htmlFor="q-content" required hint={tt('{0}/5000 ký tự', { 0: content.length })}>
           <textarea id="q-content" className="input" rows={4} maxLength={5000} required value={content} onChange={e => setContent(e.target.value)} />
@@ -179,9 +180,9 @@ export default function QuestionEditor({ initial, onClose, onSaved }: { initial?
           <summary className="field-label" style={{ cursor: 'pointer' }}>{tt('Nguồn tham khảo (tùy chọn)')}</summary>
           <div className="stack" style={{ marginTop: 12 }}>
             <Field label={tt('Loại nguồn')} htmlFor="q-source-type">
-              <select id="q-source-type" className="input" style={{ maxWidth: 280 }} value={sourceType} onChange={e => setSourceType(e.target.value as SourceType)}>
+              <Select id="q-source-type" className="input" style={{ maxWidth: 280 }} value={sourceType} onChange={e => setSourceType(e.target.value as SourceType)}>
                 {sources.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
+              </Select>
             </Field>
             {sourceType !== 'NONE' && <>
               <div className="grid-2">

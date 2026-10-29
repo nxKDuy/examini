@@ -4,6 +4,7 @@ import './calendar.css'
 import { MAX_OFFSET, MAX_REMINDERS, MIN_OFFSET, REMINDER_PRESETS, customToMinutes, normalizeReminders, offsetLabel, reminderIssue, reminderSend } from './scheduleModel'
 import { formatDateTimeIn, zoneLabel } from '../../lib/zone'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 export default function ReminderEditor({ value, off, onChange, startMs, tz, nowMs, disabled }: {
   value: number[]; off: boolean; onChange: (value: number[], off: boolean) => void; startMs: number | null; tz: string; nowMs: number; disabled?: boolean
@@ -44,9 +45,9 @@ export default function ReminderEditor({ value, off, onChange, startMs, tz, nowM
         </div>
         <div className="field" style={{ width: 120 }}>
           <label className="field-label" htmlFor="rem-unit">{t('Đơn vị')}</label>
-          <select id="rem-unit" className="input" value={unit} disabled={locked} onChange={e => setUnit(e.target.value as typeof unit)}>
+          <Select id="rem-unit" className="input" value={unit} disabled={locked} onChange={e => setUnit(e.target.value as typeof unit)}>
             <option value="minute">{t('phút')}</option><option value="hour">{t('giờ')}</option><option value="day">{t('ngày')}</option>
-          </select>
+          </Select>
         </div>
         <button type="button" className="btn btn-secondary" disabled={locked} onClick={addCustom}><Plus size={14} aria-hidden /> {t('Thêm mốc')}</button>
       </div>

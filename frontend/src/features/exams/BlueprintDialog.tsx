@@ -12,6 +12,7 @@ import { Badge, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatScore } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 let rowSeq = 0
 const newRow = (): BlueprintRowCfg => ({ key: `row-${++rowSeq}`, count: 5, pointsPerQuestion: 1 })
@@ -120,20 +121,20 @@ function BlueprintRowEditor({ index, row, onChange, onRemove, canRemove }: { ind
       <legend className="field-label">{t('Dòng {n}', { n: index + 1 })}</legend>
       <div className="bp-grid">
         <div className="field"><label className="field-label" htmlFor={`bp-bank-${row.key}`}>{t('Ngân hàng')}</label>
-          <select id={`bp-bank-${row.key}`} className="input" value={row.bankId ?? ''} onChange={e => onChange({ bankId: e.target.value || undefined })}>
+          <Select id={`bp-bank-${row.key}`} className="input" value={row.bankId ?? ''} onChange={e => onChange({ bankId: e.target.value || undefined })}>
             <option value="">{t('Tất cả ngân hàng dùng được')}</option>
             {(banks.data ?? []).map(b => <option key={b.id} value={b.id}>{BANK_TYPE_LABEL[b.type]} · {b.name}</option>)}
-          </select></div>
+          </Select></div>
         <SubjectCategoryFields subjectId={subjectId} categoryId={row.categoryId ?? ''} allowAll
           onSubject={id => { setSubjectId(id); onChange({ categoryId: undefined }) }} onCategory={id => onChange({ categoryId: id || undefined })} />
         <div className="field"><label className="field-label" htmlFor={`bp-type-${row.key}`}>{t('Loại')}</label>
-          <select id={`bp-type-${row.key}`} className="input" value={row.questionType ?? ''} onChange={e => onChange({ questionType: e.target.value || undefined })}>
+          <Select id={`bp-type-${row.key}`} className="input" value={row.questionType ?? ''} onChange={e => onChange({ questionType: e.target.value || undefined })}>
             <option value="">{t('Mọi loại')}</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-          </select></div>
+          </Select></div>
         <div className="field"><label className="field-label" htmlFor={`bp-diff-${row.key}`}>{t('Độ khó')}</label>
-          <select id={`bp-diff-${row.key}`} className="input" value={row.difficulty ?? ''} onChange={e => onChange({ difficulty: e.target.value || undefined })}>
+          <Select id={`bp-diff-${row.key}`} className="input" value={row.difficulty ?? ''} onChange={e => onChange({ difficulty: e.target.value || undefined })}>
             <option value="">{t('Mọi độ khó')}</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-          </select></div>
+          </Select></div>
         <div className="field"><label className="field-label" htmlFor={`bp-count-${row.key}`}>{t('Số câu')}</label>
           <input id={`bp-count-${row.key}`} type="number" min={1} max={200} step={1} className="input" value={Number.isFinite(row.count) ? row.count : ''} onChange={e => onChange({ count: Math.floor(Number(e.target.value)) })} /></div>
         <div className="field"><label className="field-label" htmlFor={`bp-pts-${row.key}`}>{t('Điểm mỗi câu')}</label>

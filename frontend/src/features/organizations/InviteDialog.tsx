@@ -6,6 +6,7 @@ import { errorText } from '../../lib/errors'
 import { orgApi, type InviteRole, type Organization } from './orgApi'
 import { ROLE_LABEL, inviteRolesFor, parseRecipient } from './orgModel'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 /** One box for a user id or an exact e-mail. ADMIN may only invite MEMBER. Duplicate pending invites answer 200 and are reported as such. */
 export default function InviteDialog({ org, onDone, onClose }: { org: Organization; onDone: (created: boolean) => void; onClose: () => void }) {
@@ -34,9 +35,9 @@ export default function InviteDialog({ org, onDone, onClose }: { org: Organizati
           <input id="invite-recipient" className="input" value={value} autoComplete="off" spellCheck={false} aria-invalid={touched && !recipient} onChange={e => setValue(e.target.value)} data-autofocus />
         </Field>
         <Field label={t('Vai trò')} htmlFor="invite-role" hint={roles.length === 1 ? t('Quản trị chỉ mời được thành viên thường.') : t('Chủ sở hữu có thể mời cả Quản trị.')}>
-          <select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as InviteRole)}>
+          <Select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as InviteRole)}>
             {roles.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-          </select>
+          </Select>
         </Field>
       </form>
     </Dialog>

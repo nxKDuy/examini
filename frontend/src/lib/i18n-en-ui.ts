@@ -1712,4 +1712,10 @@ export const EN_UI: Record<string, string> = {
   'Số câu bị nhảy': 'Question numbering skips',
   'Có thể dồn nhiều câu': 'Several questions may be merged',
   'Cần xem lại ({0})': 'Needs review ({0})',
+  // Select component
+  'Không có lựa chọn phù hợp': 'No matching options',
+  'Tìm trong danh sách': 'Search the list',
+  'Tìm…': 'Search…',
+  // Subject/category picker
+  'Không tìm thấy danh mục đã chọn; hãy chọn lại môn học và danh mục.': 'The selected category was not found; choose the subject and category again.',
 }

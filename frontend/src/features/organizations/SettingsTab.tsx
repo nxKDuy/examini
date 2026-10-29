@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../../components/Dialog'
 import { Field, LoadingState, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 /** OWNER only. Rename (revisioned), transfer ownership, archive. Archived organizations show this read-only: there is no unarchive. */
 export default function SettingsTab({ org, onLeft }: { org: Organization; onLeft: () => void }) {
@@ -71,10 +72,10 @@ export default function SettingsTab({ org, onLeft }: { org: Organization; onLeft
         <p className="small">{t('Chủ sở hữu mới nhận toàn quyền; bạn trở thành Quản trị. Tổ chức luôn có đúng một Chủ sở hữu và bạn không thể rời tổ chức trước khi chuyển quyền.')}</p>
         {members.isLoading ? <LoadingState rows={1} /> : (
           <Field label={t('Người nhận quyền')} htmlFor="transfer-target" hint={targets.length === 0 ? t('Chưa có thành viên đang hoạt động để nhận quyền. Hãy mời họ trước.') : (members.data?.totalElements ?? 0) > 50 ? t('Chỉ hiện 50 thành viên đầu tiên.') : undefined}>
-            <select id="transfer-target" className="input" value={target} onChange={e => setTarget(e.target.value)} disabled={targets.length === 0}>
+            <Select id="transfer-target" className="input" value={target} onChange={e => setTarget(e.target.value)} disabled={targets.length === 0}>
               <option value="">{t('Chọn thành viên')}</option>
               {targets.map(m => <option key={m.membershipId} value={m.membershipId}>{memberName(m).text} ({ROLE_LABEL[m.role]})</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         <div><button type="button" className="btn btn-danger" disabled={!target || stale} onClick={() => { setFlash(null); setDialog('transfer') }}>{t('Chuyển quyền sở hữu')}</button></div>

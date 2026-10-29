@@ -11,6 +11,7 @@ import { errorStatus, errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib/format'
 import './import.css'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh' } as const)
 
@@ -132,8 +133,8 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
         <fieldset className="stack" disabled={!editable || save.isPending} style={{ border: 0, padding: 0, margin: 0 }}>
           <Field label={t('Nội dung câu hỏi')} htmlFor="imp-content" required><textarea id="imp-content" className="input" rows={4} value={d.content} onChange={e => setD({ ...d, content: e.target.value })} /></Field>
           <div className="grid-2">
-            <Field label={t('Loại')} htmlFor="imp-type"><select id="imp-type" className="input" value={d.questionType} onChange={e => setD({ ...d, questionType: e.target.value as Draft['questionType'] })}>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-            <Field label={t('Độ khó')} htmlFor="imp-diff"><select id="imp-diff" className="input" value={d.difficultyLevel} onChange={e => setD({ ...d, difficultyLevel: e.target.value as Draft['difficultyLevel'] })}>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+            <Field label={t('Loại')} htmlFor="imp-type"><Select id="imp-type" className="input" value={d.questionType} onChange={e => setD({ ...d, questionType: e.target.value as Draft['questionType'] })}>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
+            <Field label={t('Độ khó')} htmlFor="imp-diff"><Select id="imp-diff" className="input" value={d.difficultyLevel} onChange={e => setD({ ...d, difficultyLevel: e.target.value as Draft['difficultyLevel'] })}>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
           </div>
           <div className="grid-2"><SubjectCategoryFields subjectId={subjectId} categoryId={d.categoryId} onSubject={setSubjectId} onCategory={id => setD(x => ({ ...x, categoryId: id }))} required /></div>
           {choice && <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>

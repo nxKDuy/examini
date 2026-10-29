@@ -15,6 +15,7 @@ import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
 import PersonalQuestionSets from '../banks/PersonalQuestionSets'
 import { t as tt, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const VIEWS = i18nMap([{ value: 'questions', label: 'Câu hỏi lẻ' }, { value: 'sets', label: 'Bộ câu hỏi' }] as const)
 const TABS = i18nMap([{ value: '', label: 'Tất cả' }, { value: 'DRAFT', label: 'Bản nháp' }, { value: 'ACTIVE', label: 'Đang dùng' }, { value: 'ARCHIVED', label: 'Đã lưu trữ' }])
@@ -77,17 +78,17 @@ export default function QuestionListPage() {
           <SubjectCategoryFields allowAll subjectId={subjectId} categoryId={filters.categoryId ?? ''} onSubject={setSubjectId} onCategory={v => set('categoryId', v)} />
           <div className="field">
             <label className="field-label" htmlFor="f-type">{tt('Loại')}</label>
-            <select id="f-type" className="input" value={filters.questionType ?? ''} onChange={e => set('questionType', e.target.value)}>
+            <Select id="f-type" className="input" value={filters.questionType ?? ''} onChange={e => set('questionType', e.target.value)}>
               <option value="">{tt('Tất cả loại')}</option>
               {Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="field">
             <label className="field-label" htmlFor="f-diff">{tt('Độ khó')}</label>
-            <select id="f-diff" className="input" value={filters.difficulty ?? ''} onChange={e => set('difficulty', e.target.value)}>
+            <Select id="f-diff" className="input" value={filters.difficulty ?? ''} onChange={e => set('difficulty', e.target.value)}>
               <option value="">{tt('Tất cả độ khó')}</option>
               {Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            </Select>
           </div>
           <div className="field">
             <label className="field-label" htmlFor="f-text">{tt('Tìm trong nội dung')}</label>

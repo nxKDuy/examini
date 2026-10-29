@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, LoadingState, Notice, Pagination } from '../../
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 type Mode = 'filter' | 'set'
 type Flash = { tone: 'info' | 'warning' | 'danger'; text: string } | null
@@ -107,20 +108,20 @@ function FilterSource({ excluded, order, busy, setBusy, onToggle, onAdd, onRepor
   return <>
     <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))' }}>
       <div className="field"><label className="field-label" htmlFor="pick-bank">{t('Ngân hàng')}</label>
-        <select id="pick-bank" className="input" value={f.bankId ?? ''} onChange={e => set({ bankId: e.target.value || undefined })}>
+        <Select id="pick-bank" className="input" value={f.bankId ?? ''} onChange={e => set({ bankId: e.target.value || undefined })}>
           <option value="">{t('Tất cả ngân hàng dùng được')}</option>
           {(banks.data ?? []).map(b => <option key={b.id} value={b.id}>{BANK_TYPE_LABEL[b.type]} · {b.name}</option>)}
-        </select></div>
+        </Select></div>
       <SubjectCategoryFields subjectId={subjectId} categoryId={f.categoryId ?? ''} allowAll
         onSubject={id => { setSubjectId(id); set({ categoryId: undefined }) }} onCategory={id => set({ categoryId: id || undefined })} />
       <div className="field"><label className="field-label" htmlFor="pick-type">{t('Loại')}</label>
-        <select id="pick-type" className="input" value={f.questionType ?? ''} onChange={e => set({ questionType: e.target.value || undefined })}>
+        <Select id="pick-type" className="input" value={f.questionType ?? ''} onChange={e => set({ questionType: e.target.value || undefined })}>
           <option value="">{t('Tất cả loại')}</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-        </select></div>
+        </Select></div>
       <div className="field"><label className="field-label" htmlFor="pick-diff">{t('Độ khó')}</label>
-        <select id="pick-diff" className="input" value={f.difficulty ?? ''} onChange={e => set({ difficulty: e.target.value || undefined })}>
+        <Select id="pick-diff" className="input" value={f.difficulty ?? ''} onChange={e => set({ difficulty: e.target.value || undefined })}>
           <option value="">{t('Tất cả độ khó')}</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-        </select></div>
+        </Select></div>
     </div>
     <form className="input-group" onSubmit={e => { e.preventDefault(); set({ text: text.trim() || undefined }) }}>
       <input className="input" type="search" maxLength={200} aria-label={t('Tìm trong nội dung')} placeholder={t('Tìm trong nội dung câu hỏi')} value={text} onChange={e => setText(e.target.value)} />
@@ -157,10 +158,10 @@ function SetSource({ excluded, order, onAdd, onReport }: {
 
   return <>
     <div className="field"><label className="field-label" htmlFor="pick-set">{t('Bộ câu hỏi của bạn')}</label>
-      <select id="pick-set" className="input" value={setId} onChange={e => setSetId(e.target.value)}>
+      <Select id="pick-set" className="input" value={setId} onChange={e => setSetId(e.target.value)}>
         <option value="">{t('Chọn một bộ…')}</option>
         {(sets.data?.content ?? []).map(s => <option key={s.id} value={s.id}>{s.title} · {t('{n} câu', { n: s.items.length })}</option>)}
-      </select></div>
+      </Select></div>
     {sets.isError && <ErrorState error={sets.error} onRetry={() => void sets.refetch()} />}
     {sets.data && !sets.data.content.length && <EmptyState title={t('Chưa có bộ câu hỏi đang dùng')} description={t('Tạo bộ ở Kho cá nhân → Bộ câu hỏi.')} />}
     {setId && (items.isLoading ? <LoadingState rows={3} /> : items.isError ? <ErrorState error={items.error} onRetry={() => void items.refetch()} /> : data && <>

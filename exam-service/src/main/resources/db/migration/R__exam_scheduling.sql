@@ -28,7 +28,7 @@ BEGIN
       CASE c.column_name
         WHEN 'start_at' THEN ALTER TABLE exams ADD COLUMN start_at TIMESTAMPTZ;
         WHEN 'end_at' THEN ALTER TABLE exams ADD COLUMN end_at TIMESTAMPTZ;
-        WHEN 'timezone' THEN ALTER TABLE exams ADD COLUMN timezone VARCHAR(64) NOT NULL DEFAULT 'UTC';
+        WHEN 'timezone' THEN ALTER TABLE exams ADD COLUMN timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Ho_Chi_Minh';
         WHEN 'deadline_rule' THEN ALTER TABLE exams ADD COLUMN deadline_rule VARCHAR(32) NOT NULL DEFAULT 'FULL_DURATION';
         WHEN 'auto_open' THEN ALTER TABLE exams ADD COLUMN auto_open BOOLEAN NOT NULL DEFAULT false;
         WHEN 'auto_close' THEN ALTER TABLE exams ADD COLUMN auto_close BOOLEAN NOT NULL DEFAULT false;

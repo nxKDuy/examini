@@ -27,6 +27,7 @@ import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader,
 import { UPSTREAM_GENERIC, errorInfo, errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, EXAM_TYPE_LABEL, MEMBER_ROLE_LABEL, QUESTION_TYPE_LABEL, formatDateTime, formatScore, shortId } from '../../lib/format'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const LIFECYCLE = ['DRAFT', 'PUBLISHED', 'OPEN', 'CLOSED'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -308,9 +309,9 @@ function Collaborators({ exam, owner, members }: { exam: Exam; owner: boolean; m
             <div className="grid-2" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(160px, 1fr)' }}>
               <Field label={t('Mã người dùng của giáo viên')} htmlFor="invite-user"><input id="invite-user" className="input mono" value={userId} onChange={e => setUserId(e.target.value)} /></Field>
               <Field label={t('Vai trò')} htmlFor="invite-role">
-                <select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as MemberRole)}>
+                <Select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as MemberRole)}>
                   <option value="MANAGER">{t('Quản lý')}</option><option value="PROCTOR">{t('Giám thị')}</option>
-                </select>
+                </Select>
               </Field>
             </div>
             <div><button type="submit" className="btn btn-secondary" disabled={run.isPending || !userId.trim()}><UserPlus size={16} aria-hidden /> {t('Gửi lời mời')}</button></div>
