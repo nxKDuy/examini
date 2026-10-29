@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { importApi, type Difficulty } from './importApi'
-import { aiProblems } from './importModel'
+import { PROVIDER_LABEL, aiProblems } from './importModel'
 import type { QuestionType } from '../question-bank/questionApi'
 import SubjectCategoryFields from '../question-bank/SubjectCategoryFields'
 import { Dialog } from '../../components/Dialog'
@@ -32,12 +32,13 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM')
   const [language, setLanguage] = useState<'vi' | 'en'>('vi')
   const [useBank, setUseBank] = useState(true)
+  const [useWeb, setUseWeb] = useState(true)
   const [touched, setTouched] = useState(false)
   const problems = aiProblems({ topic, categoryId, count, questionTypes: types, material }, max, maxMaterial)
   const err = (k: keyof typeof problems) => (touched ? problems[k] : undefined)
   const generate = useMutation({
     mutationFn: () => importApi.generate({ topic: topic.trim(), material: material.trim() || undefined, categoryId, count, questionTypes: types,
-      difficulty, language, useBankExamples: useBank }),
+      difficulty, language, useBankExamples: useBank, useWebKnowledge: useWeb && !material.trim() }),
     onSuccess: job => navigate(`/questions/imports/${job.id}`),
   })
   const unavailable = status.data && !status.data.available
@@ -55,7 +56,12 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
       <div className="stack">
         {status.isLoading && <span className="row small muted" style={{ gap: 8 }}><Spinner size={14} /> {t('Đang kiểm tra dịch vụ AI…')}</span>}
         {status.isError && <Notice tone="danger">{errorText(status.error)}</Notice>}
-        {unavailable && <Notice tone="warning" title={t('AI chưa được bật')}>{t('Máy chủ chưa cấu hình khóa AI (GEMINI_API_KEY). Liên hệ quản trị viên.')}</Notice>}
+        {unavailable && <Notice tone="warning" title={t('Chưa có nguồn sinh câu hỏi')}>{t('Máy chủ chưa bật nguồn sinh câu hỏi nào. Liên hệ quản trị viên.')}</Notice>}
+        {status.data?.providers && status.data.providers.length > 0 && <p className="xsmall muted" role="note">
+          {t('Thứ tự dự phòng:')} {status.data.providers.map((p, i) => <span key={p.name}>{i > 0 && ' → '}
+            <span style={{ textDecoration: p.available ? undefined : 'line-through' }}>{PROVIDER_LABEL[p.name] ?? p.name}</span>
+            {!p.available && ` (${t('chưa cấu hình')})`}{p.available && p.coolingDown && ` (${t('đang tạm nghỉ')})`}</span>)}
+          {'. '}{t('Nguồn nào lỗi hoặc bị giới hạn sẽ tự chuyển sang nguồn kế tiếp.')}</p>}
         {generate.isError && <Notice tone="danger" live>{errorText(generate.error)}</Notice>}
         <fieldset className="stack" disabled={!!unavailable || generate.isPending} style={{ border: 0, padding: 0, margin: 0 }}>
           <Field label={t('Chủ đề / mục tiêu kiến thức')} htmlFor="ai-topic" required error={err('topic')}
@@ -95,9 +101,14 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
                 <option value="vi">Tiếng Việt</option><option value="en">English</option>
               </Select>
             </Field>
-            <label className="check small" style={{ alignSelf: 'end', paddingBottom: 10 }}>
-              <input type="checkbox" checked={useBank} onChange={e => setUseBank(e.target.checked)} /> {t('Dùng câu hỏi sẵn có trong danh mục làm mẫu')}
-            </label>
+            <div className="stack-sm" style={{ alignSelf: 'end', paddingBottom: 6 }}>
+              <label className="check small">
+                <input type="checkbox" checked={useBank} onChange={e => setUseBank(e.target.checked)} /> {t('Dùng câu hỏi sẵn có trong danh mục làm mẫu')}
+              </label>
+              {status.data?.webKnowledge && <label className="check small">
+                <input type="checkbox" checked={useWeb && !material.trim()} disabled={!!material.trim()} onChange={e => setUseWeb(e.target.checked)} /> {t('Tự tìm kiến thức trên Wikipedia khi không dán tài liệu')}
+              </label>}
+            </div>
           </div>
           <p className="xsmall muted">{t('Chỉ câu hỏi của chính bạn trong danh mục được gửi cho AI làm mẫu và để phát hiện câu trùng. Tài liệu và chủ đề được gửi tới dịch vụ AI bên ngoài.')}</p>
         </fieldset>

@@ -58,7 +58,7 @@ class AiGenerationPersistenceTest {
             List.of(new CandidateOption("Huế",false),new CandidateOption("Hà Nội",true),new CandidateOption("Đà Nẵng",false),new CandidateOption("Cần Thơ",false)),
             null,"Hà Nội là thủ đô từ 1010.","EASY","{\"content\":\""+content+"\"}");}
     AiGenerateRequest request(String material,int count){return new AiGenerateRequest("Địa lý Việt Nam",material,category,count,
-            List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.SHORT_ANSWER),DifficultyLevel.MEDIUM,"vi",null);}
+            List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.SHORT_ANSWER),DifficultyLevel.MEDIUM,"vi",null,false);}
     /** Generates synchronously (the HTTP path runs the same method after commit). */
     ImportJobResponse run(AiGenerateRequest req,QuestionActor actor,List<String> existing){
         var job=imports.generate(req,actor);
@@ -144,8 +144,8 @@ class AiGenerationPersistenceTest {
 
     @Test void accessLimitsAndAvailability(){
         assertEquals(403,fails(()->imports.generate(request(null,1),new QuestionActor(UUID.randomUUID(),"STUDENT",false))));
-        assertEquals(400,fails(()->imports.generate(new AiGenerateRequest("Chủ đề",null,UUID.randomUUID(),1,null,null,null,null),owner)));
-        assertEquals(400,fails(()->imports.generate(new AiGenerateRequest("  ",null,category,1,null,null,null,null),owner)));
+        assertEquals(400,fails(()->imports.generate(new AiGenerateRequest("Chủ đề",null,UUID.randomUUID(),1,null,null,null,null,null),owner)));
+        assertEquals(400,fails(()->imports.generate(new AiGenerateRequest("  ",null,category,1,null,null,null,null,null),owner)));
         var job=imports.generate(request(null,1),owner);
         assertEquals(429,fails(()->imports.generate(request(null,1),owner)),"one AI job in flight per teacher");
         assertEquals(404,fails(()->imports.get(job.id(),other)));

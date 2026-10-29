@@ -183,6 +183,10 @@ services:
       ORG_AUTHZ_QB_TOKEN: ${ORG_AUTHZ_QB_TOKEN:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      QB_AI_PROVIDERS: ${QB_AI_PROVIDERS:-gemini,ollama,local}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      QB_AI_WEB_KNOWLEDGE: ${QB_AI_WEB_KNOWLEDGE:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -361,7 +365,19 @@ services:
       timeout: 10s
       retries: 5
 
+  # Optional self-hosted model for AI question generation (needs ~8 GB RAM for a 7B model).
+  # Start: docker compose --profile ai up -d ollama && docker exec datn-ollama ollama pull qwen2.5:7b-instruct
+  # Then set OLLAMA_URL=http://ollama:11434 in .env and restart question-bank-service.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: datn-ollama
+    profiles: ["ai"]
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+
 volumes:
+  ollama_data:
   postgres_data:
   redis_data:
   rabbitmq_data:

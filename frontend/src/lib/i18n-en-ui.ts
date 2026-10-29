@@ -1795,4 +1795,16 @@ export const EN_UI: Record<string, string> = {
   'Đã kích hoạt {0} câu; có thể dùng ngay cho đề thi.': 'Activated {0} questions; they can be used in exams now.',
   'Đã nhập và kích hoạt {0} câu; có thể dùng ngay cho đề thi': 'Imported and activated {0} questions; they can be used in exams now',
   '“Lưu và kích hoạt” để dùng ngay cho đề thi; “Lưu bản nháp” nếu chưa hoàn chỉnh. Không cần gửi duyệt.': '“Save and activate” to use it in exams now; “Save draft” if it is not finished. No review needed.',
+  // AI fallback chain
+  'Bộ sinh nội bộ (không cần AI)': 'Local generator (no AI needed)',
+  'Chưa có nguồn sinh câu hỏi': 'No question source available',
+  'Máy chủ chưa bật nguồn sinh câu hỏi nào. Liên hệ quản trị viên.': 'The server has no question source enabled. Contact your administrator.',
+  'Mô hình tự chạy': 'Self-hosted model',
+  'Nguồn kiến thức đã dùng': 'Knowledge sources used',
+  'Nguồn nào lỗi hoặc bị giới hạn sẽ tự chuyển sang nguồn kế tiếp.': 'If a source fails or is rate-limited, the next one takes over automatically.',
+  'Thứ tự dự phòng:': 'Fallback order:',
+  'Tự tìm kiến thức trên Wikipedia khi không dán tài liệu': 'Look up knowledge on Wikipedia when no material is pasted',
+  'chưa cấu hình': 'not configured',
+  'Đối chiếu câu hỏi với nguồn trước khi dùng; nội dung bách khoa có thể chưa khớp chương trình học.': 'Check the questions against the sources before use; encyclopedic content may not match the curriculum.',
+  'đang tạm nghỉ': 'cooling down',
 }

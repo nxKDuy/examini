@@ -89,3 +89,11 @@ export function patchOf(i: ImportItem, d: Draft, extra: Pick<ItemPatch, 'reviewe
 export const dirty = (i: ImportItem, d: Draft) => Object.keys(patchOf(i, d)).length > 1
 
 export const optionLetter = (n: number) => String.fromCharCode(65 + n)
+
+/** Readable provider names (fallback chain: cloud model → self-hosted model → local generator). */
+export const PROVIDER_LABEL: Record<string, string> = i18nMap({ gemini: 'Gemini', ollama: 'Mô hình tự chạy', local: 'Bộ sinh nội bộ (không cần AI)' })
+export const providerLabel = (model: string | null | undefined) => {
+  if (!model) return ''
+  const [name, ...rest] = model.split('/')
+  return name in PROVIDER_LABEL ? (name === 'local' ? PROVIDER_LABEL.local : `${PROVIDER_LABEL[name]} · ${rest.join('/')}`) : model
+}

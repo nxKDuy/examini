@@ -11,16 +11,18 @@ export type FileKind = 'DOCX' | 'PDF' | 'IMAGE' | 'AI'
 export interface AiGeneration {
   topic: string; model: string; requestedCount: number; questionTypes: QuestionType[]; difficulty: Difficulty
   language: 'vi' | 'en'; hasMaterial: boolean; materialLength: number; exampleCount: number
+  webKnowledge?: boolean; sources?: { title: string; url: string | null }[]
 }
 export interface ImportJob {
   id: string; fileName: string; fileKind: FileKind; fileSize: number; pageCount: number; ocrPageCount: number
   status: JobStatus; failureReason?: string | null; warnings: string[]; categoryId?: string | null; defaultDifficulty: Difficulty
   createdAt: string; updatedAt: string; summary: ImportSummary; generation?: AiGeneration | null
 }
-export interface AiStatus { available: boolean; model: string | null; maxQuestions: number; maxMaterialChars: number }
+export interface AiProviderInfo { name: string; model: string; available: boolean; coolingDown: boolean }
+export interface AiStatus { available: boolean; model: string | null; maxQuestions: number; maxMaterialChars: number; providers?: AiProviderInfo[]; webKnowledge?: boolean }
 export interface AiGenerateRequest {
   topic: string; material?: string; categoryId: string; count: number; questionTypes: QuestionType[]
-  difficulty: Difficulty; language: 'vi' | 'en'; useBankExamples: boolean
+  difficulty: Difficulty; language: 'vi' | 'en'; useBankExamples: boolean; useWebKnowledge: boolean
 }
 export interface ImportOption { content: string; correct: boolean; displayOrder: number }
 export interface ImportItem {

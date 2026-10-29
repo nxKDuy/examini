@@ -43,9 +43,17 @@ public class ImportDto {
     public record AiGenerateRequest(@NotBlank @Size(max = 500) String topic, @Size(max = AI_MAX_MATERIAL) String material,
             @NotNull UUID categoryId, @Min(1) @Max(AI_MAX_QUESTIONS) Integer count,
             @Size(min = 1, max = 4) List<@NotNull QuestionType> questionTypes, DifficultyLevel difficulty,
-            @Pattern(regexp = "vi|en") String language, Boolean useBankExamples) {}
+            @Pattern(regexp = "vi|en") String language, Boolean useBankExamples, Boolean useWebKnowledge) {}
+    public record KnowledgeSource(String title, String url) {}
     /** Provenance shown on an AI job; null on document jobs. */
     public record AiGeneration(String topic, String model, int requestedCount, List<QuestionType> questionTypes,
-            DifficultyLevel difficulty, String language, boolean hasMaterial, int materialLength, int exampleCount) {}
-    public record AiStatus(boolean available, String model, int maxQuestions, int maxMaterialChars) {}
+            DifficultyLevel difficulty, String language, boolean hasMaterial, int materialLength, int exampleCount,
+            boolean webKnowledge, List<KnowledgeSource> sources) {
+        public AiGeneration withResult(String m, List<KnowledgeSource> s) {
+            return new AiGeneration(topic, m, requestedCount, questionTypes, difficulty, language, hasMaterial, materialLength, exampleCount, webKnowledge, s);
+        }
+    }
+    /** providers: the fallback chain in order; webKnowledge: automatic encyclopedic retrieval is enabled on the server. */
+    public record AiStatus(boolean available, String model, int maxQuestions, int maxMaterialChars, List<ProviderInfo> providers, boolean webKnowledge) {}
+    public record ProviderInfo(String name, String model, boolean available, boolean coolingDown) {}
 }

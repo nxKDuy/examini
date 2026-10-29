@@ -11,6 +11,7 @@ import com.datn.questionbank.repository.*;
 import com.datn.questionbank.security.*;
 import com.datn.questionbank.service.ai.AiDrafts;
 import com.datn.questionbank.service.ai.AiQuestionGenerator;
+import com.datn.questionbank.service.ai.KnowledgeRetriever;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class QuestionImportService {
     private final TaskExecutor executor;
     private final TransactionTemplate tx;
     private final AiQuestionGenerator ai;
+    private final KnowledgeRetriever knowledge;
     /** Bank context sent to the AI: at most this many of the actor's own questions in the category. */
     static final int AI_EXAMPLES = 15;
     /** Duplicate check scope: at most this many of the actor's own questions in the category. */
@@ -136,14 +138,15 @@ public class QuestionImportService {
 
     public AiStatus aiStatus(QuestionActor actor) {
         policy.requireAuthor(actor);
-        return new AiStatus(ai.available(), ai.available() ? ai.model() : null, AI_MAX_QUESTIONS, AI_MAX_MATERIAL);
+        return new AiStatus(ai.available(), ai.available() ? ai.model() : null, AI_MAX_QUESTIONS, AI_MAX_MATERIAL,
+                ai.providers().stream().map(p -> new ProviderInfo(p.name(), p.model(), p.available(), p.coolingDown())).toList(), knowledge.webEnabled());
     }
 
     /** Creates an AI job (PROCESSING) and generates after commit; the teacher reviews items like a document import. */
     @Transactional
     public ImportJobResponse generate(AiGenerateRequest request, QuestionActor actor) {
         policy.requireAuthor(actor);
-        if (!ai.available()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Chưa cấu hình AI (GEMINI_API_KEY)");
+        if (!ai.available()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Chưa cấu hình nguồn sinh câu hỏi nào");
         if (request == null || request.topic() == null || request.topic().isBlank()) throw bad("Nhập chủ đề");
         if (request.categoryId() == null || !categories.existsById(request.categoryId())) throw bad("Danh mục không tồn tại");
         if (jobs.existsByOwnerUserIdAndFileKindAndStatus(actor.userId(), QuestionImportJob.FileKind.AI, Status.PROCESSING))
@@ -159,8 +162,9 @@ public class QuestionImportService {
         if (material != null && material.length() > AI_MAX_MATERIAL) throw bad("Tài liệu tối đa " + AI_MAX_MATERIAL + " ký tự");
         var examples = Boolean.FALSE.equals(request.useBankExamples()) ? List.<String>of() : ownContents(actor.userId(), request.categoryId(), AI_EXAMPLES);
         var existing = ownContents(actor.userId(), request.categoryId(), AI_DUPLICATE_SCOPE);
+        boolean useWeb = material == null && !Boolean.FALSE.equals(request.useWebKnowledge()) && knowledge.webEnabled();
         var generation = new AiGeneration(topic, ai.model(), count, types, difficulty, language, material != null,
-                material == null ? 0 : material.length(), examples.size());
+                material == null ? 0 : material.length(), examples.size(), useWeb, List.of());
         var now = LocalDateTime.now();
         var job = jobs.saveAndFlush(QuestionImportJob.builder().ownerUserId(actor.userId()).fileName(fileName("AI · " + truncate(topic, 200)))
                 .fileKind(QuestionImportJob.FileKind.AI).fileSize(material == null ? 0 : material.length()).status(Status.PROCESSING)
@@ -171,27 +175,44 @@ public class QuestionImportService {
         UUID id = job.getId(), owner = actor.userId();
         if (TransactionSynchronizationManager.isSynchronizationActive())
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override public void afterCommit() { executor.execute(() -> runGeneration(id, prompt, existing, owner)); }
+                @Override public void afterCommit() { executor.execute(() -> runGeneration(id, prompt, existing, owner, useWeb)); }
             });
         return response(job);
     }
 
-    /** Calls the provider outside any transaction, then stages the drafts atomically. */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
     public void runGeneration(UUID jobId, AiQuestionGenerator.Prompt prompt, List<String> existing, UUID actor) {
-        AiDrafts.Drafts drafts = null; String failure = null;
+        runGeneration(jobId, prompt, existing, actor, false);
+    }
+
+    /**
+     * Retrieval, then generation through the provider chain, all outside any transaction; the drafts are staged
+     * atomically. The job records which provider answered and which knowledge sources were used.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
+    public void runGeneration(UUID jobId, AiQuestionGenerator.Prompt prompt, List<String> existing, UUID actor, boolean useWeb) {
+        AiDrafts.Drafts drafts = null; String failure = null, model = null;
+        var notes = new ArrayList<String>();
+        List<KnowledgeSource> sources = List.of();
         try {
-            var result = ai.generate(prompt);
+            var k = knowledge.retrieve(prompt.topic(), prompt.material(), prompt.language(), useWeb);
+            notes.addAll(k.warnings());
+            sources = k.sources().stream().map(s -> new KnowledgeSource(s.title(), s.url())).toList();
+            var grounded = new AiQuestionGenerator.Prompt(prompt.topic(), k.text(), prompt.examples(), prompt.count(), prompt.types(), prompt.difficulty(), prompt.language());
+            var result = ai.generate(grounded);
+            model = result.model();
             drafts = AiDrafts.build(result.candidates(), prompt.count(), prompt.difficulty(), existing);
             if (drafts.items().isEmpty()) failure = "AI không tạo được câu hỏi hợp lệ; thử đổi chủ đề hoặc tài liệu";
-            else drafts = new AiDrafts.Drafts(drafts.items(), concat(result.warnings(), drafts.warnings()));
+            else drafts = new AiDrafts.Drafts(drafts.items(), concat(concat(notes, result.warnings()), drafts.warnings()));
         } catch (AiQuestionGenerator.GenerationException e) { failure = e.getMessage(); }
         catch (RuntimeException e) { failure = "Không tạo được câu hỏi bằng AI"; }
-        String reason = failure; var staged = drafts;
+        String reason = failure == null ? null : truncate(failure + (notes.isEmpty() ? "" : " (" + String.join("; ", notes) + ")"), 1000);
+        var staged = drafts; String usedModel = model; var usedSources = sources;
         tx.executeWithoutResult(status -> {
             var job = jobs.findByIdForUpdate(jobId).orElseThrow();
             if (job.getStatus() != Status.PROCESSING) return;
             job.setUpdatedAt(LocalDateTime.now());
+            var g = generation(job);
+            if (g != null) job.setGeneration(write(g.withResult(usedModel == null ? g.model() : usedModel, usedSources)));
             if (reason != null) {
                 job.setStatus(Status.FAILED); job.setFailureReason(reason);
                 event(jobId, null, actor, "FAILED", Map.of("reason", reason));
@@ -200,7 +221,7 @@ public class QuestionImportService {
             job.setWarnings(write(staged.warnings()));
             stage(job, staged.items());
             job.setStatus(Status.READY);
-            event(jobId, null, actor, "AI_GENERATED", Map.of("items", staged.items().size(), "model", ai.model()));
+            event(jobId, null, actor, "AI_GENERATED", Map.of("items", staged.items().size(), "model", String.valueOf(usedModel), "sources", usedSources.size()));
         });
     }
 
@@ -298,12 +319,15 @@ public class QuestionImportService {
             var generation = aiJob ? generation(job) : null;
             String label = aiJob ? job.getFileName() + " · " + (generation == null ? "AI" : generation.model())
                     : job.getFileName() + (item.getSourcePage() == null ? "" : " · trang " + item.getSourcePage());
-            // AI questions keep their origin: AI_GENERATED, sourced from the teacher's material when one was given.
-            var sourceType = !aiJob || generation != null && generation.hasMaterial() ? SourceType.USER_DOCUMENT : SourceType.NONE;
+            // AI questions keep their origin: AI_GENERATED, sourced from the teacher's material or the web page used.
+            String webUrl = generation == null || generation.sources() == null ? null
+                    : generation.sources().stream().map(KnowledgeSource::url).filter(Objects::nonNull).findFirst().orElse(null);
+            var sourceType = !aiJob || generation != null && generation.hasMaterial() ? SourceType.USER_DOCUMENT
+                    : webUrl != null ? SourceType.EXTERNAL_WEB : SourceType.NONE;
             var created = questions.importDraft(new CreateRequest(item.getCategoryId(), item.getContent(), item.getQuestionType(),
                     item.getDifficultyLevel(), truncate(label, 500), options(item).stream().map(o -> new OptionRequest(o.content(), o.correct(), o.displayOrder())).toList(),
                     item.getExpectedAnswer(), QuestionScope.PERSONAL, sourceType, (aiJob ? "ai:" : "import:") + job.getId() + ":" + item.getId(),
-                    truncate(label, 500), null, item.getRawText(), item.getExplanation()), bankId, actor,
+                    truncate(label, 500), sourceType == SourceType.EXTERNAL_WEB ? webUrl : null, item.getRawText(), item.getExplanation()), bankId, actor,
                     aiJob ? CreationMethod.AI_GENERATED : CreationMethod.IMPORT);
             if (activate) created = questions.activate(created.id(), created.questionVersion(), actor);
             item.setImportedQuestionId(created.id()); item.setImportedAt(now);

@@ -9,6 +9,14 @@ question-bank:
     gemini-api-key: ${GEMINI_API_KEY:}
     gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
     timeout-seconds: ${QB_AI_TIMEOUT_SECONDS:120}
+    # Fallback order; "local" (rule-based, no network) keeps generation working when every LLM is down or out of quota.
+    providers: ${QB_AI_PROVIDERS:gemini,ollama,local}
+    # Self-hosted open model (Ollama). Blank URL = skipped. Example: http://ollama:11434 with qwen2.5:7b-instruct.
+    ollama-url: ${OLLAMA_URL:}
+    ollama-model: ${OLLAMA_MODEL:qwen2.5:7b-instruct}
+    ollama-timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:300}
+    # Without teacher material, fetch encyclopedic knowledge (Wikipedia) for the topic.
+    web-knowledge: ${QB_AI_WEB_KNOWLEDGE:true}
 auth:
   service:
     url: ${AUTH_SERVICE_URL:http://localhost:8081}

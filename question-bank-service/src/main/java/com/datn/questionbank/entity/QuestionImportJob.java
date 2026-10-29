@@ -23,7 +23,7 @@ public class QuestionImportJob {
     @Column(name="created_at",nullable=false,updatable=false) private LocalDateTime createdAt;
     @Column(name="updated_at",nullable=false) private LocalDateTime updatedAt;
     /** Provenance of an AI job (JSON of AiGeneration); null for document jobs. */
-    @Column(columnDefinition="TEXT",updatable=false) private String generation;
+    @Column(columnDefinition="TEXT") private String generation;
     public enum FileKind { DOCX, PDF, IMAGE, AI }
     public enum Status { PROCESSING, READY, FAILED, DISCARDED }
 }

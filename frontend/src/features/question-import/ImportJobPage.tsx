@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, CheckCircle2, Plus, ScanText, Sparkles, Trash2 } from 'lucide-react'
 import { importApi, type ImportItem, type ImportResult, type ItemFilter } from './importApi'
-import { FILTERS, flagLabel, dirty, draftOf, isAi, isOcr, itemState, lowConfidenceShown, mustReview, optionLetter, patchOf, sourceText, type Draft } from './importModel'
+import { FILTERS, providerLabel, flagLabel, dirty, draftOf, isAi, isOcr, itemState, lowConfidenceShown, mustReview, optionLetter, patchOf, sourceText, type Draft } from './importModel'
 import SubjectCategoryFields from '../question-bank/SubjectCategoryFields'
 import { ConfirmDialog } from '../../components/Dialog'
 import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Spinner } from '../../components/ui'
@@ -44,7 +44,7 @@ export default function ImportJobPage() {
   const j = job.data, s = j.summary
   const ai = j.fileKind === 'AI', g = j.generation
   const description = ai
-    ? [KIND_LABEL.AI, g?.model, g ? t('yêu cầu {0} câu', { 0: g.requestedCount }) : '', g?.hasMaterial ? t('có tài liệu ({0} ký tự)', { 0: g.materialLength }) : t('không có tài liệu'),
+    ? [KIND_LABEL.AI, providerLabel(g?.model), g ? t('yêu cầu {0} câu', { 0: g.requestedCount }) : '', g?.hasMaterial ? t('có tài liệu ({0} ký tự)', { 0: g.materialLength }) : t('không có tài liệu'),
        g?.exampleCount ? t('{0} câu mẫu từ kho', { 0: g.exampleCount }) : '', t('tạo {0}', { 0: formatDateTime(j.createdAt) })]
     : [KIND_LABEL[j.fileKind], t('{0} trang', { 0: j.pageCount }), j.ocrPageCount ? t('{0} trang nhận dạng ảnh (OCR)', { 0: j.ocrPageCount }) : '', t('tải lên {0}', { 0: formatDateTime(j.createdAt) })]
 
@@ -65,6 +65,10 @@ export default function ImportJobPage() {
         : <Notice tone="danger" title={t('Không xử lý được tài liệu')}>{j.failureReason || t('Tài liệu không đọc được.')} {t('Hãy kiểm tra tệp rồi tải lên lại.')}</Notice>)}
       {ai && j.status === 'READY' && <Notice tone="info" title={t('Câu hỏi do AI soạn')}>{t('AI có thể sai kiến thức hoặc đáp án. Kiểm tra nội dung, đáp án và độ khó của từng câu rồi bấm “Lưu và đánh dấu đã xem”; chỉ câu đã xem mới được nhập.')}</Notice>}
       {j.status === 'DISCARDED' && <Notice tone="warning">{t('Lô này đã bị hủy; các câu đã nhập trước đó vẫn giữ trong kho.')}</Notice>}
+      {ai && g?.sources && g.sources.some(s => s.url) && <Notice tone="info" title={t('Nguồn kiến thức đã dùng')}>
+        <ul style={{ margin: 0, paddingLeft: 18 }}>{g.sources.map(s => <li key={s.title} className="small">{s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.title}</a> : s.title}</li>)}</ul>
+        <p className="xsmall muted" style={{ margin: '6px 0 0' }}>{t('Đối chiếu câu hỏi với nguồn trước khi dùng; nội dung bách khoa có thể chưa khớp chương trình học.')}</p>
+      </Notice>}
       {j.warnings.length > 0 && <Notice tone="warning" title={ai ? t('Lưu ý từ AI') : t('Lưu ý khi đọc tài liệu')}><ul style={{ margin: 0, paddingLeft: 18 }}>{j.warnings.map(w => <li key={w} className="small">{w}</li>)}</ul></Notice>}
       {flash && <Notice tone={flash.tone} live>{flash.text}</Notice>}
       {result && <Notice tone="success" live title={resultActive
