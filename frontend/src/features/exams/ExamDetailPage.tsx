@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, Check, ClipboardCheck, Lock, Pencil, PlayCircle, RefreshCw, RotateCcw, Send, Trash2, UserPlus } from 'lucide-react'
+import { CalendarClock, Check, ClipboardCheck, Lock, Pencil, PlayCircle, Printer, RefreshCw, RotateCcw, Send, Trash2, UserPlus } from 'lucide-react'
 import { examApi, type Exam, type MemberRole, type Policy } from './examApi'
 import type { Question } from '../question-bank/questionApi'
 import { bankApi } from '../banks/bankApi'
@@ -119,6 +119,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
           {exam.status === 'PUBLISHED' && <button type="button" className="btn btn-primary" onClick={() => setConfirm('open')}><PlayCircle size={16} aria-hidden /> {t('Mở kỳ thi')}</button>}
           {(exam.status === 'OPEN' || exam.status === 'PUBLISHED') && <button type="button" className="btn btn-danger" onClick={() => setLifecycle('close')}><Lock size={16} aria-hidden /> {t('Đóng kỳ thi')}</button>}
           {exam.status === 'CLOSED' && <button type="button" className="btn btn-secondary" onClick={() => setLifecycle('reopen')}><RotateCcw size={16} aria-hidden /> {t('Mở lại')}</button>}
+          {exam.status !== 'DRAFT' && <Link to={`/exams/${exam.id}/print`} className="btn btn-secondary"><Printer size={16} aria-hidden /> {t('In đề / mã đề')}</Link>}
           {(exam.status === 'OPEN' || exam.status === 'CLOSED') && <Link to={`/grading?examId=${exam.id}`} className="btn btn-secondary"><ClipboardCheck size={16} aria-hidden /> {t('Chấm bài')}{gradingBadge > 0 && <span className="badge badge-warning" style={{ marginLeft: 6 }} aria-label={t('{0} bài cần chấm tay', { 0: gradingBadge })}>{gradingBadge}</span>}</Link>}
           </>}
           {canLock && <IntegrityLockControl exam={exam} onDone={text => setMessage({ tone: 'success', text })} />}
@@ -369,6 +370,7 @@ const AUDIT_LABEL: Record<string, string> = i18nMap({
   MANAGER_INVITED: 'Mời Quản lý', PROCTOR_INVITED: 'Mời Giám thị', MANAGER_ADDED: 'Quản lý chấp nhận lời mời', PROCTOR_ADDED: 'Giám thị chấp nhận lời mời',
   MANAGER_REMOVED: 'Xóa Quản lý', PROCTOR_REMOVED: 'Xóa Giám thị',
   INTEGRITY_POLICY_UPDATED: 'Cập nhật giám sát trình duyệt', EXAM_INTEGRITY_LOCKED: 'Khóa toàn kỳ thi', EXAM_INTEGRITY_UNLOCKED: 'Mở khóa kỳ thi',
+  PAPER_EXPORTED: 'Mở bản in đề kèm đáp án',
 })
 
 function Audit({ exam }: { exam: Exam }) {

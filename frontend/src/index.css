@@ -545,3 +545,18 @@ a.stat:hover { background: var(--color-subtle); }
 .score-bar-count { font-size: 0.75rem; margin-bottom: 2px; }
 .score-bar-label { position: absolute; bottom: -20px; font-size: 0.7rem; color: var(--color-muted); }
 .score-chart figcaption { margin-top: 18px; }
+
+/* Exam matrix */
+.matrix-filters { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.matrix-topics { border: 1px solid var(--color-hairline); padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; }
+.matrix-quick { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.matrix-quick .field { width: 150px; margin: 0; }
+.matrix-table th[scope="row"] { font-weight: 400; min-width: 140px; color: var(--color-ink, #000); }
+.matrix-table td, .matrix-table th { vertical-align: middle; }
+.matrix-table thead th { white-space: nowrap; }
+.matrix-cell { display: flex; align-items: center; gap: 6px; }
+.matrix-cell .input { width: 70px; padding: 6px 8px; text-align: right; }
+.matrix-cell[data-over] .input { border-color: var(--color-danger); border-width: 2px; }
+.matrix-cell[data-over] .muted { color: var(--color-danger); }
+.matrix-points { width: 80px; padding: 6px 8px; }
+.matrix-table tfoot th, .matrix-table tfoot td { border-top: 1px solid var(--color-ink, #000); }

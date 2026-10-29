@@ -68,3 +68,17 @@ Question = {questionId, questionVersion, questionType, content, points, rowIndex
 - If any id is not confirmed eligible, the save fails with `409 QUESTION_NOT_ELIGIBLE: [ids]`.
 - Already-saved questions are still validated at Publish (frozen snapshot, unchanged).
 - Authorization is unchanged: create requires TEACHER, and update requires OWNER or MANAGER on a DRAFT.
+
+## Exam matrix (UI over the blueprint)
+
+The matrix (topics × EASY/MEDIUM/HARD, points per level) is a client-side editor. Availability per cell comes from
+Question Bank `POST /questions/eligible/matrix-counts`. Generating turns every non-empty cell into one blueprint row
+(`categoryId`, `difficulty`, `count`, `pointsPerQuestion`), so `POST /exams/blueprint/preview` keeps its rules: a cell
+is filled only from its own topic and level and reports its shortfall. Saved matrices are per-teacher browser storage.
+
+## Paper exam
+
+`GET /exams/{id}/paper` (OWNER/MANAGER only; 409 while DRAFT) returns the frozen snapshot **with answer keys**
+(`Snapshot` incl. `options[].correct`, `expectedAnswer`, `explanation`), ordered by position, and audits
+`PAPER_EXPORTED`. The print page mixes exam codes client-side with a generator seeded by `examId:code`, so a code always
+reprints identically; answer keys and bubble answer sheets are derived from the same order.

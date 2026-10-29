@@ -63,6 +63,19 @@ class ExamCoreTest {
         mvc.perform(get("/exams/public").header("X-User-Id",student)).andExpect(status().isUnauthorized());
         mvc.perform(put("/exams/"+id+"/open").header("Authorization",token(proctor,"TEACHER"))).andExpect(status().isForbidden());
     }
+    @Test void paperExportNeedsAPublishedSnapshotAndAManagerAndIsAudited()throws Exception {
+        UUID id=create();
+        core.member(id,owner,proctor,Exam.MemberRole.PROCTOR,false);core.accept(id,proctor,"TEACHER");
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(owner,"TEACHER"))).andExpect(status().isConflict());
+        core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(owner,"TEACHER"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].content").value("Original"))
+            .andExpect(jsonPath("$[0].options[0].correct").value(true)).andExpect(jsonPath("$[0].points").value(2.5))
+            .andExpect(jsonPath("$[0].explanation").value("Frozen author explanation"));
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(proctor,"TEACHER"))).andExpect(status().isForbidden());
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(student,"STUDENT"))).andExpect(status().isForbidden());
+        assertEquals(1,audits.findByExamIdOrderByTimestampAsc(id).stream().filter(x->x.getAction().equals("PAPER_EXPORTED")).count());
+    }
     @Test void unscheduledPublishKeepsReminderDefaultsAndDoesNotEmitDuplicateScheduleNotice()throws Exception {
         UUID id=create();
         assertEquals(List.of(1440,15),exams.findById(id).orElseThrow().getReminderOffsetsMinutes());

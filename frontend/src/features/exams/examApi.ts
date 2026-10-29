@@ -59,6 +59,8 @@ export const examApi = {
   create: (data: ExamInput) => api.post<Exam>('/exams/manual', { ...data, ...PHASE1_FLAGS }).then(r => r.data),
   update: (id: string, data: ExamInput) => api.put<Exam>(`/exams/${id}`, { ...data, ...PHASE1_FLAGS }).then(r => r.data),
   remove: (id: string) => api.delete(`/exams/${id}`),
+  /** Frozen questions with answer keys for the paper exam (owner/manager, published exams only). */
+  paper: (id: string) => api.get<PaperQuestion[]>(`/exams/${id}/paper`).then(r => r.data),
   /** Draft only, nothing persisted (contracts/exam-builder.md); save goes through create/update. */
   blueprintPreview: (body: BlueprintRequest) => api.post<BlueprintPreview>('/exams/blueprint/preview', body).then(r => r.data),
   publish: (id: string) => api.put<Exam>(`/exams/${id}/publish`).then(r => r.data),
@@ -85,4 +87,10 @@ export const examApi = {
   answer: (id: string, questionId: string, content: string) => api.post(`/sessions/${id}/answers`, { content }, { params: { questionId } }),
   submit: (id: string) => api.post(`/sessions/${id}/submit`),
   result: (id: string) => api.get<Result>(`/grades/session/${id}`).then(r => r.data),
+}
+
+export interface PaperQuestion {
+  questionId: string; questionVersion: number; questionType: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | string
+  content: string; options: { id: string; content: string; displayOrder: number; correct: boolean }[]
+  points: number; expectedAnswer: string | null; explanation: string | null; position: number
 }

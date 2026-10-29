@@ -50,6 +50,10 @@ public class QuestionController {
     public EligibleIdsResponse eligibleIds(@Valid @RequestBody EligibleFilter body, HttpServletRequest req) {
         return eligibility.ids(body, actor(req));
     }
+    @PostMapping("/eligible/matrix-counts")
+    public List<MatrixCount> matrixCounts(@Valid @RequestBody MatrixCountsRequest body, HttpServletRequest req) {
+        return eligibility.matrixCounts(body, actor(req));
+    }
     @PostMapping("/eligible/random")
     public EligibleRandomResponse eligibleRandom(@Valid @RequestBody EligibleRandomRequest body, HttpServletRequest req) {
         return eligibility.pick(body, actor(req));

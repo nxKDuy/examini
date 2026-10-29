@@ -4,6 +4,7 @@ import LoginPage from './features/auth/LoginPage'
 import RegisterPage from './features/auth/RegisterPage'
 import { ForgotPasswordPage, ResetPasswordPage } from './features/auth/PasswordPages'
 const ProfilePage = lazy(() => import('./features/account/ProfilePage'))
+const PrintExamPage = lazy(() => import('./features/exams/PrintExamPage'))
 const AdminUsersPage = lazy(() => import('./features/account/AdminUsersPage'))
 import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -43,6 +44,10 @@ function AppRoutes() {
         {/* Exam taking: focus mode without navigation chrome */}
         <Route element={<ProtectedRoute persona="STUDENT" />}>
           <Route path="/exam/take/:id" element={<StudentExamPage />} />
+        </Route>
+        {/* Paper exam: full-page print layout without the app chrome. */}
+        <Route element={<ProtectedRoute persona="TEACHER" />}>
+          <Route path="/exams/:id/print" element={<PrintExamPage />} />
         </Route>
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

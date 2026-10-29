@@ -229,6 +229,24 @@ class QuestionPersistenceTest {
                 .header("X-Question-Owner-Id",owner.userId()).contentType("application/json").content(ids)).andExpect(status().isConflict());
         assertEquals("Internal eligible",service.version(q.id(),1,true,owner).question().content());
     }
+    @Test void matrixCountsGroupEligibleQuestionsByTopicAndDifficulty() throws Exception {
+        for(var d:List.of(DifficultyLevel.EASY,DifficultyLevel.EASY,DifficultyLevel.HARD)){var q=create("Matrix "+d+" "+UUID.randomUUID(),d);service.activate(q.id(),1,owner);}
+        create("Matrix draft stays out",DifficultyLevel.MEDIUM);
+        UUID otherTopic=UUID.randomUUID();
+        String body=http.perform(post("/questions/eligible/matrix-counts").header("Authorization",jwt(owner)).contentType("application/json")
+                .content("{\"categoryIds\":[\""+category+"\",\""+otherTopic+"\"]}")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var rows=json.readTree(body);
+        long easy=0,hard=0,medium=0;
+        for(var r:rows){assertEquals(category.toString(),r.get("categoryId").asText());
+            switch(r.get("difficulty").asText()){case "EASY"->easy=r.get("available").asLong();case "HARD"->hard=r.get("available").asLong();default->medium=r.get("available").asLong();}}
+        assertTrue(easy>=2);assertTrue(hard>=1);assertEquals(0,medium,"drafts are not eligible");
+        // Another teacher does not see this owner's personal questions.
+        var stranger=new QuestionActor(UUID.randomUUID(),"TEACHER",false);
+        http.perform(post("/questions/eligible/matrix-counts").header("Authorization",jwt(stranger)).contentType("application/json")
+                .content("{\"categoryIds\":[\""+category+"\"]}")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        http.perform(post("/questions/eligible/matrix-counts").header("Authorization",jwt(owner)).contentType("application/json")
+                .content("{\"categoryIds\":[]}")).andExpect(status().isBadRequest());
+    }
     @Test void publicRatingAndViewHttpRoutesUseVerifiedJwtActorAndKeepGetsReadOnly() throws Exception {
         when(identities.displayName(any())).thenReturn("Public author");
         var q=create("HTTP public rating",DifficultyLevel.EASY);service.activate(q.id(),1,owner);

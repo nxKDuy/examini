@@ -135,5 +135,8 @@ public class QuestionDto {
             Question.DifficultyLevel difficulty, @Min(1) @Max(200) int count,
             @Size(max = 1000) List<@NotNull UUID> excludeQuestionIds) {}
     public record EligibleRandomResponse(List<UUID> ids, int requested, long available) {}
+    /** Exam matrix: how many eligible questions exist per topic (category) and difficulty. */
+    public record MatrixCountsRequest(UUID bankId, @NotEmpty @Size(max = 50) List<@NotNull UUID> categoryIds, Question.QuestionType questionType) {}
+    public record MatrixCount(UUID categoryId, Question.DifficultyLevel difficulty, long available) {}
     public record ImportResult(int totalRows, int imported, int failed, List<String> errors) {}
 }
