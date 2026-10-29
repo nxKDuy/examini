@@ -60,7 +60,8 @@ class GoogleSignInTest {
         when(users.findByGoogleSubject("g-123")).thenReturn(Optional.of(existing));
         service.google(new AuthRequest.GoogleRequest("cred", AuthRequest.RegisterRequest.Persona.TEACHER));
         assertEquals(User.Persona.STUDENT, existing.getPersonalPersona(), "persona of an existing account never changes");
-        verify(users, times(1)).save(any());
+        verify(users, times(2)).save(any()); // the link, then the last sign-in time
+        assertNotNull(existing.getLastLoginAt());
     }
 
     @Test void unverifiedEmailOrAnotherLinkedGoogleAccountIsRefused() {

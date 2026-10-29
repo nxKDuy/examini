@@ -107,7 +107,7 @@ class JwtAuthFilterTest {
 
     @Test
     void publicAuthRequestsRemainAvailableButIdentityHeadersAreStripped() {
-        for (String path : new String[]{"/auth/login", "/auth/register", "/auth/refresh", "/auth/google",
+        for (String path : new String[]{"/auth/login", "/auth/register", "/auth/refresh", "/auth/google", "/auth/password/forgot", "/auth/password/reset",
                 "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh", "/auth-service/auth/google"}) {
             ServerWebExchange forwarded = forward(MockServerHttpRequest.post(path)
                     .header("X-User-Id", "spoof")
@@ -149,6 +149,9 @@ class JwtAuthFilterTest {
         // Only the read-only providers route is public for GET; POST to it and GET elsewhere still need a token.
         assertRejected(MockServerHttpRequest.post("/auth/providers").build());
         assertRejected(MockServerHttpRequest.get("/auth/google").build());
+        // Account routes always need a token.
+        assertRejected(MockServerHttpRequest.get("/auth/account").build());
+        assertRejected(MockServerHttpRequest.get("/auth/admin/users").build());
     }
 
     @Test

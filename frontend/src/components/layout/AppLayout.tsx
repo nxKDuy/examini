@@ -9,6 +9,8 @@ import NotificationBell from '../../features/notifications/NotificationBell'
 import LanguageSwitch from '../LanguageSwitch'
 import { useEffect, useState } from 'react'
 import { Notice } from '../ui'
+import { Avatar } from '../../features/account/Avatar'
+import { useAvatarUrl, useProfile } from '../../features/account/accountApi'
 import { SWITCH_NOTICE_KEY } from '../../features/auth/crossTab'
 import { useLangStore, useT } from '../../lib/i18n'
 
@@ -27,6 +29,8 @@ export default function AppLayout() {
   const bindAccount = useLangStore(s => s.bindAccount)
   useEffect(() => { bindAccount(user?.id ?? null) }, [user?.id, bindAccount])
   // Set by the cross-tab watcher when another tab signed in with a different account.
+  const profile = useProfile()
+  const avatarUrl = useAvatarUrl(profile.data?.avatarUpdatedAt)
   const [switched, setSwitched] = useState(() => { try { const v = sessionStorage.getItem(SWITCH_NOTICE_KEY); sessionStorage.removeItem(SWITCH_NOTICE_KEY); return v === '1' } catch { return false } })
 
   async function logout() {
@@ -45,16 +49,15 @@ export default function AppLayout() {
             <div className="row topbar-user" style={{ gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
             <LanguageSwitch />
             <NotificationBell />
-            <div className="topbar-who" style={{ textAlign: 'right', minWidth: 0, lineHeight: 1.3 }}>
-              <div className="small" style={{ color: 'var(--color-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
-                {user?.fullName}
+            <NavLink to="/profile" className="topbar-profile" aria-label={t('Hồ sơ cá nhân: {0}', { 0: user?.fullName ?? '' })} title={t('Hồ sơ cá nhân')}>
+              <div className="topbar-who" style={{ textAlign: 'right', minWidth: 0, lineHeight: 1.3 }}>
+                <div className="small" style={{ color: 'var(--color-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+                  {user?.fullName}
+                </div>
+                <div className="xsmall muted">{t(AUDIENCE_LABEL[audience])}</div>
               </div>
-              <div className="xsmall muted">{t(AUDIENCE_LABEL[audience])}</div>
-            </div>
-            <span aria-hidden className="topbar-avatar" style={{ width: 34, height: 34, border: '1px solid #000', background: '#fff', color: '#000',
-              display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              {user?.fullName?.trim().split(/\s+/).pop()?.[0]?.toUpperCase() ?? '?'}
-            </span>
+              <Avatar name={user?.fullName ?? '?'} url={avatarUrl} size={34} />
+            </NavLink>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()} title={t('Đăng xuất')}>
               <LogOut size={16} aria-hidden /> <span className="hide-sm">{t('Đăng xuất')}</span>
             </button>

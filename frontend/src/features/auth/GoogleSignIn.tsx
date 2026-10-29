@@ -26,15 +26,34 @@ function loadGoogle(): Promise<GoogleId> {
   return script
 }
 
+/** The official Google button; calls onCredential with the ID token. Renders nothing until GSI loads. */
+export function GoogleButton({ clientId, text, onCredential, onError }: { clientId: string; text: 'continue_with' | 'signup_with' | 'signin_with'; onCredential: (credential: string) => void; onError: (message: string) => void }) {
+  const lang = useLangStore(s => s.lang)
+  const box = useRef<HTMLDivElement>(null)
+  const callback = useRef(onCredential)
+  callback.current = onCredential
+  useEffect(() => {
+    if (!box.current) return
+    let cancelled = false
+    loadGoogle().then(g => {
+      if (cancelled || !box.current) return
+      g.initialize({ client_id: clientId, ux_mode: 'popup', cancel_on_tap_outside: true, callback: r => callback.current(r.credential) })
+      box.current.innerHTML = ''
+      g.renderButton(box.current, { type: 'standard', theme: 'outline', size: 'large', shape: 'rectangular', text, locale: lang === 'en' ? 'en' : 'vi', width: Math.min(400, box.current.clientWidth || 320) })
+    }).catch(() => !cancelled && onError(t('Không tải được nút đăng nhập Google. Kiểm tra mạng hoặc trình chặn quảng cáo.')))
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-render only when the client id, text or language change
+  }, [clientId, text, lang])
+  return <div ref={box} className="google-button" />
+}
+
 /**
  * "Continue with Google". Hidden unless the server has a Google client id. A first-time Google user picks
  * Student or Teacher (the register page passes its choice directly).
  */
 export default function GoogleSignIn({ persona, onDone, mode = 'signin' }: { persona?: Persona; onDone: () => void; mode?: 'signin' | 'signup' }) {
   useT()
-  const lang = useLangStore(s => s.lang)
   const providers = useQuery({ queryKey: ['auth-providers'], queryFn: authApi.providers, staleTime: 300_000, retry: false })
-  const box = useRef<HTMLDivElement>(null)
   const personaRef = useRef(persona)
   personaRef.current = persona
   const [pending, setPending] = useState<string | null>(null)
@@ -52,25 +71,12 @@ export default function GoogleSignIn({ persona, onDone, mode = 'signin' }: { per
     } finally { setBusy(false) }
   }
 
-  useEffect(() => {
-    if (!clientId || !box.current) return
-    let cancelled = false
-    loadGoogle().then(g => {
-      if (cancelled || !box.current) return
-      g.initialize({ client_id: clientId, ux_mode: 'popup', cancel_on_tap_outside: true, callback: r => void finish(r.credential, personaRef.current) })
-      box.current.innerHTML = ''
-      g.renderButton(box.current, { type: 'standard', theme: 'outline', size: 'large', shape: 'rectangular', text: mode === 'signup' ? 'signup_with' : 'continue_with',
-        locale: lang === 'en' ? 'en' : 'vi', width: Math.min(400, box.current.clientWidth || 320) })
-    }).catch(() => !cancelled && setError(t('Không tải được nút đăng nhập Google. Kiểm tra mạng hoặc trình chặn quảng cáo.')))
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-render the button only when the client id, mode or language change
-  }, [clientId, mode, lang])
 
   if (!clientId) return null
   return (
     <div className="stack-sm">
       <div className="auth-divider" role="separator"><span>{t('hoặc')}</span></div>
-      <div ref={box} className="google-button" aria-busy={busy} />
+      <div aria-busy={busy}><GoogleButton clientId={clientId} text={mode === 'signup' ? 'signup_with' : 'continue_with'} onCredential={c => void finish(c, personaRef.current)} onError={setError} /></div>
       {busy && <span className="row small muted" style={{ gap: 6 }}><Spinner size={14} /> {t('Đang đăng nhập bằng Google…')}</span>}
       {pending && <div className="stack-sm" role="group" aria-label={t('Chọn loại tài khoản')}>
         <Notice tone="info" title={t('Lần đầu đăng nhập bằng Google')}>{t('Bạn dùng EXAMINI với vai trò nào? Có thể chọn một lần duy nhất.')}</Notice>

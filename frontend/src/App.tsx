@@ -2,6 +2,9 @@ import { lazy, Suspense } from 'react'
 import { RouterProvider, createBrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './features/auth/LoginPage'
 import RegisterPage from './features/auth/RegisterPage'
+import { ForgotPasswordPage, ResetPasswordPage } from './features/auth/PasswordPages'
+const ProfilePage = lazy(() => import('./features/account/ProfilePage'))
+const AdminUsersPage = lazy(() => import('./features/account/AdminUsersPage'))
 import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import { LoadingState } from './components/ui'
@@ -34,6 +37,8 @@ function AppRoutes() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Exam taking: focus mode without navigation chrome */}
         <Route element={<ProtectedRoute persona="STUDENT" />}>
@@ -44,6 +49,7 @@ function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/public-bank" element={<PublicBankPage />} />
           <Route path="/public-bank/:postId" element={<PublicBankPage />} />
           <Route path="/organizations" element={<OrganizationsPage />} />
@@ -70,6 +76,10 @@ function AppRoutes() {
           <Route path="/exams/:id" element={<ExamDetailPage />} />
           <Route path="/exams/:id/edit" element={<ExamEditorPage />} />
           <Route path="/grading" element={<GradingPage />} />
+        </Route>
+
+        <Route element={<ProtectedRoute adminOnly><AppLayout /></ProtectedRoute>}>
+          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

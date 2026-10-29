@@ -54,6 +54,26 @@ public class User {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(length = 30)
+    private String phone;
+
+    @Column(length = 255)
+    private String school;
+
+    @Column(length = 1000)
+    private String bio;
+
+    /** False for accounts created through Google until the user sets a password. */
+    @Builder.Default
+    @Column(name = "password_set", nullable = false)
+    private boolean passwordSet = true;
+
+    @Column(name = "locked_at")
+    private java.time.Instant lockedAt;
+
+    @Column(name = "last_login_at")
+    private java.time.Instant lastLoginAt;
+
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;

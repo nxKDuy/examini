@@ -5,7 +5,7 @@ import { pushCleanupSettled } from '../notifications/pushClient'
 interface LoginPayload { email: string; password: string }
 interface RegisterPayload { email: string; password: string; fullName: string; accountType: 'PERSONAL'; persona: 'STUDENT' | 'TEACHER' }
 interface GooglePayload { credential: string; persona?: 'STUDENT' | 'TEACHER' }
-export interface AuthProviders { google: boolean; googleClientId: string | null }
+export interface AuthProviders { google: boolean; googleClientId: string | null; passwordReset?: boolean }
 let hydration: Promise<void> | null = null
 
 async function hydrate() {

@@ -31,7 +31,7 @@ test('Teacher: four priority tiles (Tổng quan, Lịch thi, Đề thi, Chấm b
   const t = n.dockFor('TEACHER')
   assert.deepEqual(names(t.dock), ['Tổng quan', 'Lịch thi', 'Đề thi', 'Chấm bài']); assert.deepEqual(names(t.more), ['Kho cá nhân', 'Ngân hàng công khai', 'Tổ chức'])
   const a = n.dockFor('ADMIN')
-  assert.deepEqual(names(a.dock), ['Tổng quan', 'Câu hỏi', 'Đề thi', 'Chấm bài']); assert.deepEqual(names(a.more), ['Ngân hàng công khai', 'Tổ chức', 'Lịch thi'])
+  assert.deepEqual(names(a.dock), ['Tổng quan', 'Câu hỏi', 'Đề thi', 'Chấm bài']); assert.deepEqual(names(a.more), ['Người dùng', 'Ngân hàng công khai', 'Tổ chức', 'Lịch thi'])
 })
 
 test('Dock never exceeds five tiles including Khác, and dock + sheet together are every destination exactly once (nothing lost, nothing duplicated)', () => {

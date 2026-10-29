@@ -35,8 +35,9 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
     /** Read-only sign-in configuration (public Google client id); GET only. */
     private static final Set<String> PUBLIC_AUTH_GET_PATHS = Set.of("/auth/providers", "/auth-service/auth/providers");
     private static final Set<String> PUBLIC_AUTH_PATHS = Set.of(
-            "/auth/login", "/auth/register", "/auth/refresh", "/auth/google",
-            "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh", "/auth-service/auth/google"
+            "/auth/login", "/auth/register", "/auth/refresh", "/auth/google", "/auth/password/forgot", "/auth/password/reset",
+            "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh", "/auth-service/auth/google",
+            "/auth-service/auth/password/forgot", "/auth-service/auth/password/reset"
     );
     private static final Set<String> ROLES = Set.of("STUDENT", "TEACHER", "ADMIN");
     private static final Set<String> PERSONAS = Set.of("STUDENT", "TEACHER");

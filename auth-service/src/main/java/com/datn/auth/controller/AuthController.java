@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final com.datn.auth.service.PasswordResetService passwordReset;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
@@ -41,7 +42,7 @@ public class AuthController {
     @GetMapping("/providers")
     @Operation(summary = "Các cách đăng nhập đang bật")
     public AuthResponse.ProvidersResponse providers() {
-        return authService.providers();
+        return authService.providers(passwordReset.available());
     }
 
     @PostMapping("/refresh")

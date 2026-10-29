@@ -1,4 +1,4 @@
-import { BookOpenCheck, Building2, CalendarDays, ClipboardCheck, FileText, LayoutDashboard, ListChecks, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { BookOpenCheck, Building2, Users, CalendarDays, ClipboardCheck, FileText, LayoutDashboard, ListChecks, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { hasPersona, isSystemAdmin, type AuthUser } from '../../store/authStore'
 import { t, i18nMap } from '../../lib/i18n'
 
@@ -38,7 +38,7 @@ export function navigationFor(audience: Audience): NavGroup[] {
   }
   return [
     { items: [overview] },
-    { label: t('Quản trị'), items: [{ to: '/questions', label: t('Câu hỏi'), icon: ShieldCheck }, publicBank, organizations] },
+    { label: t('Quản trị'), items: [{ to: '/admin/users', label: t('Người dùng'), icon: Users }, { to: '/questions', label: t('Câu hỏi'), icon: ShieldCheck }, publicBank, organizations] },
     { label: t('Khảo thí'), items: [
       { to: '/calendar', label: t('Lịch thi'), icon: CalendarDays },
       { to: '/exams', label: t('Đề thi'), icon: FileText },
