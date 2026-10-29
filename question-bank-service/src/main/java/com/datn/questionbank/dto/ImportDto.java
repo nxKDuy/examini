@@ -26,7 +26,7 @@ public class ImportDto {
     public record ImportSummary(long total, long valid, long invalid, long needsReview, long importable, long imported, long excluded) {}
     public record ImportJobResponse(UUID id, String fileName, FileKind fileKind, long fileSize, int pageCount, int ocrPageCount,
             Status status, String failureReason, List<String> warnings, UUID categoryId, DifficultyLevel defaultDifficulty,
-            LocalDateTime createdAt, LocalDateTime updatedAt, ImportSummary summary) {}
+            LocalDateTime createdAt, LocalDateTime updatedAt, ImportSummary summary, AiGeneration generation) {}
     /** null = unchanged; options replace all; "" clears expectedAnswer/explanation. */
     public record ItemUpdate(@NotNull Long version, @Size(min = 1, max = 5000) String content, QuestionType questionType,
             DifficultyLevel difficultyLevel, UUID categoryId, @Size(max = 26) List<@NotNull @Valid ImportOption> options,
@@ -35,4 +35,16 @@ public class ImportDto {
     public record ImportedItem(UUID itemId, UUID questionId) {}
     public record SkippedItem(UUID itemId, String reason) {}
     public record ImportJobResult(List<ImportedItem> imported, List<SkippedItem> skipped, ImportSummary summary) {}
+
+    // ── AI generation (additive; contracts/question-import.md "AI generation") ──
+    public static final int AI_MAX_QUESTIONS = 20, AI_MAX_MATERIAL = 20000;
+    /** Generate staged items with AI. material is optional knowledge text; examples come from the actor's own bank. */
+    public record AiGenerateRequest(@NotBlank @Size(max = 500) String topic, @Size(max = AI_MAX_MATERIAL) String material,
+            @NotNull UUID categoryId, @Min(1) @Max(AI_MAX_QUESTIONS) Integer count,
+            @Size(min = 1, max = 4) List<@NotNull QuestionType> questionTypes, DifficultyLevel difficulty,
+            @Pattern(regexp = "vi|en") String language, Boolean useBankExamples) {}
+    /** Provenance shown on an AI job; null on document jobs. */
+    public record AiGeneration(String topic, String model, int requestedCount, List<QuestionType> questionTypes,
+            DifficultyLevel difficulty, String language, boolean hasMaterial, int materialLength, int exampleCount) {}
+    public record AiStatus(boolean available, String model, int maxQuestions, int maxMaterialChars) {}
 }

@@ -19,7 +19,9 @@ public final class ImportParser {
     public enum Flag { OCR, LOW_CONFIDENCE, MISSING_CORRECT_ANSWER, ANSWER_NOT_IN_OPTIONS, MULTIPLE_ANSWERS,
         DUPLICATE_OPTION, OPTION_SEQUENCE_GAP, NO_ANSWER_ESSAY, CONTENT_TRUNCATED,
         /** OCR/text boundary doubts: a split or non-split that could be wrong is kept for review, never resolved by guessing. */
-        QUESTION_SPLIT_UNCERTAIN, NUMBERING_GAP, POSSIBLE_MERGED_QUESTIONS }
+        QUESTION_SPLIT_UNCERTAIN, NUMBERING_GAP, POSSIBLE_MERGED_QUESTIONS,
+        /** AI generation: every generated item carries AI_GENERATED; POSSIBLE_DUPLICATE marks a near-copy of an existing or sibling question. */
+        AI_GENERATED, POSSIBLE_DUPLICATE }
     public record Option(String content, boolean correct, short displayOrder) {}
     public record Parsed(String content, QuestionType type, DifficultyLevel difficulty, List<Option> options,
             String expectedAnswer, String explanation, Integer page, SourceMethod method, double confidence,

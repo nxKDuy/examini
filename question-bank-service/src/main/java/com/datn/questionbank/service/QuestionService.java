@@ -88,6 +88,13 @@ public class QuestionService {
         return createInBank(req, bankId, actor, CreationMethod.IMPORT);
     }
 
+    /** Staged import with an explicit creation method (IMPORT for documents, AI_GENERATED for AI jobs). */
+    @Transactional
+    public QuestionResponse importDraft(CreateRequest req, UUID bankId, QuestionActor actor, CreationMethod method) {
+        if (method != CreationMethod.IMPORT && method != CreationMethod.AI_GENERATED) throw bad("Phương thức import không hợp lệ");
+        return createInBank(req, bankId, actor, method);
+    }
+
     private QuestionResponse createInBank(CreateRequest req, UUID bankId, QuestionActor actor, CreationMethod method) {
         var bank = banks.get(bankId);
         banks.requireWrite(bank, actor);

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Plus, ScanText, Trash2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Plus, ScanText, Sparkles, Trash2 } from 'lucide-react'
 import { importApi, type ImportItem, type ImportResult, type ItemFilter } from './importApi'
-import { FILTERS, flagLabel, dirty, draftOf, isOcr, itemState, lowConfidence, mustReview, optionLetter, patchOf, type Draft } from './importModel'
+import { FILTERS, flagLabel, dirty, draftOf, isAi, isOcr, itemState, lowConfidenceShown, mustReview, optionLetter, patchOf, sourceText, type Draft } from './importModel'
 import SubjectCategoryFields from '../question-bank/SubjectCategoryFields'
 import { ConfirmDialog } from '../../components/Dialog'
 import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader, Spinner } from '../../components/ui'
@@ -12,7 +12,7 @@ import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib
 import './import.css'
 import { t, useT, i18nMap } from '../../lib/i18n'
 
-const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh' } as const)
+const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh', AI: 'Tạo bằng AI' } as const)
 
 /** Review → edit → validate → import (Personal DRAFT). Nothing is activated or published. */
 export default function ImportJobPage() {
@@ -38,21 +38,29 @@ export default function ImportJobPage() {
   if (job.isLoading) return <LoadingState rows={5} />
   if (job.isError || !job.data) return <ErrorState error={job.error} onRetry={() => void job.refetch()} />
   const j = job.data, s = j.summary
+  const ai = j.fileKind === 'AI', g = j.generation
+  const description = ai
+    ? [KIND_LABEL.AI, g?.model, g ? t('yêu cầu {0} câu', { 0: g.requestedCount }) : '', g?.hasMaterial ? t('có tài liệu ({0} ký tự)', { 0: g.materialLength }) : t('không có tài liệu'),
+       g?.exampleCount ? t('{0} câu mẫu từ kho', { 0: g.exampleCount }) : '', t('tạo {0}', { 0: formatDateTime(j.createdAt) })]
+    : [KIND_LABEL[j.fileKind], t('{0} trang', { 0: j.pageCount }), j.ocrPageCount ? t('{0} trang nhận dạng ảnh (OCR)', { 0: j.ocrPageCount }) : '', t('tải lên {0}', { 0: formatDateTime(j.createdAt) })]
 
   return (
     <div className="stack-lg">
       <PageHeader title={j.fileName} crumbs={[{ label: t('Kho cá nhân'), to: '/questions' }, { label: t('Nhập tài liệu'), to: '/questions/imports' }, { label: j.fileName }]}
-        description={[KIND_LABEL[j.fileKind], t('{0} trang', { 0: j.pageCount }), j.ocrPageCount ? t('{0} trang nhận dạng ảnh (OCR)', { 0: j.ocrPageCount }) : '', t('tải lên {0}', { 0: formatDateTime(j.createdAt) })].filter(Boolean).join(' · ')}
+        description={description.filter(Boolean).join(' · ')}
         actions={ready && <>
           <button type="button" className="btn btn-danger-ghost" onClick={() => setDiscarding(true)}><Trash2 size={16} aria-hidden /> {t('Hủy lô')}</button>
           <button type="button" className="btn btn-secondary" disabled={validate.isPending} onClick={() => validate.mutate()}><CheckCircle2 size={16} aria-hidden /> {t('Kiểm tra lại')}</button>
           <button type="button" className="btn btn-primary" disabled={!s.importable || run.isPending} aria-busy={run.isPending} onClick={() => run.mutate()}><Plus size={16} aria-hidden /> {t('Nhập')} {s.importable} {t('câu (bản nháp)')}</button>
         </>} />
 
-      {j.status === 'PROCESSING' && <Notice tone="info" live title={t('Đang xử lý tài liệu')}><span className="row" style={{ gap: 8 }}><Spinner size={14} /> {t('Đang đọc chữ và tách câu hỏi. Trang tự cập nhật khi xong.')}</span></Notice>}
-      {j.status === 'FAILED' && <Notice tone="danger" title={t('Không xử lý được tài liệu')}>{j.failureReason || t('Tài liệu không đọc được.')} {t('Hãy kiểm tra tệp rồi tải lên lại.')}</Notice>}
+      {j.status === 'PROCESSING' && <Notice tone="info" live title={ai ? t('AI đang soạn câu hỏi') : t('Đang xử lý tài liệu')}><span className="row" style={{ gap: 8 }}><Spinner size={14} /> {ai ? t('Thường mất 10–60 giây. Trang tự cập nhật khi xong.') : t('Đang đọc chữ và tách câu hỏi. Trang tự cập nhật khi xong.')}</span></Notice>}
+      {j.status === 'FAILED' && (ai
+        ? <Notice tone="danger" title={t('AI không tạo được câu hỏi')}>{j.failureReason || t('Không tạo được câu hỏi bằng AI')} {t('Bạn có thể thử lại với chủ đề hoặc tài liệu khác.')}</Notice>
+        : <Notice tone="danger" title={t('Không xử lý được tài liệu')}>{j.failureReason || t('Tài liệu không đọc được.')} {t('Hãy kiểm tra tệp rồi tải lên lại.')}</Notice>)}
+      {ai && j.status === 'READY' && <Notice tone="info" title={t('Câu hỏi do AI soạn')}>{t('AI có thể sai kiến thức hoặc đáp án. Kiểm tra nội dung, đáp án và độ khó của từng câu rồi bấm “Lưu và đánh dấu đã xem”; chỉ câu đã xem mới được nhập.')}</Notice>}
       {j.status === 'DISCARDED' && <Notice tone="warning">{t('Lô này đã bị hủy; các câu đã nhập trước đó vẫn giữ trong kho.')}</Notice>}
-      {j.warnings.length > 0 && <Notice tone="warning" title={t('Lưu ý khi đọc tài liệu')}><ul style={{ margin: 0, paddingLeft: 18 }}>{j.warnings.map(w => <li key={w} className="small">{w}</li>)}</ul></Notice>}
+      {j.warnings.length > 0 && <Notice tone="warning" title={ai ? t('Lưu ý từ AI') : t('Lưu ý khi đọc tài liệu')}><ul style={{ margin: 0, paddingLeft: 18 }}>{j.warnings.map(w => <li key={w} className="small">{w}</li>)}</ul></Notice>}
       {flash && <Notice tone={flash.tone} live>{flash.text}</Notice>}
       {result && <Notice tone="success" live title={t('Đã nhập {0} câu vào Kho cá nhân dưới dạng bản nháp', { 0: result.imported.length })}
         action={<Link className="btn btn-secondary btn-sm" to="/questions">{t('Mở Kho cá nhân')}</Link>}>
@@ -63,7 +71,7 @@ export default function ImportJobPage() {
           {FILTERS.map(f => <button key={f.value} type="button" role="tab" className="tab" aria-selected={filter === f.value} onClick={() => { setFilter(f.value); setSelectedId(null) }}>{f.label}<span className="count">{f.count(s)}</span></button>)}
         </div>
         <div className="imp-layout" data-panel={selected ? 'open' : 'closed'}>
-          <section className="card" aria-label={t('Các câu nhận dạng được')} style={{ overflow: 'hidden' }}>
+          <section className="card" aria-label={ai ? t('Các câu AI tạo') : t('Các câu nhận dạng được')} style={{ overflow: 'hidden' }}>
             {items.isLoading ? <LoadingState rows={4} /> : items.isError ? <ErrorState error={items.error} onRetry={() => void items.refetch()} />
               : !items.data?.content.length ? <EmptyState title={t('Không có câu trong mục này')} />
               : <ol className="imp-list">{items.data.content.map(i => <ItemRow key={i.id} item={i} active={i.id === selectedId} onOpen={() => setSelectedId(i.id)} />)}</ol>}
@@ -89,11 +97,13 @@ function ItemRow({ item, active, onOpen }: { item: ImportItem; active: boolean; 
           <strong className="small">{t('Câu')} {item.position + 1}</strong>
           <Badge tone={st.tone}>{st.label}</Badge>
           {isOcr(item) && <Badge tone="warning" icon={<ScanText size={12} aria-hidden />}>OCR</Badge>}
-          {lowConfidence(item) && <Badge tone="warning">{t('Tin cậy')} {Math.round(item.confidence * 100)}%</Badge>}
+          {isAi(item) && <Badge tone="warning" icon={<Sparkles size={12} aria-hidden />}>AI</Badge>}
+          {item.flags.includes('POSSIBLE_DUPLICATE') && <Badge tone="warning">{t('Có thể trùng')}</Badge>}
+          {lowConfidenceShown(item) && !isAi(item) && <Badge tone="warning">{t('Tin cậy')} {Math.round(item.confidence * 100)}%</Badge>}
           {item.reviewed && <Badge>{t('Đã xem')}</Badge>}
         </span>
         <span className="small truncate-2" style={{ display: '-webkit-box' }}>{item.content || t('(chưa có nội dung)')}</span>
-        <span className="xsmall muted">{QUESTION_TYPE_LABEL[item.questionType]} · {DIFFICULTY_LABEL[item.difficultyLevel]} · trang {item.source.page ?? '?'}{item.errors.length ? t(' · {0} lỗi', { 0: item.errors.length }) : ''}</span>
+        <span className="xsmall muted">{QUESTION_TYPE_LABEL[item.questionType]} · {DIFFICULTY_LABEL[item.difficultyLevel]} · {sourceText(item)}{item.errors.length ? t(' · {0} lỗi', { 0: item.errors.length }) : ''}</span>
       </button>
     </li>
   )
@@ -124,7 +134,9 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
     <aside className="imp-panel" aria-label={t('Sửa câu {0}', { 0: item.position + 1 })}>
       <div className="imp-panel-head"><h2 style={{ fontSize: '1.15rem' }}>{t('Câu')} {item.position + 1}</h2><button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><ArrowLeft size={14} aria-hidden /> {t('Đóng')}</button></div>
       <div className="imp-panel-body stack">
-        {attention && <Notice tone="warning" title={t('Bắt buộc xem lại')}>{isOcr(item) ? t('Câu được nhận dạng từ ảnh (OCR) nên có thể sai chữ. ') : ''}{lowConfidence(item) ? t('Độ tin cậy {0}%. ', { 0: Math.round(item.confidence * 100) }) : ''}{t('So với nội dung gốc bên dưới, sửa nếu cần rồi bấm “Lưu và đánh dấu đã xem”.')}</Notice>}
+        {attention && (isAi(item)
+          ? <Notice tone="warning" title={t('Bắt buộc xem lại')}>{t('Câu do AI soạn: kiểm tra kiến thức, đáp án đúng, phương án nhiễu và độ khó, sửa nếu cần rồi bấm “Lưu và đánh dấu đã xem”.')}</Notice>
+          : <Notice tone="warning" title={t('Bắt buộc xem lại')}>{isOcr(item) ? t('Câu được nhận dạng từ ảnh (OCR) nên có thể sai chữ. ') : ''}{lowConfidenceShown(item) ? t('Độ tin cậy {0}%. ', { 0: Math.round(item.confidence * 100) }) : ''}{t('So với nội dung gốc bên dưới, sửa nếu cần rồi bấm “Lưu và đánh dấu đã xem”.')}</Notice>)}
         {item.importedQuestionId && <Notice tone="success">{t('Đã nhập thành câu bản nháp trong Kho cá nhân.')} <Link to={`/questions?q=${item.importedQuestionId}`}>{t('Mở câu hỏi')}</Link></Notice>}
         {notice && <Notice tone={notice.tone} live>{notice.text}</Notice>}
         {item.flags.length > 0 && <div className="row" style={{ gap: 6 }}>{item.flags.map(f => <Badge key={f} tone="warning">{flagLabel(f)}</Badge>)}</div>}
@@ -151,7 +163,9 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
           <Field label={t('Giải thích')} htmlFor="imp-expl"><textarea id="imp-expl" className="input" rows={2} value={d.explanation} onChange={e => setD({ ...d, explanation: e.target.value })} /></Field>
         </fieldset>
         <details>
-          <summary className="field-label" style={{ cursor: 'pointer' }}>{t('Nội dung gốc ·')} {item.source.fileName} · trang {item.source.page ?? '?'} · {item.source.method === 'OCR' ? 'OCR' : t('văn bản')} {t('· tin cậy')} {Math.round(item.confidence * 100)}%</summary>
+          <summary className="field-label" style={{ cursor: 'pointer' }}>{isAi(item)
+            ? t('Kết quả AI gốc')
+            : <>{t('Nội dung gốc ·')} {item.source.fileName} · {sourceText(item)} · {item.source.method === 'OCR' ? 'OCR' : t('văn bản')} {t('· tin cậy')} {Math.round(item.confidence * 100)}%</>}</summary>
           <pre className="imp-raw">{item.rawText}</pre>
         </details>
         {editable && <div className="row">

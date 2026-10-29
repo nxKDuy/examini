@@ -4,6 +4,11 @@ jwt:
 question-bank:
   internal-token: ${QB_INTERNAL_TOKEN:}
   identity-token: ${QUESTION_BANK_IDENTITY_TOKEN:}
+  # AI question generation; blank key disables it (GET /question-imports/ai/status → available=false).
+  ai:
+    gemini-api-key: ${GEMINI_API_KEY:}
+    gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
+    timeout-seconds: ${QB_AI_TIMEOUT_SECONDS:120}
 auth:
   service:
     url: ${AUTH_SERVICE_URL:http://localhost:8081}

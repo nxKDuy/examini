@@ -111,3 +111,40 @@ IMPORTED, DISCARDED with actor and time); the import is atomic per request.
 
 400 invalid file/limits/body, 404 unknown or foreign job/item, 409 stale version, job not
 `READY`, or item already imported, 403 non-author or service token.
+
+## AI generation (additive, 2026-10-29)
+
+Teachers can ask an AI provider to write questions. The result is a job of `fileKind=AI` that goes
+through exactly the same review, validate and import routes as a document job. Nothing reaches a bank
+until the teacher reviews it.
+
+| Route | Request | Response |
+| --- | --- | --- |
+| `GET /question-imports/ai/status` | — | `AiStatus { available, model?, maxQuestions: 20, maxMaterialChars: 20000 }` |
+| `POST /question-imports/ai` | JSON `AiGenerateRequest` | 202 `ImportJob` (`status=PROCESSING`, `fileKind=AI`) |
+
+```text
+AiGenerateRequest { topic (1–500), material? (≤ 20000 chars, untrusted knowledge text), categoryId (required, existing),
+                    count? 1–20 (default 5), questionTypes? 1–4 of QuestionType (default [MULTIPLE_CHOICE]),
+                    difficulty? (default MEDIUM, a target only), language? vi|en (default vi), useBankExamples? (default true) }
+ImportJob.generation (null on document jobs) = AiGeneration { topic, model, requestedCount, questionTypes, difficulty,
+                    language, hasMaterial, materialLength, exampleCount }
+```
+
+- Provider: Gemini (`GEMINI_API_KEY`, `GEMINI_MODEL`, default `gemini-2.5-flash`). No key → `available=false` and `POST` → 503.
+- One AI job `PROCESSING` per teacher (429 otherwise). Same owner-only access as other jobs (404 for others, 403 non-author).
+- **Bank context.** With `useBankExamples`, up to 15 of the actor's **own** non-archived questions in the category are sent as
+  examples. Duplicate checking uses up to 2000 of the actor's own questions in that category. Nothing from other owners,
+  organizations or the public bank is sent.
+- Material and examples are fenced as data in the prompt; instructions inside them are ignored by design.
+- **Never guessed.** Items keep the AI's answer key as given. No correct option → `MISSING_CORRECT_ANSWER`, more than one →
+  `MULTIPLE_ANSWERS`; nothing is promoted to correct. Choice questions drop any `expectedAnswer`.
+- Every item: `source.method=AI`, `source.page=null`, flag `AI_GENERATED`, `reviewRequired=true`, `confidence` 0.70 minus 0.15
+  per structural flag. `POSSIBLE_DUPLICATE` marks a case/accent/punctuation-insensitive match with an existing own question
+  in the category or an earlier item of the same job. `difficultyLevel` is the AI's per-item estimate (fallback: the request).
+- `rawText` is the item's JSON as returned by the AI (provenance). Job `warnings` cover truncated output and fewer/extra items.
+- Provider failures make the job `FAILED` with a readable `failureReason`; internal details are not exposed.
+- Import of an AI item creates a Personal DRAFT with `creationMethod=AI_GENERATED`, `sourceType=USER_DOCUMENT` when material
+  was given else `NONE`, `sourceLabel="AI · <topic> · <model>"`, `sourceRefId="ai:<jobId>:<itemId>"`, `sourceExcerpt=rawText`.
+- Audit events add `AI_REQUESTED` (parameters, no material text) and `AI_GENERATED`.
+- Migration `V14`: `file_kind` accepts `AI`, `source_method` accepts `AI`, new nullable `question_import_jobs.generation`.

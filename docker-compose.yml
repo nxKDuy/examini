@@ -181,6 +181,8 @@ services:
       QUESTION_BANK_IDENTITY_TOKEN: ${QUESTION_BANK_IDENTITY_TOKEN:-}
       ORGANIZATION_SERVICE_URL: http://organization-service:8088
       ORG_AUTHZ_QB_TOKEN: ${ORG_AUTHZ_QB_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
     depends_on:
       postgres:
         condition: service_healthy

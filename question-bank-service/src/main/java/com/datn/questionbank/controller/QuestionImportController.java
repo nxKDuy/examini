@@ -34,6 +34,14 @@ public class QuestionImportController {
             @RequestParam(required = false) DifficultyLevel defaultDifficulty, HttpServletRequest req) {
         return service.upload(file, categoryId, defaultDifficulty, actor(req));
     }
+    /** AI generation (contracts/question-import.md "AI generation"): a JSON request instead of a file. */
+    @GetMapping("/ai/status")
+    public AiStatus aiStatus(HttpServletRequest req) { return service.aiStatus(actor(req)); }
+    @PostMapping(value = "/ai", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ImportJobResponse generate(@Valid @RequestBody AiGenerateRequest body, HttpServletRequest req) {
+        return service.generate(body, actor(req));
+    }
     @GetMapping
     public Page<ImportJobResponse> list(@PageableDefault(size = 20) Pageable pageable, HttpServletRequest req) {
         return service.list(pageable, actor(req));

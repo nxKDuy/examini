@@ -57,6 +57,7 @@ public class DocumentExtractor {
             case DOCX -> docx(bytes);
             case PDF -> pdf(bytes);
             case IMAGE -> image(bytes);
+            case AI -> throw new IllegalArgumentException("AI jobs have no document to extract");
         };
     }
 
