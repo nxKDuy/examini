@@ -1,3 +1,4 @@
+import type { Presentation } from '../question-bank/questionApi'
 import api from '../../lib/api'
 import type { IntegrityPolicy } from '../integrity/integrityApi'
 import type { BlueprintPreview, BlueprintRequest } from './builderModel'
@@ -22,7 +23,7 @@ export interface ExamInput {
 }
 export interface Policy { accessMode: AccessMode; maxParticipants: number; maxConcurrentSessions: number; attemptLimit: number; joinCode?: string }
 export interface SafeOption { id: string; content: string; displayOrder: number }
-export interface SafeQuestion { questionId: string; questionVersion: number; questionType: string; content: string; points: number; position: number; options: SafeOption[] }
+export interface SafeQuestion { questionId: string; questionVersion: number; questionType: string; content: string; points: number; position: number; options: SafeOption[]; presentation?: Presentation | null }
 export interface Session {
   sessionId: string; examId: string; title: string; status: string; attemptNumber: number
   expiresAt: string; serverNow: string; questions: SafeQuestion[]; answers: Record<string, string>
@@ -86,6 +87,11 @@ export const examApi = {
   session: (id: string) => api.get<Session>(`/sessions/${id}`).then(r => r.data),
   answer: (id: string, questionId: string, content: string) => api.post(`/sessions/${id}/answers`, { content }, { params: { questionId } }),
   submit: (id: string) => api.post(`/sessions/${id}/submit`),
+  /** Voice answer of a SPEAKING question: the raw recording as the body; the stored answer becomes its metadata JSON. */
+  answerAudio: (id: string, questionId: string, audio: Blob, seconds: number) =>
+    api.post<{ questionId: string; seconds: number; bytes: number; type: string }>(`/sessions/${id}/answers/${questionId}/audio`, audio,
+      { params: { seconds }, headers: { 'Content-Type': audio.type.split(';')[0] || 'audio/webm' } }).then(r => r.data),
+  answerAudioBlob: (id: string, questionId: string) => api.get<Blob>(`/sessions/${id}/answers/${questionId}/audio`, { responseType: 'blob' }).then(r => r.data),
   result: (id: string) => api.get<Result>(`/grades/session/${id}`).then(r => r.data),
 }
 
@@ -93,4 +99,5 @@ export interface PaperQuestion {
   questionId: string; questionVersion: number; questionType: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | string
   content: string; options: { id: string; content: string; displayOrder: number; correct: boolean }[]
   points: number; expectedAnswer: string | null; explanation: string | null; position: number
+  presentation?: Presentation | null
 }

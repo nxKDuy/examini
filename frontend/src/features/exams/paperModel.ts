@@ -8,7 +8,7 @@ export interface PaperOptions { codes: number; firstCode: number; shuffleQuestio
 export interface PaperItem {
   number: number; question: PaperQuestion
   /** Options in printed order with their letter. */
-  options: { letter: string; content: string; correct: boolean }[]
+  options: { letter: string; content: string; correct: boolean; displayOrder?: number }[]
   /** What the key shows for this item: letters, Đúng/Sai, the expected answer or "TL" for essays. */
   key: string
 }
@@ -52,11 +52,19 @@ function keyOf(q: PaperQuestion, options: PaperItem['options']): string {
 export function makeVersion(examId: string, questions: PaperQuestion[], code: string, opts: Pick<PaperOptions, 'shuffleQuestions' | 'shuffleOptions'>): PaperVersion {
   const random = rng(hashSeed(`${examId}:${code}`))
   const base = [...questions].sort((a, b) => a.position - b.position)
-  const order = opts.shuffleQuestions ? shuffled(base, random) : base
+  // Questions sharing a reading/listening passage move as one block, like the online attempt.
+  const groups: PaperQuestion[][] = []
+  const byKey = new Map<string, PaperQuestion[]>()
+  for (const q of base) {
+    const key = q.presentation?.passage?.key
+    if (key && byKey.has(key)) { byKey.get(key)!.push(q); continue }
+    const g = [q]; groups.push(g); if (key) byKey.set(key, g)
+  }
+  const order = (opts.shuffleQuestions ? shuffled(groups, random) : groups).flat()
   const items = order.map((q, i) => {
     const sorted = [...(q.options ?? [])].sort((a, b) => a.displayOrder - b.displayOrder)
     const mixed = opts.shuffleOptions && q.questionType === 'MULTIPLE_CHOICE' ? shuffled(sorted, random) : sorted
-    const options = mixed.map((o, k) => ({ letter: LETTERS[k] ?? String(k + 1), content: o.content, correct: o.correct }))
+    const options = mixed.map((o, k) => ({ letter: LETTERS[k] ?? String(k + 1), content: o.content, correct: o.correct, displayOrder: o.displayOrder }))
     return { number: i + 1, question: q, options, key: keyOf(q, options) }
   })
   return { code, items }
@@ -68,4 +76,17 @@ export function makeVersions(examId: string, questions: PaperQuestion[], o: Pape
 }
 
 /** Options are laid out in one row when every option is short, otherwise one per line (like printed Vietnamese exams). */
+/** First and last item number of each passage block, keyed by the number of its first item. */
+export function passageRanges(items: PaperItem[]): Map<number, { from: number; to: number }> {
+  const out = new Map<number, { from: number; to: number }>()
+  let cur: { key: string; from: number; to: number } | null = null
+  for (const it of items) {
+    const key = it.question.presentation?.passage?.key
+    if (key && cur && cur.key === key) { cur.to = it.number; continue }
+    cur = key ? { key, from: it.number, to: it.number } : null
+    if (cur) out.set(it.number, cur)
+  }
+  return out
+}
+
 export const compactOptions = (options: { content: string }[]) => options.length > 0 && options.every(o => o.content.length <= 22)

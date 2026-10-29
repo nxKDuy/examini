@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BookOpenCheck, CheckCircle2, FileUp, Plus, Sparkles } from 'lucide-react'
+import { BookOpenCheck, CheckCircle2, Download, FileUp, Plus, Sparkles } from 'lucide-react'
 import { questionBankApi, type Filters, type ImportResult, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
@@ -13,6 +13,7 @@ import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime, shortId } from '
 import SubjectCategoryFields from './SubjectCategoryFields'
 import QuestionDetail from './QuestionDetail'
 import QuestionEditor from './QuestionEditor'
+import ExportDialog from './ExportDialog'
 import { activateMany, canActivate, type BulkResult } from './bulkActivate'
 import { bankApi } from '../banks/bankApi'
 import PersonalQuestionSets from '../banks/PersonalQuestionSets'
@@ -38,6 +39,7 @@ export default function QuestionListPage() {
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [progress, setProgress] = useState(0)
   const [bulk, setBulk] = useState<BulkResult | null>(null)
+  const [exporting, setExporting] = useState(false)
   const qc = useQueryClient()
   const detailRef = useRef<HTMLDivElement>(null)
   // Single questions are the default view; Question Sets live in their own tab so the list is never pushed below the fold.
@@ -72,6 +74,7 @@ export default function QuestionListPage() {
           <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> {tt('Nhập CSV')}</button>
           <Link to="/questions/imports" className="btn btn-secondary"><FileUp size={16} aria-hidden /> {tt('Nhập tài liệu')}</Link>
           <Link to="/questions/imports?new=ai" className="btn btn-secondary"><Sparkles size={16} aria-hidden /> {tt('Tạo bằng AI')}</Link>
+          <button type="button" className="btn btn-secondary" onClick={() => setExporting(true)}><Download size={16} aria-hidden /> {tt('Xuất')}</button>
           <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}><Plus size={16} aria-hidden /> {tt('Tạo câu hỏi')}</button>
         </>} />
 
@@ -159,6 +162,7 @@ export default function QuestionListPage() {
       </div>
       </>}
 
+      {exporting && <ExportDialog filters={filters} onClose={() => setExporting(false)} />}
       {editing && <QuestionEditor initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
         onSaved={q => { setEditing(null); setSelectedId(q.id) }} />}
       {importing && <ImportDialog onClose={() => setImporting(false)} />}

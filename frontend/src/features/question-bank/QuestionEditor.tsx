@@ -2,7 +2,9 @@ import { useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
 import { bankApi } from '../banks/bankApi'
-import { questionBankApi, type Question, type QuestionInput, type QuestionType, type SourceType } from './questionApi'
+import { questionBankApi, type Presentation, type Question, type QuestionInput, type QuestionType, type SourceType } from './questionApi'
+import PresentationFields, { OptionImage } from './media/PresentationFields'
+import { cleanPresentation } from './media/mediaModel'
 import { Dialog } from '../../components/Dialog'
 import { Field, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
@@ -16,12 +18,19 @@ const TYPES: { value: QuestionType; label: string; hint: string }[] = i18nMap([
   { value: 'TRUE_FALSE', label: 'Đúng/Sai', hint: 'Chọn mệnh đề đúng hay sai. Chấm tự động.' },
   { value: 'SHORT_ANSWER', label: 'Trả lời ngắn', hint: 'So khớp với đáp án chuẩn. Chấm tự động.' },
   { value: 'ESSAY', label: 'Tự luận', hint: 'Giáo viên chấm tay sau khi thí sinh nộp bài.' },
+  { value: 'SPEAKING', label: 'Nói', hint: 'Thí sinh ghi âm câu trả lời; giáo viên nghe và chấm.' },
 ])
 // Phase 1 provenance only; bank-level sources belong to later phases.
 const SOURCES: { value: SourceType; label: string }[] = i18nMap([
   { value: 'NONE', label: 'Không ghi nguồn' }, { value: 'USER_DOCUMENT', label: 'Tài liệu của tôi' }, { value: 'EXTERNAL_WEB', label: 'Trang web bên ngoài' },
 ])
 const letter = (i: number) => String.fromCharCode(65 + i)
+/** Option images follow their option when an earlier option is removed. */
+function shiftOptionMedia(m: Record<string, string> | null | undefined, removed: number) {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(m ?? {})) { const n = Number(k); if (n < removed) out[k] = v; else if (n > removed) out[String(n - 1)] = v }
+  return out
+}
 
 function initialTrueIsCorrect(q?: Question | null) {
   if (!q || q.questionType !== 'TRUE_FALSE') return true
@@ -51,6 +60,7 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
   const [sourceUrl, setSourceUrl] = useState(initial?.sourceUrl ?? '')
   const [sourceRefId, setSourceRefId] = useState(initial?.sourceRefId ?? '')
   const [sourceExcerpt, setSourceExcerpt] = useState(initial?.sourceExcerpt ?? '')
+  const [presentation, setPresentation] = useState<Presentation>(initial?.presentation ?? {})
   const [error, setError] = useState('')
 
   // Which submit button was pressed; a ref so the submit handler reads it in the same event.
@@ -88,8 +98,9 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
     }
     save.mutate({ activate: activateRef.current, data: {
       categoryId, content: content.trim(), questionType: type, difficultyLevel: difficulty, options: opts,
-      expectedAnswer: type === 'SHORT_ANSWER' || type === 'ESSAY' ? expectedAnswer.trim() : '',
+      expectedAnswer: type === 'SHORT_ANSWER' || type === 'ESSAY' || type === 'SPEAKING' ? expectedAnswer.trim() : '',
       explanation,
+      presentation: cleanPresentation(presentation, type) as Presentation | null,
       sourceType, sourceLabel: sourceType === 'NONE' ? '' : sourceLabel, sourceRefId: sourceType === 'NONE' ? '' : sourceRefId,
       sourceUrl: sourceType === 'NONE' ? '' : sourceUrl, sourceExcerpt: sourceType === 'NONE' ? '' : sourceExcerpt,
       questionVersion: initial?.questionVersion,
@@ -130,6 +141,7 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
         <Field label={tt('Nội dung câu hỏi')} htmlFor="q-content" required hint={tt('{0}/5000 ký tự', { 0: content.length })}>
           <textarea id="q-content" className="input" rows={4} maxLength={5000} required value={content} onChange={e => setContent(e.target.value)} />
         </Field>
+        <PresentationFields value={presentation} onChange={setPresentation} type={type} />
 
         {type === 'MULTIPLE_CHOICE' && (
           <fieldset className="stack-sm">
@@ -144,8 +156,11 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
                 </label>
                 <input className="input" aria-label={tt('Nội dung lựa chọn {0}', { 0: letter(i) })} maxLength={5000} value={o.content}
                   onChange={e => setOptions(options.map((v, n) => n === i ? { ...v, content: e.target.value } : v))} />
+                <OptionImage id={presentation.optionMedia?.[String(i)]} label={tt('Lựa chọn {0}', { 0: letter(i) })}
+                  onSet={id => setPresentation(p => ({ ...p, optionMedia: { ...p.optionMedia, [String(i)]: id } }))}
+                  onClear={() => setPresentation(p => { const m = { ...p.optionMedia }; delete m[String(i)]; return { ...p, optionMedia: m } })} />
                 <button type="button" className="btn btn-ghost btn-icon" aria-label={tt('Xóa lựa chọn {0}', { 0: letter(i) })} disabled={options.length <= 2}
-                  onClick={() => { const next = options.filter((_, n) => n !== i); if (!next.some(v => v.correct)) next[0] = { ...next[0], correct: true }; setOptions(next) }}>
+                  onClick={() => { const next = options.filter((_, n) => n !== i); if (!next.some(v => v.correct)) next[0] = { ...next[0], correct: true }; setOptions(next); setPresentation(p => ({ ...p, optionMedia: shiftOptionMedia(p.optionMedia, i) })) }}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -176,7 +191,7 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
           </Field>
         )}
 
-        {type === 'ESSAY' && (
+        {(type === 'ESSAY' || type === 'SPEAKING') && (
           <Field label={tt('Hướng dẫn chấm (tùy chọn)')} htmlFor="q-rubric"
             hint={tt('Chỉ người soạn và người chấm thấy. Bài có câu tự luận sẽ ở trạng thái Cần chấm tay cho đến khi giáo viên chấm.')}>
             <textarea id="q-rubric" className="input" rows={3} maxLength={10000} value={expectedAnswer} onChange={e => setExpectedAnswer(e.target.value)} />

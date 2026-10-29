@@ -26,7 +26,7 @@ export default function ImportJobsPage() {
   return (
     <div className="stack-lg">
       <PageHeader title={t('Nhập tài liệu')} crumbs={[{ label: t('Kho cá nhân'), to: '/questions' }, { label: t('Nhập tài liệu') }]}
-        description={t('Tải DOCX, PDF hoặc ảnh, hoặc nhờ AI soạn câu hỏi; xem lại từng câu rồi nhập vào Kho cá nhân dưới dạng bản nháp.')}
+        description={t('Tải Excel, CSV, Word, PDF hoặc ảnh, hoặc nhờ AI soạn câu hỏi; xem lại từng câu rồi nhập vào Kho cá nhân dưới dạng bản nháp.')}
         actions={<>
           <button type="button" className="btn btn-secondary" onClick={() => setGenerating(true)}><Sparkles size={16} aria-hidden /> {t('Tạo bằng AI')}</button>
           <button type="button" className="btn btn-primary" onClick={() => setUploading(true)}><FileUp size={16} aria-hidden /> {t('Tải tài liệu')}</button>

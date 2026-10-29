@@ -560,3 +560,17 @@ a.stat:hover { background: var(--color-subtle); }
 .matrix-cell[data-over] .muted { color: var(--color-danger); }
 .matrix-points { width: 80px; padding: 6px 8px; }
 .matrix-table tfoot th, .matrix-table tfoot td { border-top: 1px solid var(--color-ink, #000); }
+
+/* Question media, reading passages, speaking recorder */
+.media-frame { border: 1px solid var(--color-hairline); padding: 10px 12px; background: var(--color-surface); }
+.media-image { display: block; max-width: 100%; height: auto; object-fit: contain; border: 1px solid var(--color-hairline); background: #fff; }
+.option-image { display: block; max-width: min(240px, 100%); max-height: 160px; margin-top: 6px; object-fit: contain; }
+.passage { border: 1px solid var(--color-hairline); border-left: 4px solid var(--color-accent); padding: 14px 16px; display: grid; gap: 10px; background: var(--color-surface); }
+.passage-text { max-height: 50vh; overflow: auto; line-height: 1.65; }
+.media-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-hairline); padding: 4px 8px; font-size: 0.8125rem; max-width: 100%; }
+.media-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recorder { border: 1px solid var(--color-hairline); padding: 14px; display: grid; gap: 10px; }
+.recorder-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--color-danger); animation: rec-pulse 1s infinite; }
+@keyframes rec-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .recorder-dot { animation: none; } }
+.word-count[data-state="short"], .word-count[data-state="long"] { color: var(--color-danger); }

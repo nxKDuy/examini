@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { FileUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { importApi, type Difficulty } from './importApi'
+import { importApi, type CognitiveLevel, type Difficulty } from './importApi'
 import { PROVIDER_LABEL, aiProblems } from './importModel'
 import type { QuestionType } from '../question-bank/questionApi'
 import SubjectCategoryFields from '../question-bank/SubjectCategoryFields'
@@ -12,24 +13,39 @@ import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
 import Select from '../../components/Select'
 
-const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY']
+const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY', 'SPEAKING']
+/** Bloom's taxonomy as Vietnamese teachers name it (mức độ nhận thức). */
+const BLOOM: { value: CognitiveLevel | ''; label: () => string }[] = [
+  { value: '', label: () => t('Không chỉ định') },
+  { value: 'REMEMBER', label: () => t('Nhớ – nhận biết') },
+  { value: 'UNDERSTAND', label: () => t('Hiểu – thông hiểu') },
+  { value: 'APPLY', label: () => t('Vận dụng') },
+  { value: 'ANALYZE', label: () => t('Phân tích') },
+  { value: 'EVALUATE', label: () => t('Đánh giá') },
+  { value: 'CREATE', label: () => t('Sáng tạo') },
+  { value: 'MIXED', label: () => t('Trộn nhiều mức') },
+]
+export interface AiPrefill { topic?: string; material?: string; categoryId?: string; questionTypes?: QuestionType[]; difficulty?: Difficulty }
 
 /**
  * AI generation step: topic (+ optional knowledge text) → a staged job reviewed on the same page as a
  * document import. Nothing reaches the bank until the teacher reviews and imports it as a draft.
  */
-export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
+export default function AiGenerateDialog({ onClose, prefill }: { onClose: () => void; prefill?: AiPrefill }) {
   useT()
   const navigate = useNavigate()
   const status = useQuery({ queryKey: ['ai-status'], queryFn: importApi.aiStatus, staleTime: 60_000 })
   const max = status.data?.maxQuestions ?? 20, maxMaterial = status.data?.maxMaterialChars ?? 20000
-  const [topic, setTopic] = useState('')
-  const [material, setMaterial] = useState('')
+  const [topic, setTopic] = useState(prefill?.topic ?? '')
+  const [material, setMaterial] = useState(prefill?.material ?? '')
   const [subjectId, setSubjectId] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const [categoryId, setCategoryId] = useState(prefill?.categoryId ?? '')
   const [count, setCount] = useState(5)
-  const [types, setTypes] = useState<QuestionType[]>(['MULTIPLE_CHOICE'])
-  const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM')
+  const [types, setTypes] = useState<QuestionType[]>(prefill?.questionTypes ?? ['MULTIPLE_CHOICE'])
+  const [difficulty, setDifficulty] = useState<Difficulty>(prefill?.difficulty ?? 'MEDIUM')
+  const [bloom, setBloom] = useState<CognitiveLevel | ''>('')
+  const fileInput = useRef<HTMLInputElement>(null)
+  const extract = useMutation({ mutationFn: importApi.material, onSuccess: m => setMaterial(m.text) })
   const [language, setLanguage] = useState<'vi' | 'en'>('vi')
   const [useBank, setUseBank] = useState(true)
   const [useWeb, setUseWeb] = useState(true)
@@ -38,7 +54,7 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
   const err = (k: keyof typeof problems) => (touched ? problems[k] : undefined)
   const generate = useMutation({
     mutationFn: () => importApi.generate({ topic: topic.trim(), material: material.trim() || undefined, categoryId, count, questionTypes: types,
-      difficulty, language, useBankExamples: useBank, useWebKnowledge: useWeb && !material.trim() }),
+      difficulty, language, useBankExamples: useBank, useWebKnowledge: useWeb && !material.trim(), ...(bloom ? { cognitiveLevel: bloom } : {}) }),
     onSuccess: job => navigate(`/questions/imports/${job.id}`),
   })
   const unavailable = status.data && !status.data.available
@@ -72,6 +88,14 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
             hint={t('Dán nội dung bài học. Có tài liệu thì AI chỉ hỏi những gì có trong đó. {0}/{1} ký tự.', { 0: material.length, 1: maxMaterial })}>
             <textarea id="ai-material" className="input" rows={6} value={material} onChange={e => setMaterial(e.target.value)} />
           </Field>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: -6 }}>
+            <input ref={fileInput} type="file" hidden accept=".docx,.pdf,.png,.jpg,.jpeg" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) extract.mutate(f) }} />
+            <button type="button" className="btn btn-secondary btn-sm" disabled={extract.isPending} aria-busy={extract.isPending} onClick={() => fileInput.current?.click()}>
+              <FileUp size={14} aria-hidden /> {extract.isPending ? t('Đang đọc tệp…') : t('Lấy nội dung từ tệp (Word, PDF, ảnh)')}</button>
+            {extract.data && <span className="xsmall muted" role="status">{t('Đã lấy chữ từ {0} ({1} trang{2}).', { 0: extract.data.fileName, 1: extract.data.pageCount, 2: extract.data.ocrPageCount ? t(', {0} trang nhận dạng ảnh', { 0: extract.data.ocrPageCount }) : '' })}
+              {extract.data.truncated && ' ' + t('Tài liệu dài nên chỉ giữ phần đầu.')}</span>}
+            {extract.isError && <span className="field-error">{errorText(extract.error)}</span>}
+          </div>
           <div className="grid-2">
             <SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={id => { setSubjectId(id); setCategoryId('') }} onCategory={setCategoryId} required />
           </div>
@@ -95,6 +119,11 @@ export default function AiGenerateDialog({ onClose }: { onClose: () => void }) {
               </Select>
             </Field>
           </div>
+          <Field label={t('Mức độ nhận thức (thang Bloom)')} htmlFor="ai-bloom" hint={t('AI soạn câu theo đúng mức: nhớ, hiểu, vận dụng, phân tích, đánh giá, sáng tạo.')}>
+            <Select id="ai-bloom" className="input" value={bloom} onChange={e => setBloom(e.target.value as CognitiveLevel | '')}>
+              {BLOOM.map(b => <option key={b.value} value={b.value}>{b.label()}</option>)}
+            </Select>
+          </Field>
           <div className="grid-2">
             <Field label={t('Ngôn ngữ câu hỏi')} htmlFor="ai-lang">
               <Select id="ai-lang" className="input" value={language} onChange={e => setLanguage(e.target.value as 'vi' | 'en')}>

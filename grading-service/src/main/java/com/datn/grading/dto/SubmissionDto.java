@@ -17,7 +17,15 @@ public final class SubmissionDto {
                                  Float score,Float totalScore,Float publishedScore,int pendingManualItemCount,
                                  Instant submittedAt,Instant gradedAt,Integer durationSeconds,String feedback,
                                  long resultRevision,Long publishedRevision,
-                                 List<ItemResponse> items,boolean invalidated,Instant invalidatedAt,String invalidationReason) {}
+                                 List<ItemResponse> items,boolean invalidated,Instant invalidatedAt,String invalidationReason,UUID sessionId) {
+        public DetailResponse(UUID id,UUID examId,String examTitle,UUID studentId,String studentDisplayName,int attemptNumber,String status,
+                              Float score,Float totalScore,Float publishedScore,int pendingManualItemCount,Instant submittedAt,Instant gradedAt,
+                              Integer durationSeconds,String feedback,long resultRevision,Long publishedRevision,List<ItemResponse> items,
+                              boolean invalidated,Instant invalidatedAt,String invalidationReason){
+            this(id,examId,examTitle,studentId,studentDisplayName,attemptNumber,status,score,totalScore,publishedScore,pendingManualItemCount,submittedAt,
+                 gradedAt,durationSeconds,feedback,resultRevision,publishedRevision,items,invalidated,invalidatedAt,invalidationReason,null);
+        }
+    }
 
     public record Overview(long totalSubmissions,long needsReview,long pending,long graded,long released,long pendingManualItems,long invalidated) {}
 

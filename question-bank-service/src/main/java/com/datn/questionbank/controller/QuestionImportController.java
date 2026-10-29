@@ -46,6 +46,9 @@ public class QuestionImportController {
         return org.springframework.http.ResponseEntity.ok().contentType(MediaType.parseMediaType(type))
                 .header("Content-Disposition", "attachment; filename=\"" + name + "\"").body(body);
     }
+    /** Text of a Word/PDF/image to use as AI material (not stored). */
+    @PostMapping(value = "/ai/material", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MaterialText material(@RequestParam MultipartFile file, HttpServletRequest req) { return service.material(file, actor(req)); }
     /** AI generation (contracts/question-import.md "AI generation"): a JSON request instead of a file. */
     @GetMapping("/ai/status")
     public AiStatus aiStatus(HttpServletRequest req) { return service.aiStatus(actor(req)); }

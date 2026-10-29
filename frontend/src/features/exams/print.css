@@ -49,3 +49,7 @@
   .paper-sheet:last-child { break-after: auto; page-break-after: auto; }
   .paper-options-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+.paper-passage { list-style: none; margin: 8px 0 4px; padding: 6px 10px; border: 1px solid #000; break-inside: avoid; }
+.paper-passage-title { text-align: center; }
+.paper-sheet .media-image { max-width: 70%; margin: 4px 0; border: 0; }
+.paper-options .media-image { max-width: 200px; }

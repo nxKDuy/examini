@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, CheckCircle2, Pencil } from 'lucide-react'
+import { Archive, CheckCircle2, Pencil, Sparkles } from 'lucide-react'
+import AiGenerateDialog from '../question-import/AiGenerateDialog'
+import { MediaImage, MediaList, PassageView } from './media/QuestionMedia'
 import { bankApi } from '../banks/bankApi'
 import { canShare } from '../banks/bankModel'
 import ProvenanceBlock from '../banks/ProvenanceBlock'
@@ -21,14 +23,21 @@ export function QuestionBody({ question }: { question: Question }) {
   useT()
   return (
     <div className="stack">
+      <PassageView presentation={question.presentation} />
       <p className="question-text">{question.content}</p>
+      <MediaList media={question.presentation?.media} maxPlays={question.presentation?.maxPlays} label={t('Câu hỏi')} />
+      {(question.presentation?.minWords || question.presentation?.maxWords || question.presentation?.maxRecordSeconds) && <p className="xsmall muted">
+        {question.presentation.minWords ? t('Tối thiểu {0} từ. ', { 0: question.presentation.minWords }) : ''}
+        {question.presentation.maxWords ? t('Tối đa {0} từ. ', { 0: question.presentation.maxWords }) : ''}
+        {question.presentation.maxRecordSeconds ? t('Ghi âm tối đa {0} giây.', { 0: question.presentation.maxRecordSeconds }) : ''}</p>}
       {question.options.length > 0 && (
         <ol className="stack-sm" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {question.options.map((o, i) => (
             <li key={o.id ?? i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start', padding: '8px 10px',
               background: o.correct ? 'var(--color-success-soft)' : 'var(--color-subtle)' }}>
               <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
-              <span className="prewrap" style={{ flex: 1 }}>{o.content}</span>
+              <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
+                {question.presentation?.optionMedia?.[String(o.displayOrder)] && <MediaImage id={question.presentation.optionMedia[String(o.displayOrder)]} alt={t('Hình lựa chọn {0}', { 0: String.fromCharCode(65 + i) })} maxHeight={140} />}</span>
               {o.correct === true && <Badge tone="success" icon={<CheckCircle2 size={12} aria-hidden />}>{t('Đáp án đúng')}</Badge>}
             </li>
           ))}
@@ -36,7 +45,7 @@ export function QuestionBody({ question }: { question: Question }) {
       )}
       {question.expectedAnswer && (
         <div className="stack-sm" style={{ gap: 4 }}>
-          <span className="field-label">{question.questionType === 'ESSAY' ? t('Hướng dẫn chấm') : t('Đáp án chuẩn')}</span>
+          <span className="field-label">{question.questionType === 'ESSAY' || question.questionType === 'SPEAKING' ? t('Hướng dẫn chấm') : t('Đáp án chuẩn')}</span>
           <p className="prewrap small" style={{ padding: '8px 10px', background: 'var(--color-subtle)' }}>{question.expectedAnswer}</p>
         </div>
       )}
@@ -60,6 +69,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
   const audience = audienceOf(user)
   const canReadAnswers = audience !== 'STUDENT'
   const [sharing, setSharing] = useState(false)
+  const [similar, setSimilar] = useState(false)
   const [confirm, setConfirm] = useState<Action | null>(null)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const detail = useQuery({ queryKey: ['question', id, canReadAnswers], queryFn: () => questionBankApi.getQuestion(id, canReadAnswers) })
@@ -111,9 +121,15 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
           {canEdit && <button type="button" className="btn btn-secondary" onClick={() => onEdit(q)}><Pencil size={16} aria-hidden /> {q.status === 'ACTIVE' ? t('Sửa (tạo phiên bản mới)') : t('Sửa')}</button>}
           {q.status !== 'ARCHIVED' && <button type="button" className="btn btn-danger-ghost" disabled={action.isPending} onClick={() => setConfirm('archive')}><Archive size={16} aria-hidden /> {t('Lưu trữ')}</button>}
           {personal && canShare(q) && <button type="button" className="btn btn-secondary" onClick={() => setSharing(true)}>{t('Gửi vào tổ chức')}</button>}
+          <button type="button" className="btn btn-ghost" onClick={() => setSimilar(true)}><Sparkles size={16} aria-hidden /> {t('Tạo câu tương tự bằng AI')}</button>
         </div>
         {personal && <p className="xsmall muted">{t('Muốn đăng câu này lên cộng đồng? Dùng nút + ở Ngân hàng công khai.')}</p>}
       </div>}
+      {similar && <AiGenerateDialog onClose={() => setSimilar(false)} prefill={{
+        topic: t('Câu hỏi tương tự (cùng kiến thức, khác số liệu/ngữ cảnh): {0}', { 0: q.content.slice(0, 380) }),
+        material: [q.presentation?.passage?.content, q.content, ...q.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o.content}`), q.expectedAnswer, q.explanation].filter(Boolean).join('\n').slice(0, 20000),
+        categoryId: q.categoryId, questionTypes: [q.questionType], difficulty: q.difficultyLevel,
+      }} />}
       {sharing && <SubmitToOrgDialog questionId={q.id} version={q.questionVersion} onClose={() => setSharing(false)} onDone={text => { setSharing(false); setMessage({ tone: 'success', text }); void qc.invalidateQueries({ queryKey: ['banks'] }) }} />}
 
       <details>

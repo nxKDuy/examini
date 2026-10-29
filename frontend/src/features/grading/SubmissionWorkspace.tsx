@@ -15,6 +15,9 @@ import { Badge, ErrorState, Field, LoadingState, Notice } from '../../components
 import { errorText } from '../../lib/errors'
 import { QUESTION_TYPE_LABEL, formatDateTime, formatDuration, formatScore } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import { examApi } from '../exams/examApi'
+import { spokenAnswer } from '../question-bank/media/mediaModel'
+import { useBlobUrl } from '../question-bank/media/useBlobUrl'
 
 interface Loaded { rev: number; initial: GradeForm; form: GradeForm }
 const make = (d: SubmissionDetail): Loaded => { const f = formFromDetail(d); return { rev: d.resultRevision, initial: f, form: structuredClone(f) } }
@@ -145,7 +148,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
         {!editable && !attemptInvalid && <Notice tone="info">{t('Bài đã hoàn tất chấm nên chỉ xem. Muốn sửa điểm, dùng Chấm lại ở khung bên cạnh (bắt buộc có lý do).')}</Notice>}
         <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {d.items.map(i => (
-            <ItemCard key={i.questionId} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}
+            <ItemCard key={i.questionId} sessionId={d.sessionId ?? null} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}
               initial={loaded.initial.items[i.questionId]} onChange={patch => setItem(i.questionId, patch)} />
           ))}
         </ol>
@@ -217,8 +220,8 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
   )
 }
 
-function ItemCard({ item, form, initial, problem, editable, onChange }: {
-  item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
+function ItemCard({ sessionId, item, form, initial, problem, editable, onChange }: {
+  sessionId: string | null; item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
   problem?: { score?: string; reason?: string }; editable: boolean; onChange: (patch: Partial<GradeForm['items'][string]>) => void
 }) {
   useT()
@@ -237,10 +240,12 @@ function ItemCard({ item, form, initial, problem, editable, onChange }: {
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{item.questionContent}</p>
       <div className="grade-answer small">
         <span className="xsmall muted">{t('Bài làm của thí sinh')}</span>
-        <p className="prewrap">{response?.trim() ? response : <em className="muted">{t('Không trả lời')}</em>}</p>
+        {item.questionType === 'SPEAKING'
+          ? <SpokenResponse sessionId={sessionId} questionId={item.questionId} value={item.answerContent} />
+          : <p className="prewrap">{response?.trim() ? response : <em className="muted">{t('Không trả lời')}</em>}</p>}
       </div>
       <p className="xsmall muted">
-        {item.questionType === 'ESSAY' ? t('Gợi ý tự động (chỉ tham khảo): {0}', { 0: formatScore(item.autoScore) }) : t('Điểm tự động: {0}', { 0: formatScore(item.autoScore) })}
+        {item.questionType === 'ESSAY' || item.questionType === 'SPEAKING' ? t('Gợi ý tự động (chỉ tham khảo): {0}', { 0: formatScore(item.autoScore) }) : t('Điểm tự động: {0}', { 0: formatScore(item.autoScore) })}
         {item.manualScore !== null && t(' · Đã chấm tay: {0}', { 0: formatScore(item.manualScore) })}
         {item.manualGradedAt && ` · ${formatDateTime(item.manualGradedAt, '')}`}
       </p>
@@ -259,5 +264,22 @@ function ItemCard({ item, form, initial, problem, editable, onChange }: {
         </Field>
       )}
     </li>
+  )
+}
+
+/** Plays the student's recording of a SPEAKING question (fetched with the grader's token). */
+function SpokenResponse({ sessionId, questionId, value }: { sessionId: string | null; questionId: string; value: string | null }) {
+  useT()
+  const meta = spokenAnswer(value)
+  const audio = useBlobUrl(['answer-audio', sessionId, questionId, meta?.bytes], () => examApi.answerAudioBlob(sessionId!, questionId), !!meta && !!sessionId)
+  if (!meta) return <p><em className="muted">{t('Không trả lời')}</em></p>
+  if (!sessionId) return <p className="muted">{t('Bài ghi âm {0}', { 0: formatDuration(meta.seconds) })}</p>
+  return (
+    <div className="stack-sm" style={{ gap: 4 }}>
+      <span className="xsmall muted">{t('Bài ghi âm {0}', { 0: formatDuration(meta.seconds) })}</span>
+      {audio.url ? <audio controls preload="metadata" src={audio.url} style={{ width: '100%' }} aria-label={t('Bài ghi âm của thí sinh')} />
+        : audio.loading ? <span className="xsmall muted">{t('Đang tải bản ghi…')}</span>
+        : <span className="field-error">{errorText(audio.error)}</span>}
+    </div>
   )
 }

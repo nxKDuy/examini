@@ -6,7 +6,7 @@ export type JobStatus = 'PROCESSING' | 'READY' | 'FAILED' | 'DISCARDED'
 export type ItemFilter = 'ALL' | 'NEEDS_REVIEW' | 'INVALID' | 'IMPORTABLE' | 'IMPORTED' | 'EXCLUDED'
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD'
 export interface ImportSummary { total: number; valid: number; invalid: number; needsReview: number; importable: number; imported: number; excluded: number }
-export type FileKind = 'DOCX' | 'PDF' | 'IMAGE' | 'AI'
+export type FileKind = 'DOCX' | 'PDF' | 'IMAGE' | 'XLSX' | 'CSV' | 'AI'
 /** Provenance of an AI job (additive, "AI generation" in contracts/question-import.md); null on document jobs. */
 export interface AiGeneration {
   topic: string; model: string; requestedCount: number; questionTypes: QuestionType[]; difficulty: Difficulty
@@ -23,7 +23,11 @@ export interface AiStatus { available: boolean; model: string | null; maxQuestio
 export interface AiGenerateRequest {
   topic: string; material?: string; categoryId: string; count: number; questionTypes: QuestionType[]
   difficulty: Difficulty; language: 'vi' | 'en'; useBankExamples: boolean; useWebKnowledge: boolean
+  /** Bloom level (REMEMBER … CREATE or MIXED); omitted = no constraint. */
+  cognitiveLevel?: CognitiveLevel
 }
+export type CognitiveLevel = 'REMEMBER' | 'UNDERSTAND' | 'APPLY' | 'ANALYZE' | 'EVALUATE' | 'CREATE' | 'MIXED'
+export interface MaterialText { fileName: string; text: string; pageCount: number; ocrPageCount: number; truncated: boolean; warnings: string[] }
 export interface ImportOption { content: string; correct: boolean; displayOrder: number }
 export interface ImportItem {
   id: string; position: number; version: number; content: string; questionType: QuestionType; difficultyLevel: Difficulty; categoryId?: string | null
@@ -47,6 +51,13 @@ export const importApi = {
     if (opts.defaultDifficulty) form.append('defaultDifficulty', opts.defaultDifficulty)
     // The shared client defaults to JSON; multipart must be explicit (same as the CSV import).
     return api.post<ImportJob>('/question-imports', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+  },
+  /** Sample files with every question type and a guide sheet/section. */
+  template: (kind: 'excel' | 'word') => api.get<Blob>(`/question-imports/templates/${kind}`, { responseType: 'blob' }).then(r => r.data),
+  /** Text of a Word/PDF/image to paste as AI material (OCR for scans); nothing is stored. */
+  material: (file: File) => {
+    const form = new FormData(); form.append('file', file)
+    return api.post<MaterialText>('/question-imports/ai/material', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
   },
   aiStatus: () => api.get<AiStatus>('/question-imports/ai/status').then(r => r.data),
   /** Starts an AI job (PROCESSING); poll it like an uploaded document. */

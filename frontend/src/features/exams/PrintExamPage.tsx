@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { examApi } from './examApi'
-import { compactOptions, makeVersions, type PaperVersion } from './paperModel'
+import { compactOptions, makeVersions, passageRanges, type PaperVersion } from './paperModel'
+import { MediaImage } from '../question-bank/media/QuestionMedia'
 import { ErrorState, LoadingState, Notice } from '../../components/ui'
 import { formatScore } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
@@ -81,6 +82,7 @@ export default function PrintExamPage() {
 const pts = (n: number) => `${formatScore(Number(n)).replace('.', ',')} điểm`
 
 function Sheet({ v, h, duration, showPoints }: { v: PaperVersion; h: Header; duration: number; showPoints: boolean }) {
+  const ranges = passageRanges(v.items)
   return (
     <article className="paper-sheet">
       <table className="paper-head"><tbody><tr>
@@ -92,14 +94,33 @@ function Sheet({ v, h, duration, showPoints }: { v: PaperVersion; h: Header; dur
         <span className="paper-code">Mã đề {v.code}</span>
       </div>
       <ol className="paper-questions">
-        {v.items.map(item => <li key={item.question.questionId} className="paper-q">
+        {v.items.map(item => {
+          const p = item.question.presentation
+          const range = ranges.get(item.number)
+          const images = (p?.media ?? []).filter(m => m.kind === 'IMAGE')
+          const listening = (p?.media ?? []).some(m => m.kind === 'AUDIO')
+          const optionImage = (o: { displayOrder?: number }) => o.displayOrder === undefined ? undefined : p?.optionMedia?.[String(o.displayOrder)]
+          return <Fragment key={item.question.questionId}>
+          {range && p?.passage && <li className="paper-passage">
+            <p><strong><em>{range.from === range.to ? `Đọc đoạn sau và trả lời câu ${range.from}.` : `Đọc đoạn sau và trả lời các câu từ ${range.from} đến ${range.to}.`}</em></strong></p>
+            {p.passage.title && <p className="paper-passage-title"><strong>{p.passage.title}</strong></p>}
+            {(p.passage.media ?? []).filter(m => m.kind === 'IMAGE').map(m => <MediaImage key={m.id} id={m.id} alt={m.name ?? 'Hình'} maxHeight={260} />)}
+            {(p.passage.media ?? []).some(m => m.kind === 'AUDIO') && <p><em>(Phần nghe: giáo viên phát đoạn âm thanh{p.maxPlays ? ` ${p.maxPlays} lần` : ''}.)</em></p>}
+            <p className="prewrap">{p.passage.content}</p>
+          </li>}
+          <li className="paper-q">
           <p><strong>Câu {item.number}.</strong>{showPoints && <em> ({pts(item.question.points)})</em>} <span className="prewrap">{item.question.content}</span></p>
-          {item.question.questionType === 'MULTIPLE_CHOICE' && <div className={compactOptions(item.options) ? 'paper-options paper-options-row' : 'paper-options'}>
-            {item.options.map(o => <span key={o.letter}><strong>{o.letter}.</strong> {o.content}</span>)}</div>}
+          {listening && <p><em>(Câu nghe: giáo viên phát âm thanh{p?.maxPlays ? ` ${p.maxPlays} lần` : ''}.)</em></p>}
+          {images.map(m => <MediaImage key={m.id} id={m.id} alt={m.name ?? 'Hình'} maxHeight={260} />)}
+          {item.question.questionType === 'MULTIPLE_CHOICE' && <div className={compactOptions(item.options) && !item.options.some(optionImage) ? 'paper-options paper-options-row' : 'paper-options'}>
+            {item.options.map(o => { const img = optionImage(o); return <span key={o.letter}><strong>{o.letter}.</strong> {o.content}{img && <MediaImage id={img} alt={`Phương án ${o.letter}`} maxHeight={120} />}</span> })}</div>}
           {item.question.questionType === 'TRUE_FALSE' && <div className="paper-options paper-options-row">{item.options.map(o => <span key={o.letter}>☐ {o.content}</span>)}</div>}
           {item.question.questionType === 'SHORT_ANSWER' && <div className="paper-lines"><span>Trả lời: ……………………………………………………………………</span></div>}
-          {item.question.questionType === 'ESSAY' && <div className="paper-lines">{Array.from({ length: 6 }, (_, i) => <span key={i}>………………………………………………………………………………………………</span>)}</div>}
-        </li>)}
+          {item.question.questionType === 'ESSAY' && <>
+            {(p?.minWords || p?.maxWords) && <p><em>(Yêu cầu: {p.minWords && p.maxWords ? `${p.minWords}–${p.maxWords} từ` : p.minWords ? `ít nhất ${p.minWords} từ` : `tối đa ${p.maxWords} từ`}.)</em></p>}
+            <div className="paper-lines">{Array.from({ length: 6 }, (_, i) => <span key={i}>………………………………………………………………………………………………</span>)}</div></>}
+          {item.question.questionType === 'SPEAKING' && <p><em>(Phần nói: thí sinh trả lời trực tiếp với giáo viên, khoảng {Math.round((p?.maxRecordSeconds ?? 120) / 60 * 10) / 10} phút.)</em></p>}
+        </li></Fragment>})}
       </ol>
       <p className="paper-end">— HẾT —</p>
     </article>

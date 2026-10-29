@@ -2,7 +2,7 @@ import type { ImportItem, ImportOption, ItemFilter, ImportSummary, ItemPatch } f
 import { t, i18nMap } from '../../lib/i18n'
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
-export const ACCEPT = '.docx,.pdf,.png,.jpg,.jpeg'
+export const ACCEPT = '.xlsx,.csv,.docx,.pdf,.png,.jpg,.jpeg'
 export const LOW_CONFIDENCE = 0.8
 
 export const FLAG_LABEL: Record<string, string> = i18nMap({
@@ -59,8 +59,8 @@ export function itemState(i: ImportItem): { label: string; tone: 'success' | 'wa
 }
 
 export function fileProblem(f: File | null) {
-  if (!f) return t('Chọn một tệp DOCX, PDF hoặc ảnh PNG/JPG.')
-  if (!/\.(docx|pdf|png|jpe?g)$/i.test(f.name)) return t('Chỉ nhận DOCX, PDF, PNG hoặc JPG.')
+  if (!f) return t('Chọn một tệp Excel, CSV, Word, PDF hoặc ảnh.')
+  if (!/\.(xlsx|csv|docx|pdf|png|jpe?g)$/i.test(f.name)) return t('Chỉ nhận XLSX, CSV, DOCX, PDF, PNG hoặc JPG.')
   if (f.size > MAX_FILE_BYTES) return t('Tệp vượt quá 20 MB.')
   return null
 }

@@ -50,6 +50,7 @@ class QuestionImportPersistenceTest {
     UUID category;
     @BeforeEach void setup(){category=categories.findAll().getFirst().getId();}
     int fails(Runnable call){return assertThrows(ResponseStatusException.class,call::run).getStatusCode().value();}
+    long jobsCount(){return jdbc.queryForObject("select count(*) from question_import_jobs",java.util.Map.of(),Long.class);}
 
     static final String TEMPLATE="""
             Câu 1: Thủ đô của Việt Nam là?
@@ -134,6 +135,25 @@ class QuestionImportPersistenceTest {
         var csvRows=items(c.id(),ItemFilter.ALL);assertEquals(2,csvRows.size());
         assertTrue(csvRows.get(0).valid());assertTrue(csvRows.get(1).flags().contains("MISSING_CORRECT_ANSWER"));
         assertEquals(DifficultyLevel.MEDIUM,csvRows.get(1).difficultyLevel()); // default difficulty
+
+        // The web "Export → Excel/CSV" file (same columns, comma separated, quoted cells) imports back unchanged.
+        String exported="\uFEFFCâu hỏi,Loại,Độ khó,A,B,C,D,E,F,G,H,Đáp án,Giải thích\r\n"
+                +"\"Thủ đô, \"\"Việt Nam\"\"?\",Trắc nghiệm,Dễ,Hà Nội,Huế,,,,,,,A,Vì đúng\r\n"
+                +"Trái Đất tròn,Đúng/Sai,Trung bình,,,,,,,,,Sai,\r\n"
+                +"\"Bài đọc\nNgày xưa\n\nKể lại\",Nói,Khó,,,,,,,,,Phát âm,\r\n";
+        var back=items(run("xuat.csv",exported.getBytes(java.nio.charset.StandardCharsets.UTF_8),category).id(),ItemFilter.ALL);
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SPEAKING),back.stream().map(ImportItemResponse::questionType).toList());
+        assertEquals("Thủ đô, \"Việt Nam\"?",back.get(0).content());assertTrue(back.get(0).options().get(0).correct());
+        assertTrue(back.get(1).options().get(1).correct());assertEquals(DifficultyLevel.HARD,back.get(2).difficultyLevel());
+        assertTrue(back.stream().allMatch(ImportItemResponse::valid));
+    }
+
+    @Test void aiMaterialIsTheDocumentTextAndNothingIsStored() throws Exception {
+        long before=jobsCount();
+        var m=imports.material(new MockMultipartFile("file","bai.docx","application/octet-stream",ImportTemplates.word()),owner);
+        assertTrue(m.text().contains("Câu 1"));assertFalse(m.truncated());assertEquals("bai.docx",m.fileName());
+        assertEquals(before,jobsCount());
+        assertEquals(400,fails(()->imports.material(new MockMultipartFile("file","a.csv","text/csv","a,b".getBytes()),owner)));
     }
 
     @Test void docxReviewEditValidateAndImportAsPersonalDraftWithAudit() throws Exception {

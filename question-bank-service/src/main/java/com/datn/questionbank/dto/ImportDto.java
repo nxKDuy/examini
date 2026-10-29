@@ -42,7 +42,7 @@ public class ImportDto {
     /** Generate staged items with AI. material is optional knowledge text; examples come from the actor's own bank. */
     public record AiGenerateRequest(@NotBlank @Size(max = 500) String topic, @Size(max = AI_MAX_MATERIAL) String material,
             @NotNull UUID categoryId, @Min(1) @Max(AI_MAX_QUESTIONS) Integer count,
-            @Size(min = 1, max = 4) List<@NotNull QuestionType> questionTypes, DifficultyLevel difficulty,
+            @Size(min = 1, max = 5) List<@NotNull QuestionType> questionTypes, DifficultyLevel difficulty,
             @Pattern(regexp = "vi|en") String language, Boolean useBankExamples, Boolean useWebKnowledge,
             /** Bloom level: REMEMBER, UNDERSTAND, APPLY, ANALYZE, EVALUATE, CREATE or MIXED; null = no constraint. */
             @Pattern(regexp = "REMEMBER|UNDERSTAND|APPLY|ANALYZE|EVALUATE|CREATE|MIXED") String cognitiveLevel) {
@@ -62,5 +62,7 @@ public class ImportDto {
     }
     /** providers: the fallback chain in order; webKnowledge: automatic encyclopedic retrieval is enabled on the server. */
     public record AiStatus(boolean available, String model, int maxQuestions, int maxMaterialChars, List<ProviderInfo> providers, boolean webKnowledge) {}
+    /** Text extracted from a file for the AI material box. */
+    public record MaterialText(String fileName, String text, int pageCount, int ocrPageCount, boolean truncated, List<String> warnings) {}
     public record ProviderInfo(String name, String model, boolean available, boolean coolingDown) {}
 }

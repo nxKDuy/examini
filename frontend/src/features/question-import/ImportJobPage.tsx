@@ -13,7 +13,7 @@ import './import.css'
 import { t, useT, i18nMap } from '../../lib/i18n'
 import Select from '../../components/Select'
 
-const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh', AI: 'Tạo bằng AI' } as const)
+const KIND_LABEL = i18nMap({ DOCX: 'Word (DOCX)', PDF: 'PDF', IMAGE: 'Ảnh', XLSX: 'Excel (XLSX)', CSV: 'CSV', AI: 'Tạo bằng AI' } as const)
 
 /** Review → edit → validate → import into the Personal bank, as DRAFT or activated right away. Nothing is published. */
 export default function ImportJobPage() {
@@ -170,7 +170,7 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
             {d.options.length < 8 && <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setD(x => ({ ...x, options: [...x.options, { content: '', correct: false, displayOrder: x.options.length }] }))}><Plus size={14} aria-hidden /> {t('Thêm phương án')}</button>}
             {!d.options.some(o => o.correct) && <p className="field-error">{t('Chưa có đáp án đúng. Hệ thống không tự đoán; hãy chọn đáp án.')}</p>}
           </fieldset>}
-          {!choice && <Field label={d.questionType === 'ESSAY' ? t('Hướng dẫn chấm') : t('Đáp án chuẩn')} htmlFor="imp-answer"><textarea id="imp-answer" className="input" rows={2} value={d.expectedAnswer} onChange={e => setD({ ...d, expectedAnswer: e.target.value })} /></Field>}
+          {!choice && <Field label={d.questionType === 'ESSAY' || d.questionType === 'SPEAKING' ? t('Hướng dẫn chấm') : t('Đáp án chuẩn')} htmlFor="imp-answer"><textarea id="imp-answer" className="input" rows={2} value={d.expectedAnswer} onChange={e => setD({ ...d, expectedAnswer: e.target.value })} /></Field>}
           <Field label={t('Giải thích')} htmlFor="imp-expl"><textarea id="imp-expl" className="input" rows={2} value={d.explanation} onChange={e => setD({ ...d, explanation: e.target.value })} /></Field>
         </fieldset>
         <details>

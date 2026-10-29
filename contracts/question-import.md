@@ -148,3 +148,8 @@ ImportJob.generation (null on document jobs) = AiGeneration { topic, model, requ
   was given else `NONE`, `sourceLabel="AI · <topic> · <model>"`, `sourceRefId="ai:<jobId>:<itemId>"`, `sourceExcerpt=rawText`.
 - Audit events add `AI_REQUESTED` (parameters, no material text) and `AI_GENERATED`.
 - Migration `V14`: `file_kind` accepts `AI`, `source_method` accepts `AI`, new nullable `question_import_jobs.generation`.
+
+## Spreadsheets, templates, AI material and Bloom level (additive, 2026-10-30)
+
+`FileKind` adds `XLSX` and `CSV`. See `question-media-and-skills.md` for `GET /question-imports/templates/{excel|word}`,
+`POST /question-imports/ai/material` and `AiGenerateRequest.cognitiveLevel`.

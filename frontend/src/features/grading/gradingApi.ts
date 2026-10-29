@@ -1,7 +1,7 @@
 import api from '../../lib/api'
 
 export type GradingStatus = 'PENDING' | 'NEEDS_REVIEW' | 'GRADED'
-export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY'
+export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING'
 
 /** Contract: manual-grading-api.md (MAIN lock 0d6090e). Scores are the draft/current result; publishedScore is what the Student sees. */
 export interface Submission {
@@ -17,7 +17,7 @@ export interface GradeItem {
   autoScore: number | null; manualScore: number | null; awardedPoints: number | null; needsReview: boolean
   feedback: string | null; manualGradedBy: string | null; manualGradedAt: string | null
 }
-export interface SubmissionDetail extends Submission { items: GradeItem[] }
+export interface SubmissionDetail extends Submission { items: GradeItem[]; sessionId?: string | null }
 export interface Overview { totalSubmissions: number; needsReview: number; pending: number; graded: number; released: number; pendingManualItems: number; invalidated?: number }
 export interface Page<T> { content: T[]; totalElements: number; totalPages: number; number: number; size?: number }
 

@@ -15,6 +15,9 @@ import { ConfirmDialog } from '../../components/Dialog'
 import { ErrorState, Notice, Spinner } from '../../components/ui'
 import { errorInfo, errorText } from '../../lib/errors'
 import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '../../lib/format'
+import { MediaImage, MediaList, PassageView } from '../question-bank/media/QuestionMedia'
+import { blockOf, countWords, wordState } from '../question-bank/media/mediaModel'
+import SpeakingRecorder from './SpeakingRecorder'
 
 type SaveState = 'pending' | 'saving' | 'saved' | 'error'
 const TEXT_DEBOUNCE_MS = 800
@@ -210,6 +213,14 @@ export default function StudentExamPage() {
     }
   }
 
+  /** A recording is stored by its own upload; the answer only mirrors the metadata the server wrote. */
+  function spoken(qid: string, value: string) {
+    window.clearTimeout(timers.current[qid]); delete timers.current[qid]
+    latest.current[qid] = value
+    setAnswers(a => ({ ...a, [qid]: value }))
+    setQState(qid, 'saved'); setLastSavedAt(new Date()); setActionError('')
+  }
+
   function goTo(i: number) {
     const q = session?.questions[index]
     if (q && timers.current[q.questionId]) void persist(q.questionId)
@@ -241,6 +252,7 @@ export default function StudentExamPage() {
   const states = Object.values(saveState)
   const errors = states.filter(s => s === 'error').length
   const busy = states.some(s => s === 'saving' || s === 'pending')
+  const block = blockOf(questions, index)
   const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
   const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack || integrity.duplicate || camera.blocking
   const locked = expired || submitting || blocked
@@ -280,9 +292,15 @@ export default function StudentExamPage() {
               <h1 id="question-heading" ref={headingRef} tabIndex={-1} style={{ fontSize: '1rem' }}>{tt('Câu')} {index + 1} / {questions.length}</h1>
               <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} {tt('điểm')}</span>
             </div>
+            {block && <PassageView presentation={q.presentation} sessionId={session.sessionId}
+              range={tt('Dùng cho câu {0}–{1}', { 0: block.start + 1, 1: block.end + 1 })} />}
             <p className="question-text">{q.content}</p>
-            <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
-              onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
+            <MediaList media={q.presentation?.media} maxPlays={q.presentation?.maxPlays} sessionId={session.sessionId} label={tt('Câu {0}', { 0: index + 1 })} />
+            {q.questionType === 'SPEAKING'
+              ? <SpeakingRecorder key={q.questionId} sessionId={session.sessionId} questionId={q.questionId} value={answers[q.questionId] ?? ''} disabled={locked}
+                  maxSeconds={q.presentation?.maxRecordSeconds ?? 120} onSaved={v => spoken(q.questionId, v)} />
+              : <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
+                  onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />}
             {saveState[q.questionId] === 'error' && (
               <div className="row"><span className="field-error">{tt('Câu này chưa lưu được.')}</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => void persist(q.questionId)}>{tt('Thử lưu lại')}</button></div>
@@ -386,7 +404,8 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
           <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
             <input type="radio" name={name} value={o.id} checked={value === o.id} disabled={disabled} onChange={() => onChange(o.id, true)} className="sr-only" />
             <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
-            <span className="prewrap" style={{ flex: 1 }}>{o.content}</span>
+            <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
+              {question.presentation?.optionMedia?.[String(o.displayOrder)] && <MediaImage id={question.presentation.optionMedia[String(o.displayOrder)]} alt={tt('Hình lựa chọn {0}', { 0: String.fromCharCode(65 + i) })} maxHeight={160} />}</span>
           </label>
         ))}
         {value && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Bỏ chọn')}</button></div>}
@@ -403,12 +422,18 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
       </div>
     )
   }
+  const p = question.presentation
+  const words = countWords(value)
+  const ws = wordState(words, p)
+  const limits = p?.minWords && p?.maxWords ? tt('{0}–{1} từ', { 0: p.minWords, 1: p.maxWords })
+    : p?.minWords ? tt('ít nhất {0} từ', { 0: p.minWords }) : p?.maxWords ? tt('tối đa {0} từ', { 0: p.maxWords }) : ''
   return (
     <div className="field">
-      <label className="field-label" htmlFor={name}>{tt('Bài làm')}</label>
+      <label className="field-label" htmlFor={name}>{tt('Bài làm')}{limits && <span className="muted"> ({limits})</span>}</label>
       <textarea id={name} className="input" rows={10} value={value} disabled={disabled} maxLength={20000}
         onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
-      <span className="field-hint">{value.length.toLocaleString(locale())}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
+      <span className="field-hint"><span className="word-count" data-state={ws}>{tt('{0} từ', { 0: words.toLocaleString(locale()) })}{ws === 'short' ? tt(' · chưa đủ số từ yêu cầu') : ws === 'long' ? tt(' · vượt số từ cho phép') : ''}</span>
+        {' · '}{value.length.toLocaleString(locale())}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
     </div>
   )
 }

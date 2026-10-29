@@ -84,6 +84,31 @@ public class QuestionImportService {
         return response(job);
     }
 
+    /**
+     * AI material from a file (Word, PDF, image via OCR): the text only, nothing stored. The teacher sees and can edit
+     * it before generating, so OCR mistakes are visible. Long text is cut at the AI material limit.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
+    public MaterialText material(MultipartFile file, QuestionActor actor) {
+        policy.requireAuthor(actor);
+        if (file == null || file.isEmpty()) throw bad("Tệp rỗng");
+        if (file.getSize() > MAX_BYTES) throw bad("Tệp vượt giới hạn 20MB");
+        byte[] bytes;
+        try { bytes = file.getBytes(); } catch (IOException e) { throw bad("Không đọc được tệp"); }
+        String name = fileName(file.getOriginalFilename());
+        var kind = DocumentExtractor.detect(bytes, name);
+        if (kind == null || kind == QuestionImportJob.FileKind.XLSX || kind == QuestionImportJob.FileKind.CSV)
+            throw bad("Tài liệu cho AI nhận Word (.docx), PDF, PNG hoặc JPG");
+        DocumentExtractor.Extraction ex;
+        try { ex = extractor.extract(bytes, kind); }
+        catch (DocumentExtractor.ExtractionException e) { throw bad(e.getMessage()); }
+        var text = new StringBuilder();
+        for (var line : ex.lines()) { if (text.length() > 0) text.append('\n'); text.append(line.text()); }
+        String full = text.toString().replaceAll("\n{3,}", "\n\n").strip();
+        boolean truncated = full.length() > AI_MAX_MATERIAL;
+        return new MaterialText(name, truncated ? full.substring(0, AI_MAX_MATERIAL) : full, ex.pageCount(), ex.ocrPageCount(), truncated, ex.warnings());
+    }
+
     /** Extract outside any transaction, then persist the parsed items atomically. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
     public void process(UUID jobId, byte[] bytes, UUID actor) {
