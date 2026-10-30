@@ -37,7 +37,7 @@ class GradingCoreTest {
     @Autowired StudentProgressService progress;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
     @Autowired GradingAuditRepository audits;@Autowired GradingOutboxRepository outbox;@Autowired GradingOutboxRelay relay;@Autowired ObjectMapper json;
     @Autowired MockMvc mvc;
-    @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean GeminiClient ai;@MockBean RabbitTemplate rabbit;
+    @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean AiClient ai;@MockBean RabbitTemplate rabbit;
     UUID session,exam,user,teacher;
 
     @BeforeEach void setup(){
@@ -71,7 +71,7 @@ class GradingCoreTest {
     @Test void duplicateEventsEssayFallbackAndOutboxAreIdempotent()throws Exception{
         var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);var now=LocalDateTime.now();
         when(sessions.get(session,"test-internal")).thenReturn(new ExamSessionClient.SessionDetailDto(session,exam,user,"SUBMITTED","Exam",1,now.minusMinutes(5),now,List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Essay"))));
-        when(exams.key(exam,"test-internal")).thenReturn(List.of(objective,essay));when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        when(exams.key(exam,"test-internal")).thenReturn(List.of(objective,essay));when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));
         var pool=Executors.newFixedThreadPool(2);try{var a=pool.submit(()->service.processSubmittedExam(session.toString()));var b=pool.submit(()->service.processSubmittedExam(session.toString()));a.get();b.get();}finally{pool.shutdownNow();}
         var result=results.findBySessionId(session).orElseThrow();assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2.5f,result.getTotalScore());assertEquals(5,result.getMaxScore());assertNull(result.getGradedAt());assertEquals(1,result.getPendingManualItemCount());
         assertEquals(1,results.findAll().size());assertEquals(Set.of("grading.result.recorded.v1","grading.review.required"),outbox.findAll().stream().map(GradingOutboxEvent::getRoutingKey).collect(java.util.stream.Collectors.toSet()));
@@ -87,7 +87,7 @@ class GradingCoreTest {
         submitted(List.of(spoken,silent),List.of(new ExamSessionClient.AnswerDto(spoken.questionId(),"{\"audio\":true,\"seconds\":30,\"bytes\":1000,\"type\":\"audio/webm\"}")));
         var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
         assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());
-        assertNull(items.get(0).autoScore());assertTrue(items.get(0).needsReview());verify(ai,never()).gradeEssay(anyString(),anyString());
+        assertNull(items.get(0).autoScore());assertTrue(items.get(0).needsReview());verify(ai,never()).gradeEssay(anyString(),any(),anyString(),anyFloat());
         assertEquals(0f,items.get(1).autoScore());assertFalse(items.get(1).needsReview());
         var reviewed=service.saveDraft(result.getId(),new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(spoken.questionId(),1.5f,"Phát âm tốt"))),teacher);assertEquals("PENDING",reviewed.status());
     }
@@ -132,7 +132,7 @@ class GradingCoreTest {
     }
 
     @Test void aiEssayScoreIsSuggestionAndTeacherMustResolve(){
-        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenReturn(new GeminiClient.GeminiGradeResponse(.8f,"AI suggestion"));
+        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenReturn(new AiClient.GradeSuggestion(.8f,"AI suggestion","gemini:test"));
         submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
         var result=results.findBySessionId(session).orElseThrow();var item=service.detail(result.getId(),teacher).items().getFirst();
         assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2f,item.autoScore());assertNull(item.awardedPoints());assertTrue(item.needsReview());assertNull(result.getReleasedRevision());assertEquals("NEEDS_REVIEW",service.student(session,user).status());
@@ -140,7 +140,7 @@ class GradingCoreTest {
     }
 
     @Test void manualDraftFinalizeRegradeHistoryAndVisibilityPolicy()throws Exception{
-        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));
         submitted(List.of(objective,essay),List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Own essay")));
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();
         assertEquals(400,assertThrows(ResponseStatusException.class,()->service.finalizeResult(resultId,1,teacher)).getStatusCode().value());
@@ -169,7 +169,7 @@ class GradingCoreTest {
     }
 
     @Test void publishedSnapshotEventsAreFrozenPrivateSafeAndBackfillIdempotent()throws Exception{
-        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));
         submitted(List.of(objective,essay),List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Own essay")));
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();
         service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,"Overall secret",List.of(new SubmissionDto.ItemGrade(essay.questionId(),2f,"Essay feedback secret"))),teacher);
@@ -227,7 +227,7 @@ class GradingCoreTest {
     }
 
     @Test void concurrentDraftUsesOptimisticRevisionAndReturnsOneConflict()throws Exception{
-        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
+        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();var request=new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(essay.questionId(),2f,"Reviewed")));
         var gate=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);List<Future<Integer>> calls=new ArrayList<>();
         try{for(int i=0;i<2;i++)calls.add(pool.submit(()->{gate.await();try{service.saveDraft(resultId,request,teacher);return 200;}catch(ResponseStatusException e){return e.getStatusCode().value();}}));gate.countDown();assertEquals(List.of(200,409),calls.stream().map(f->{try{return f.get();}catch(Exception e){throw new RuntimeException(e);}}).sorted().toList());}finally{pool.shutdownNow();}

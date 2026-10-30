@@ -21,7 +21,12 @@ public final class ImportParser {
         /** OCR/text boundary doubts: a split or non-split that could be wrong is kept for review, never resolved by guessing. */
         QUESTION_SPLIT_UNCERTAIN, NUMBERING_GAP, POSSIBLE_MERGED_QUESTIONS,
         /** AI generation: every generated item carries AI_GENERATED; POSSIBLE_DUPLICATE marks a near-copy of an existing or sibling question. */
-        AI_GENERATED, POSSIBLE_DUPLICATE }
+        AI_GENERATED, POSSIBLE_DUPLICATE,
+        /** Quality gate (AiQuality): refers to a text the student never sees; an "all/none of the above" option;
+         *  options too alike to be real alternatives; the stem gives the answer away. */
+        SOURCE_REFERENCE, CATCH_ALL_OPTION, WEAK_DISTRACTORS, ANSWER_IN_STEM,
+        /** A model re-solving the question without the key reached a different answer (AiKeyCheck). */
+        KEY_DISPUTED }
     public record Option(String content, boolean correct, short displayOrder) {}
     public record Parsed(String content, QuestionType type, DifficultyLevel difficulty, List<Option> options,
             String expectedAnswer, String explanation, Integer page, SourceMethod method, double confidence,

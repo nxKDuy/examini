@@ -34,6 +34,7 @@ public class LocalQuestionGenerator implements AiProvider {
             "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "which", "into", "their", "there", "have", "has");
 
     @Override public String name() { return "local"; }
+    @Override public boolean llm() { return false; }
     @Override public boolean available() { return true; }
     @Override public String model() { return MODEL; }
 

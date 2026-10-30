@@ -1,7 +1,7 @@
 package com.datn.grading.service;
 
 import com.datn.grading.client.ExamClient;
-import com.datn.grading.client.GeminiClient;
+import com.datn.grading.client.AiClient;
 import com.datn.grading.dto.ProgressDto.*;
 import com.datn.grading.entity.ExamResult;
 import com.datn.grading.entity.QuestionGrade;
@@ -25,7 +25,7 @@ public class StudentProgressService {
     private final ExamResultRepository results;
     private final ResultPublicationRepository publications;
     private final ExamClient exams;
-    private final GeminiClient ai;
+    private final AiClient ai;
     private final ObjectMapper json;
     @Value("${exam.internal-token:}") private String token = "";
 

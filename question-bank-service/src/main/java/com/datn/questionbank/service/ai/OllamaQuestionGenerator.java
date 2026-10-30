@@ -35,6 +35,26 @@ public class OllamaQuestionGenerator implements AiProvider {
     @Override public String model() { return "ollama/" + modelName; }
 
     @Override
+    public String completeJson(String system, String user) {
+        if (!available()) throw new GenerationException("Chưa cấu hình mô hình tự chạy (OLLAMA_URL)");
+        var body = Map.of("model", modelName, "stream", false, "format", "json", "options", Map.of("temperature", 0.0),
+                "messages", List.of(Map.of("role", "system", "content", system), Map.of("role", "user", "content", user)));
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        try {
+            String raw = http.postForObject(baseUrl + "/api/chat", new HttpEntity<>(body, headers), String.class);
+            return AiJson.JSON.readTree(raw == null ? "" : raw).path("message").path("content").asText("");
+        } catch (HttpStatusCodeException e) {
+            int s = e.getStatusCode().value();
+            throw new GenerationException("Máy chủ AI tự chạy lỗi (" + s + ")", s == 429 || s >= 500, null, e);
+        } catch (RestClientException e) {
+            throw new GenerationException("Không kết nối được máy chủ AI tự chạy", true, null, e);
+        } catch (Exception e) {
+            throw new GenerationException("AI trả về sai định dạng", e);
+        }
+    }
+
+    @Override
     public Result generate(Prompt prompt) {
         if (!available()) throw new GenerationException("Chưa cấu hình mô hình tự chạy (OLLAMA_URL)");
         var body = Map.of("model", modelName, "stream", false, "format", AiJson.jsonSchema(),

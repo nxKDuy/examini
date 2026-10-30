@@ -19,6 +19,8 @@ public interface AiQuestionGenerator {
     Result generate(Prompt prompt);
     /** Configured providers in fallback order, for the status endpoint. */
     default List<ProviderStatus> providers() { return List.of(); }
+    /** A JSON completion from the first usable language model, for checks after generation; empty when none can answer. */
+    default java.util.Optional<String> completeJson(String system, String user) { return java.util.Optional.empty(); }
 
     /**
      * @param topic       teacher's topic or learning objective

@@ -27,7 +27,9 @@ public final class AiDrafts {
     public static Drafts build(List<AiQuestionGenerator.Candidate> candidates, int requested,
                                DifficultyLevel fallback, Collection<String> existing) {
         var seen = new HashSet<String>();
-        for (String e : existing) if (e != null) seen.add(key(e));
+        var existingKeys = new ArrayList<String>();
+        for (String e : existing) if (e != null) { seen.add(key(e)); existingKeys.add(key(e)); }
+        var batchKeys = new ArrayList<String>();
         var out = new ArrayList<ImportParser.Parsed>();
         var warnings = new ArrayList<String>();
         int dropped = 0, extra = 0;
@@ -51,7 +53,7 @@ public final class AiDrafts {
                 for (var o : rawOptions) {
                     if (options.size() >= MAX_OPTIONS) { flags.add(Flag.CONTENT_TRUNCATED); break; }
                     String text = clip(o.content().strip(), MAX_OPTION);
-                    if (!texts.add(key(text))) flags.add(Flag.DUPLICATE_OPTION);
+                    if (!texts.add(AiQuality.light(text))) flags.add(Flag.DUPLICATE_OPTION);
                     options.add(new ImportParser.Option(text, Boolean.TRUE.equals(o.correct()), order++));
                 }
                 long correct = options.stream().filter(ImportParser.Option::correct).count();
@@ -63,6 +65,9 @@ public final class AiDrafts {
             }
 
             if (!seen.add(key(content))) flags.add(Flag.POSSIBLE_DUPLICATE);
+            flags.addAll(AiQuality.check(content, type, options.stream().map(ImportParser.Option::content).toList(),
+                    options.stream().map(o -> (Boolean) o.correct()).toList(), batchKeys, existingKeys));
+            batchKeys.add(key(content));
 
             String explanation = blank(c.explanation()) ? null : clip(c.explanation().strip(), MAX_TEXT);
             long problems = flags.stream().filter(f -> f != Flag.AI_GENERATED).count();

@@ -11,6 +11,8 @@ export const FLAG_LABEL: Record<string, string> = i18nMap({
   OPTION_SEQUENCE_GAP: 'Thiếu phương án trong dãy', NO_ANSWER_ESSAY: 'Tự luận chưa có đáp án', CONTENT_TRUNCATED: 'Nội dung bị cắt',
   QUESTION_SPLIT_UNCERTAIN: 'Có thể bị tách câu sai', NUMBERING_GAP: 'Số câu bị nhảy', POSSIBLE_MERGED_QUESTIONS: 'Có thể dồn nhiều câu',
   AI_GENERATED: 'Do AI tạo', POSSIBLE_DUPLICATE: 'Có thể trùng câu đã có',
+  SOURCE_REFERENCE: 'Nhắc tới tài liệu học sinh không thấy', CATCH_ALL_OPTION: 'Có phương án "tất cả/không có"',
+  WEAK_DISTRACTORS: 'Phương án nhiễu quá giống nhau', ANSWER_IN_STEM: 'Đề bài lộ đáp án', KEY_DISPUTED: 'AI giải lại ra đáp án khác',
 })
 
 export const FILTERS: { value: ItemFilter; label: string; count: (s: ImportSummary) => number }[] = i18nMap([
@@ -91,7 +93,7 @@ export const dirty = (i: ImportItem, d: Draft) => Object.keys(patchOf(i, d)).len
 export const optionLetter = (n: number) => String.fromCharCode(65 + n)
 
 /** Readable provider names (fallback chain: cloud model → self-hosted model → local generator). */
-export const PROVIDER_LABEL: Record<string, string> = i18nMap({ gemini: 'Gemini', ollama: 'Mô hình tự chạy', local: 'Bộ sinh nội bộ (không cần AI)' })
+export const PROVIDER_LABEL: Record<string, string> = i18nMap({ gemini: 'Gemini', openai: 'AI tương thích OpenAI (Groq, OpenRouter…)', ollama: 'Mô hình tự chạy', local: 'Bộ sinh nội bộ (không cần AI)' })
 export const providerLabel = (model: string | null | undefined) => {
   if (!model) return ''
   const [name, ...rest] = model.split('/')

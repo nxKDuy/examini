@@ -60,6 +60,29 @@ public class GeminiQuestionGenerator implements AiProvider {
         return parse(raw).withModel(model());
     }
 
+    @Override
+    public String completeJson(String system, String user) {
+        if (!available()) throw new GenerationException("Chưa cấu hình Gemini (GEMINI_API_KEY)");
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("x-goog-api-key", apiKey);
+        var body = Map.of(
+                "systemInstruction", Map.of("parts", List.of(Map.of("text", system))),
+                "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", user)))),
+                "generationConfig", Map.of("responseMimeType", "application/json", "temperature", 0.0));
+        String raw;
+        try { raw = http.postForObject(endpoint.formatted(modelName), new HttpEntity<>(body, headers), String.class); }
+        catch (HttpStatusCodeException e) { throw failure(e.getStatusCode().value(), e.getResponseHeaders(), e); }
+        catch (RestClientException e) { throw new GenerationException("Gemini không phản hồi", true, null, e); }
+        try {
+            var text = new StringBuilder();
+            for (JsonNode part : AiJson.JSON.readTree(raw).path("candidates").path(0).path("content").path("parts")) text.append(part.path("text").asText(""));
+            if (text.isEmpty()) throw new GenerationException("AI không trả về kết quả");
+            return text.toString();
+        } catch (GenerationException e) { throw e; }
+        catch (Exception e) { throw new GenerationException("AI trả về sai định dạng", e); }
+    }
+
     /** 429 (quota / RESOURCE_EXHAUSTED) and 5xx are transient; other 4xx (bad key, bad model) are not. */
     static GenerationException failure(int status, HttpHeaders headers, Throwable cause) {
         Duration after = null;

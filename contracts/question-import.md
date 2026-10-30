@@ -131,7 +131,10 @@ ImportJob.generation (null on document jobs) = AiGeneration { topic, model, requ
                     language, hasMaterial, materialLength, exampleCount }
 ```
 
-- Provider: Gemini (`GEMINI_API_KEY`, `GEMINI_MODEL`, default `gemini-2.5-flash`). No key → `available=false` and `POST` → 503.
+- Providers, tried in `QB_AI_PROVIDERS` order (default `gemini,openai,ollama,local`): Gemini (`GEMINI_API_KEY`, `GEMINI_MODEL`),
+  any OpenAI-compatible API (`AI_OPENAI_URL`, `AI_OPENAI_KEY`, `AI_OPENAI_MODEL` — e.g. Groq, OpenRouter `:free`, Mistral, a
+  local LM Studio/vLLM), Ollama (`OLLAMA_URL`, `OLLAMA_MODEL`) and the rule-based `local` generator (no network). Rate-limited
+  providers cool down and are skipped; `status.providers` lists each with `available`/`coolingDown`.
 - One AI job `PROCESSING` per teacher (429 otherwise). Same owner-only access as other jobs (404 for others, 403 non-author).
 - **Bank context.** With `useBankExamples`, up to 15 of the actor's **own** non-archived questions in the category are sent as
   examples. Duplicate checking uses up to 2000 of the actor's own questions in that category. Nothing from other owners,
@@ -141,7 +144,16 @@ ImportJob.generation (null on document jobs) = AiGeneration { topic, model, requ
   `MULTIPLE_ANSWERS`; nothing is promoted to correct. Choice questions drop any `expectedAnswer`.
 - Every item: `source.method=AI`, `source.page=null`, flag `AI_GENERATED`, `reviewRequired=true`, `confidence` 0.70 minus 0.15
   per structural flag. `POSSIBLE_DUPLICATE` marks a case/accent/punctuation-insensitive match with an existing own question
-  in the category or an earlier item of the same job. `difficultyLevel` is the AI's per-item estimate (fallback: the request).
+  in the category or an earlier item of the same job, or a near-copy (character-bigram similarity ≥ 0.88 for stems of 20+
+  characters). `difficultyLevel` is the AI's per-item estimate (fallback: the request).
+- **Quality gate** (rule-based, review flags only, each lowers `confidence` by 0.15): `SOURCE_REFERENCE` ("theo đoạn văn trên",
+  "according to the passage" in a stem ≤ 400 characters), `CATCH_ALL_OPTION` ("tất cả các đáp án trên", "none of the above"),
+  `WEAK_DISTRACTORS` (worded options ≥ 90 % alike or one inside another; options with digits/math symbols are exempt),
+  `ANSWER_IN_STEM` (the keyed option's words appear in the stem and no distractor's do). `DUPLICATE_OPTION` compares
+  options case/space-insensitively but keeps accents and symbols (`x = 1` ≠ `x = −1`).
+- **Key cross-check** (`QB_AI_VERIFY_KEYS`, default true; skipped for `local` output): the first available language model
+  re-solves up to 40 choice/statement questions without the key. A different answer adds `KEY_DISPUTED` (confidence −0.2);
+  the job warnings summarise the result. When no model answers, items are unchanged and a warning says so.
 - `rawText` is the item's JSON as returned by the AI (provenance). Job `warnings` cover truncated output and fewer/extra items.
 - Provider failures make the job `FAILED` with a readable `failureReason`; internal details are not exposed.
 - Import of an AI item creates a Personal DRAFT with `creationMethod=AI_GENERATED`, `sourceType=USER_DOCUMENT` when material

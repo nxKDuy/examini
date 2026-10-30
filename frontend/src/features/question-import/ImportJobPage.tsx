@@ -110,6 +110,7 @@ function ItemRow({ item, active, onOpen }: { item: ImportItem; active: boolean; 
           {isOcr(item) && <Badge tone="warning" icon={<ScanText size={12} aria-hidden />}>OCR</Badge>}
           {isAi(item) && <Badge tone="warning" icon={<Sparkles size={12} aria-hidden />}>AI</Badge>}
           {item.flags.includes('POSSIBLE_DUPLICATE') && <Badge tone="warning">{t('Có thể trùng')}</Badge>}
+          {item.flags.includes('KEY_DISPUTED') && <Badge tone="danger">{t('Kiểm tra đáp án')}</Badge>}
           {lowConfidenceShown(item) && !isAi(item) && <Badge tone="warning">{t('Tin cậy')} {Math.round(item.confidence * 100)}%</Badge>}
           {item.reviewed && <Badge>{t('Đã xem')}</Badge>}
         </span>

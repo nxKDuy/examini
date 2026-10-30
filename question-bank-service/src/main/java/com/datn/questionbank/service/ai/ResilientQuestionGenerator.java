@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ResilientQuestionGenerator implements AiQuestionGenerator {
     private static final Logger log = LoggerFactory.getLogger(ResilientQuestionGenerator.class);
     static final Duration DEFAULT_COOLDOWN = Duration.ofSeconds(60), MAX_COOLDOWN = Duration.ofMinutes(15), MAX_PAUSE = Duration.ofSeconds(5);
-    private static final Map<String, String> LABEL = Map.of("gemini", "Gemini", "ollama", "Mô hình tự chạy", "local", "Bộ sinh nội bộ");
+    private static final Map<String, String> LABEL = Map.of("gemini", "Gemini", "openai", "AI tương thích OpenAI", "ollama", "Mô hình tự chạy", "local", "Bộ sinh nội bộ");
 
     private final List<AiProvider> chain;
     private final Map<String, Instant> coolUntil = new ConcurrentHashMap<>();
@@ -31,7 +31,7 @@ public class ResilientQuestionGenerator implements AiQuestionGenerator {
     interface Sleeper { void sleep(Duration d) throws InterruptedException; }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ResilientQuestionGenerator(List<AiProvider> providers, @Value("${question-bank.ai.providers:gemini,ollama,local}") String order) {
+    public ResilientQuestionGenerator(List<AiProvider> providers, @Value("${question-bank.ai.providers:gemini,openai,ollama,local}") String order) {
         this(providers, order, Clock.systemUTC(), d -> Thread.sleep(d.toMillis()));
     }
     ResilientQuestionGenerator(List<AiProvider> providers, String order, Clock clock, Sleeper sleeper) {
@@ -49,6 +49,23 @@ public class ResilientQuestionGenerator implements AiQuestionGenerator {
     @Override public List<ProviderStatus> providers() { return chain.stream().map(p -> new ProviderStatus(p.name(), p.model(), p.available(), cooling(p))).toList(); }
 
     private boolean cooling(AiProvider p) { var until = coolUntil.get(p.name()); return until != null && clock.instant().isBefore(until); }
+
+    /**
+     * A JSON completion from the first usable language model (cooling providers skipped), for checks after
+     * generation. Empty when no model can answer: the caller then simply skips the check.
+     */
+    @Override
+    public java.util.Optional<String> completeJson(String system, String user) {
+        for (AiProvider p : chain) {
+            if (!p.available() || !p.llm() || cooling(p)) continue;
+            try { return java.util.Optional.of(p.completeJson(system, user)); }
+            catch (GenerationException e) {
+                log.warn("AI provider {} could not run a check: {}", p.name(), e.getMessage());
+                if (e.transientFailure()) coolUntil.put(p.name(), clock.instant().plus(e.retryAfter() == null ? DEFAULT_COOLDOWN : e.retryAfter().compareTo(MAX_COOLDOWN) > 0 ? MAX_COOLDOWN : e.retryAfter()));
+            } catch (RuntimeException e) { log.warn("AI provider {} crashed during a check", p.name(), e); }
+        }
+        return java.util.Optional.empty();
+    }
 
     @Override
     public Result generate(Prompt prompt) {

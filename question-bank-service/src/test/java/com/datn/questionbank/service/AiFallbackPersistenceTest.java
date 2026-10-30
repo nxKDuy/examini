@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** No Gemini key, no Ollama, no web: the real provider chain still produces reviewable questions locally. */
 @SpringBootTest(properties={"eureka.client.enabled=false","spring.cloud.discovery.enabled=false",
         "jwt.secret=test-only-jwt-key-32-bytes-or-longer-never-production","question-bank.internal-token=isolated-test-service-token",
-        "question-bank.ai.gemini-api-key=","question-bank.ai.ollama-url=","question-bank.ai.web-knowledge=false"})
+        "question-bank.ai.gemini-api-key=","question-bank.ai.ollama-url=","question-bank.ai.openai-url=","question-bank.ai.web-knowledge=false"})
 @EnabledIfEnvironmentVariable(named="QB_TEST_DATABASE",matches="true")
 @Transactional
 class AiFallbackPersistenceTest {
@@ -32,8 +32,8 @@ class AiFallbackPersistenceTest {
     @Test void localGeneratorServesWhenNoModelIsConfigured() {
         var status=imports.aiStatus(owner);
         assertTrue(status.available());assertEquals("local/rule-based",status.model());assertFalse(status.webKnowledge());
-        assertEquals(List.of("gemini","ollama","local"),status.providers().stream().map(ProviderInfo::name).toList());
-        assertEquals(List.of(false,false,true),status.providers().stream().map(ProviderInfo::available).toList());
+        assertEquals(List.of("gemini","openai","ollama","local"),status.providers().stream().map(ProviderInfo::name).toList());
+        assertEquals(List.of(false,false,false,true),status.providers().stream().map(ProviderInfo::available).toList());
 
         String material="Năm 1010, vua Lý Thái Tổ dời đô từ Hoa Lư về Đại La và đổi tên thành Thăng Long.\n"
                 +"Năm 1802, Nguyễn Ánh lên ngôi hoàng đế và chọn Phú Xuân làm kinh đô của triều Nguyễn.\n"

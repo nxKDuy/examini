@@ -61,8 +61,12 @@ docker compose up -d --build  # lần đầu mất vài phút; đợi mọi cont
 Mở **http://localhost** (hoặc `http://localhost:${WEB_PORT}` nếu đã đổi `WEB_PORT`). nginx chuyển `/api/*` tới gateway
 nên trình duyệt chỉ cần một địa chỉ. Các cổng phụ trợ: Eureka `8761`, Gateway `8080`, RabbitMQ UI `15673`.
 
-AI là tuỳ chọn: đặt `GEMINI_API_KEY`, hoặc chạy model tại chỗ `docker compose --profile ai up -d ollama` rồi đặt
-`OLLAMA_URL=http://ollama:11434`. Không có cả hai thì các chức năng AI dùng bộ sinh/nhận xét theo luật.
+AI là tuỳ chọn và có thể dùng hoàn toàn miễn phí. Các nguồn được thử lần lượt, hết lượt ở nguồn này thì chuyển nguồn sau:
+Gemini (`GEMINI_API_KEY`, miễn phí ở Google AI Studio) → bất kỳ API tương thích OpenAI (`AI_OPENAI_URL/KEY/MODEL`, ví dụ
+Groq hoặc mô hình `:free` của OpenRouter) → mô hình tự chạy Ollama (`docker compose --profile ai up -d ollama`,
+`OLLAMA_URL=http://ollama:11434`) → bộ sinh theo luật không cần mạng. Câu hỏi AI sinh ra luôn qua bộ lọc chất lượng
+(câu nhắc tới tài liệu học sinh không thấy, phương án nhiễu quá giống nhau, đề lộ đáp án, câu gần trùng) và được một
+mô hình giải lại để phát hiện đáp án sai trước khi giáo viên duyệt. Xem ví dụ cấu hình trong `.env.example`.
 
 ### Dữ liệu demo
 
@@ -138,3 +142,9 @@ CI (GitHub Actions) chạy test backend với PostgreSQL/Redis/Mailpit, kiểm t
 - Flyway migration, không dùng `ddl-auto: update`; mỗi service chỉ đọc database của mình.
 - Bean Validation trên mọi request body; lỗi trả về RFC 7807 Problem Details.
 - Không hardcode secret — mọi khoá lấy từ `.env`; token nội bộ khác nhau cho từng kênh service-to-service.
+
+## Ghi nhận
+
+Phần kiểm tra chất lượng câu hỏi AI tham khảo ý tưởng (không sao chép mã) từ các dự án mã nguồn mở giấy phép MIT:
+[SemanticQAGen](https://github.com/StephenGenusa/semantic-qa-gen) (lọc câu nhắc tới tài liệu nguồn, chống trùng, kiểm tra
+lại đáp án bằng mô hình) và [Questgen.ai](https://github.com/ramsrigouthamg/Questgen.ai) (lọc phương án nhiễu quá giống nhau).

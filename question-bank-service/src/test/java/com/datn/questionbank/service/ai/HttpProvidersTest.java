@@ -102,4 +102,51 @@ class HttpProvidersTest {
         assertEquals("https://127.0.0.1/wiki/Nước", k.sources().getFirst().url());
         assertNull(new KnowledgeRetriever(new WikipediaClient(base + "/w/api.php", "x"), false).retrieve("nước", null, "vi", true).text(), "disabled on the server");
     }
+
+    @Test void openAiCompatibleSuccessFallbackRateLimitAndCheck() {
+        var g = new OpenAiCompatibleQuestionGenerator(base + "/openai/v1/", "sk-free", "llama-3.3-70b-versatile", 10);
+        assertTrue(g.available());
+        assertEquals("127.0.0.1/llama-3.3-70b-versatile", g.model());
+        assertEquals("groq", new OpenAiCompatibleQuestionGenerator("https://api.groq.com/openai/v1", "k", "m", 10).host());
+        assertEquals("openrouter", new OpenAiCompatibleQuestionGenerator("https://openrouter.ai/api/v1", "k", "m", 10).host());
+        assertFalse(new OpenAiCompatibleQuestionGenerator("", "k", "m", 10).available());
+
+        String ok = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"" + QUESTIONS + "\"}}]}";
+        responses.put("/openai/v1/chat/completions", new String[]{"200", ok, null});
+        var r = g.generate(PROMPT);
+        assertEquals("100", r.candidates().getFirst().expectedAnswer());
+        assertTrue(requests.getFirst().contains("\"response_format\""));
+        assertTrue(requests.getFirst().contains("llama-3.3-70b-versatile"));
+
+        responses.put("/openai/v1/chat/completions", new String[]{"429", "{}", "7"});
+        var limited = assertThrows(GenerationException.class, () -> g.generate(PROMPT));
+        assertTrue(limited.transientFailure());
+        assertEquals(Duration.ofSeconds(7), limited.retryAfter());
+
+        responses.put("/openai/v1/chat/completions", new String[]{"401", "{}", null});
+        assertFalse(assertThrows(GenerationException.class, () -> g.generate(PROMPT)).transientFailure());
+
+        responses.put("/openai/v1/chat/completions", new String[]{"200", "{\"choices\":[{\"message\":{\"content\":\"{\\\"answers\\\":[]}\"}}]}", null});
+        assertEquals("{\"answers\":[]}", g.completeJson("s", "u"));
+        assertTrue(requests.getLast().contains("\"temperature\":0.0"));
+    }
+
+    @Test void openAiCompatibleRetriesWithoutJsonModeWhenRejected() {
+        var g = new OpenAiCompatibleQuestionGenerator(base + "/v1", "", "local-model", 10);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        server.removeContext("/");
+        server.createContext("/", ex -> {
+            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            requests.add(body + " AUTH=" + ex.getRequestHeaders().getFirst("Authorization"));
+            boolean json = body.contains("response_format");
+            calls.incrementAndGet();
+            byte[] out = (json ? "{\"error\":\"response_format not supported\"}"
+                    : "{\"choices\":[{\"message\":{\"content\":\"```json\\n" + QUESTIONS + "\\n```\"}}]}").getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(json ? 400 : 200, out.length);
+            ex.getResponseBody().write(out); ex.close();
+        });
+        assertEquals("100", g.generate(PROMPT).candidates().getFirst().expectedAnswer());
+        assertEquals(2, calls.get());
+        assertTrue(requests.getFirst().endsWith("AUTH=null"), "no key → no Authorization header");
+    }
 }

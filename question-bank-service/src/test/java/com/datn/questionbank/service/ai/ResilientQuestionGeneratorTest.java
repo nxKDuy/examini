@@ -89,4 +89,16 @@ class ResilientQuestionGeneratorTest {
         assertFalse(none.available());
         assertEquals("Chưa cấu hình nguồn sinh câu hỏi nào", assertThrows(GenerationException.class, () -> none.generate(PROMPT)).getMessage());
     }
+
+    @Test void checksUseTheFirstWorkingLanguageModelAndNeverTheRuleGenerator() {
+        var gemini = new Fake("gemini") { public String completeJson(String s, String u) { throw rateLimited(Duration.ofSeconds(20)); } };
+        var openai = new Fake("openai") { public String completeJson(String s, String u) { return "{\"answers\":[]}"; } };
+        var local = new Fake("local") { public boolean llm() { return false; } public String completeJson(String s, String u) { throw new AssertionError(); } };
+        var clock = new MutableClock();
+        var g = new ResilientQuestionGenerator(List.of(local, openai, gemini), "gemini,openai,ollama,local", clock, d -> {});
+        assertEquals(Optional.of("{\"answers\":[]}"), g.completeJson("s", "u"));
+        assertTrue(g.providers().stream().filter(p -> p.name().equals("gemini")).findFirst().orElseThrow().coolingDown());
+        openai.available = false;
+        assertEquals(Optional.empty(), g.completeJson("s", "u"), "only the rule generator is left: no check");
+    }
 }

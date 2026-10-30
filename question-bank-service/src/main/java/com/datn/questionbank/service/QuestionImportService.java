@@ -53,6 +53,7 @@ public class QuestionImportService {
     private final TransactionTemplate tx;
     private final AiQuestionGenerator ai;
     private final KnowledgeRetriever knowledge;
+    private final com.datn.questionbank.service.ai.AiKeyCheck keyCheck;
     /** Bank context sent to the AI: at most this many of the actor's own questions in the category. */
     static final int AI_EXAMPLES = 15;
     /** Duplicate check scope: at most this many of the actor's own questions in the category. */
@@ -251,6 +252,8 @@ public class QuestionImportService {
             var result = ai.generate(grounded);
             model = result.model();
             drafts = AiDrafts.build(result.candidates(), prompt.count(), prompt.difficulty(), existing);
+            // Rule-based drafts are built from the material itself; only model output gets the cross-check.
+            if (!drafts.items().isEmpty() && model != null && !model.startsWith("local")) drafts = keyCheck.verify(drafts, k.text(), prompt.language());
             if (drafts.items().isEmpty()) failure = "AI không tạo được câu hỏi hợp lệ; thử đổi chủ đề hoặc tài liệu";
             else drafts = new AiDrafts.Drafts(drafts.items(), concat(concat(notes, result.warnings()), drafts.warnings()));
         } catch (AiQuestionGenerator.GenerationException e) { failure = e.getMessage(); }
