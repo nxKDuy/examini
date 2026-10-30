@@ -13,3 +13,4 @@ target/
 **/dist/
 .DS_Store
 
+backups/
