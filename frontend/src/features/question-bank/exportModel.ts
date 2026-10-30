@@ -10,7 +10,7 @@ export interface ExportQuestion {
 }
 export type ExportFormat = 'csv' | 'moodle' | 'aiken'
 
-const TYPE_WORD: Record<string, string> = { MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói' }
+const TYPE_WORD: Record<string, string> = { MULTIPLE_CHOICE: 'Trắc nghiệm', MULTIPLE_RESPONSE: 'Nhiều đáp án', TRUE_FALSE_GROUP: 'Đúng/Sai nhiều ý', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói' }
 const LEVEL_WORD: Record<string, string> = { EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' }
 const LETTERS = 'ABCDEFGH'
 const sorted = (q: ExportQuestion) => [...q.options].sort((a, b) => a.displayOrder - b.displayOrder)
@@ -22,7 +22,8 @@ const fullText = (q: ExportQuestion) => {
 
 function answerOf(q: ExportQuestion): string {
   const opts = sorted(q)
-  if (q.questionType === 'MULTIPLE_CHOICE') return opts.map((o, i) => (o.correct ? LETTERS[i] ?? '' : '')).filter(Boolean).join(',')
+  if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') return opts.map((o, i) => (o.correct ? LETTERS[i] ?? '' : '')).filter(Boolean).join(',')
+  if (q.questionType === 'TRUE_FALSE_GROUP') return opts.map(o => (o.correct ? 'Đ' : 'S')).join(', ')
   if (q.questionType === 'TRUE_FALSE') { const c = opts.find(o => o.correct); return c ? (c.content.trim().toLowerCase() === 'sai' || c.content.trim().toLowerCase() === 'false' ? 'Sai' : 'Đúng') : '' }
   return q.expectedAnswer ?? ''
 }
@@ -31,7 +32,7 @@ const csvCell = (v: string) => (/[",;\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}
 export function toCsv(list: ExportQuestion[]): string {
   const head = ['Câu hỏi', 'Loại', 'Độ khó', ...LETTERS.split(''), 'Đáp án', 'Giải thích']
   const rows = list.map(q => {
-    const opts = q.questionType === 'MULTIPLE_CHOICE' ? sorted(q).slice(0, 8).map(o => o.content) : []
+    const opts = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP'].includes(q.questionType) ? sorted(q).slice(0, 8).map(o => o.content) : []
     return [fullText(q), TYPE_WORD[q.questionType] ?? q.questionType, LEVEL_WORD[q.difficultyLevel] ?? '',
       ...Array.from({ length: 8 }, (_, i) => opts[i] ?? ''), answerOf(q), q.explanation ?? '']
   })
@@ -51,7 +52,14 @@ export function toMoodleXml(list: ExportQuestion[], category = 'EXAMINI'): strin
     const text = `<questiontext format="html">${html(fullText(q))}</questiontext>`
     const fb = q.explanation ? `<generalfeedback format="html">${html(q.explanation)}</generalfeedback>` : ''
     const opts = sorted(q)
-    if (q.questionType === 'MULTIPLE_CHOICE') {
+    if (q.questionType === 'TRUE_FALSE_GROUP') {
+      // Moodle has no statement-group type: one true/false question per statement, the stem repeated in front.
+      opts.forEach((o, k) => {
+        const label = String.fromCharCode(97 + k)
+        out.push(`  <question type="truefalse"><name>${plain(`${q.content.replace(/\s+/g, ' ').slice(0, 50)} (${label})`)}</name><questiontext format="html">${html(`${fullText(q)}\n${label}) ${o.content}`)}</questiontext>${fb}<defaultgrade>1</defaultgrade>`,
+          `    <answer fraction="${o.correct ? 100 : 0}">${plain('true')}</answer>`, `    <answer fraction="${o.correct ? 0 : 100}">${plain('false')}</answer>`, '  </question>')
+      })
+    } else if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') {
       const correct = opts.filter(o => o.correct).length || 1
       const single = correct === 1
       out.push(`  <question type="multichoice">${name}${text}${fb}<defaultgrade>1</defaultgrade><single>${single}</single><shuffleanswers>true</shuffleanswers><answernumbering>ABCD</answernumbering>`)

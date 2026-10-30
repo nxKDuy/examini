@@ -44,7 +44,9 @@ export function shuffled<T>(list: readonly T[], random: () => number): T[] {
 /** Keys of one item; true/false keeps its option order and is keyed by the word, not a letter. */
 function keyOf(q: PaperQuestion, options: PaperItem['options']): string {
   if (q.questionType === 'TRUE_FALSE') return options.find(o => o.correct)?.content ?? ''
-  if (q.questionType === 'MULTIPLE_CHOICE') return options.filter(o => o.correct).map(o => o.letter).join(',')
+  if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') return options.filter(o => o.correct).map(o => o.letter).join(',')
+  // THPT style key of a true/false group: one Đ/S per statement in order, e.g. "ĐSĐĐ".
+  if (q.questionType === 'TRUE_FALSE_GROUP') return options.map(o => (o.correct ? 'Đ' : 'S')).join('')
   if (q.questionType === 'SHORT_ANSWER') return q.expectedAnswer?.trim() ?? ''
   return 'TL'
 }
@@ -63,8 +65,9 @@ export function makeVersion(examId: string, questions: PaperQuestion[], code: st
   const order = (opts.shuffleQuestions ? shuffled(groups, random) : groups).flat()
   const items = order.map((q, i) => {
     const sorted = [...(q.options ?? [])].sort((a, b) => a.displayOrder - b.displayOrder)
-    const mixed = opts.shuffleOptions && q.questionType === 'MULTIPLE_CHOICE' ? shuffled(sorted, random) : sorted
-    const options = mixed.map((o, k) => ({ letter: LETTERS[k] ?? String(k + 1), content: o.content, correct: o.correct, displayOrder: o.displayOrder }))
+    const mixed = opts.shuffleOptions && (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') ? shuffled(sorted, random) : sorted
+    const group = q.questionType === 'TRUE_FALSE_GROUP'
+    const options = mixed.map((o, k) => ({ letter: group ? (LETTERS[k] ?? String(k + 1)).toLowerCase() : LETTERS[k] ?? String(k + 1), content: o.content, correct: o.correct, displayOrder: o.displayOrder }))
     return { number: i + 1, question: q, options, key: keyOf(q, options) }
   })
   return { code, items }

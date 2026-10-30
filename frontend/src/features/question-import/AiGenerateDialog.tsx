@@ -13,7 +13,7 @@ import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
 import Select from '../../components/Select'
 
-const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY', 'SPEAKING']
+const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE', 'TRUE_FALSE_GROUP', 'SHORT_ANSWER', 'ESSAY', 'SPEAKING']
 /** Bloom's taxonomy as Vietnamese teachers name it (mức độ nhận thức). */
 const BLOOM: { value: CognitiveLevel | ''; label: () => string }[] = [
   { value: '', label: () => t('Không chỉ định') },

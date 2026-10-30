@@ -34,11 +34,13 @@ export function QuestionBody({ question }: { question: Question }) {
         <ol className="stack-sm" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {question.options.map((o, i) => (
             <li key={o.id ?? i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start', padding: '8px 10px',
-              background: o.correct ? 'var(--color-success-soft)' : 'var(--color-subtle)' }}>
-              <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
+              background: o.correct && question.questionType !== 'TRUE_FALSE_GROUP' ? 'var(--color-success-soft)' : 'var(--color-subtle)' }}>
+              <span className="option-key" aria-hidden>{question.questionType === 'TRUE_FALSE_GROUP' ? String.fromCharCode(97 + i) : String.fromCharCode(65 + i)}</span>
               <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
                 {question.presentation?.optionMedia?.[String(o.displayOrder)] && <MediaImage id={question.presentation.optionMedia[String(o.displayOrder)]} alt={t('Hình lựa chọn {0}', { 0: String.fromCharCode(65 + i) })} maxHeight={140} />}</span>
-              {o.correct === true && <Badge tone="success" icon={<CheckCircle2 size={12} aria-hidden />}>{t('Đáp án đúng')}</Badge>}
+              {question.questionType === 'TRUE_FALSE_GROUP'
+                ? o.correct !== undefined && <Badge tone={o.correct ? 'success' : 'neutral'}>{o.correct ? t('Đúng') : t('Sai')}</Badge>
+                : o.correct === true && <Badge tone="success" icon={<CheckCircle2 size={12} aria-hidden />}>{t('Đáp án đúng')}</Badge>}
             </li>
           ))}
         </ol>

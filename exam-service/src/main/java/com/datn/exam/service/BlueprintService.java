@@ -14,7 +14,7 @@ import java.util.*;
  */
 @Service @RequiredArgsConstructor
 public class BlueprintService {
-    private static final Set<String> TYPES=Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY","SPEAKING");
+    private static final Set<String> TYPES=Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY","SPEAKING","MULTIPLE_RESPONSE","TRUE_FALSE_GROUP");
     private static final Set<String> DIFFICULTIES=Set.of("EASY","MEDIUM","HARD");
     private static final int MAX_QUESTIONS=200,MAX_EXCLUDED=1000;
     private final QuestionBankClient bank;

@@ -112,3 +112,41 @@ test('paper versions keep passage groups together and report their ranges', () =
     assert.deepEqual([...pm.passageRanges(v.items).values()], [{ key: 'k', from: at + 1, to: at + 3 }])
   }
 })
+
+const cm = await import('../src/features/question-bank/choiceModel.ts')
+
+test('multiple-response answers are a JSON list; true/false groups a JSON map; empty means unanswered', () => {
+  let v = cm.toggleChosen('', 'a', true); v = cm.toggleChosen(v, 'c', true)
+  assert.deepEqual(cm.parseChosen(v), ['a', 'c'])
+  assert.equal(cm.toggleChosen(cm.toggleChosen(v, 'a', false), 'c', false), '')
+  assert.ok(cm.isAnswered('MULTIPLE_RESPONSE', v)); assert.ok(!cm.isAnswered('MULTIPLE_RESPONSE', '[]'))
+  let g = cm.judge('', 'x', true); g = cm.judge(g, 'y', false)
+  assert.deepEqual(cm.parseJudged(g), { x: true, y: false })
+  assert.equal(cm.judgedCount(g, 4), 2)
+  assert.equal(cm.judge(cm.judge(g, 'x', null), 'y', null), '')
+  assert.ok(!cm.isAnswered('TRUE_FALSE_GROUP', '{}')); assert.ok(cm.isAnswered('TRUE_FALSE_GROUP', g))
+  assert.deepEqual(cm.parseJudged('{"x":"yes","y":true}'), { y: true })
+  assert.deepEqual(cm.parseChosen('not json'), [])
+  assert.deepEqual([0, 1, 2, 3, 4].map(k => cm.groupShare(k, 4)), [0, 0.1, 0.25, 0.5, 1])
+  assert.equal(cm.groupShare(1, 2), 0.5)
+})
+
+test('paper keys and exports for multiple-response and true/false groups', () => {
+  const opt = (id, content, correct, displayOrder) => ({ id, content, correct, displayOrder })
+  const mr = { questionId: 'm', questionVersion: 1, questionType: 'MULTIPLE_RESPONSE', content: 'Số nguyên tố?', points: 1, position: 1, expectedAnswer: null, explanation: null,
+    options: [opt('a', '2', true, 0), opt('b', '4', false, 1), opt('c', '7', true, 2), opt('d', '9', false, 3)] }
+  const tfg = { questionId: 'g', questionVersion: 1, questionType: 'TRUE_FALSE_GROUP', content: 'Hàm số', points: 1, position: 2, expectedAnswer: null, explanation: null,
+    options: [opt('w', 'Ý một', true, 0), opt('x', 'Ý hai', false, 1), opt('y', 'Ý ba', true, 2), opt('z', 'Ý bốn', true, 3)] }
+  const v = pm.makeVersion('exam', [mr, tfg], '101', { shuffleQuestions: false, shuffleOptions: false })
+  assert.equal(v.items[0].key, 'A,C'); assert.equal(v.items[1].key, 'ĐSĐĐ')
+  assert.deepEqual(v.items[1].options.map(o => o.letter), ['a', 'b', 'c', 'd'])
+  // shuffling never reorders statements of a group
+  for (let c = 101; c < 110; c++) assert.deepEqual(pm.makeVersion('exam', [tfg], String(c), { shuffleQuestions: true, shuffleOptions: true }).items[0].options.map(o => o.content), ['Ý một', 'Ý hai', 'Ý ba', 'Ý bốn'])
+  const rows = ex.toCsv([mr, tfg]).trim().split('\r\n')
+  assert.equal(rows[1], 'Số nguyên tố?,Nhiều đáp án,,2,4,7,9,,,,,"A,C",')
+  assert.equal(rows[2], 'Hàm số,Đúng/Sai nhiều ý,,Ý một,Ý hai,Ý ba,Ý bốn,,,,,"Đ, S, Đ, Đ",')
+  const x = ex.toMoodleXml([mr, tfg])
+  assert.ok(x.includes('<single>false</single>') && x.includes('fraction="50"') && x.includes('fraction="-100"'))
+  assert.equal((x.match(/type="truefalse"/g) ?? []).length, 4)
+  assert.equal(ex.toAiken([mr, tfg]).skipped, 2)
+})

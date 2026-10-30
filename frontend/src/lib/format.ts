@@ -56,7 +56,7 @@ export function formatScore(value: number | null | undefined) {
 export const shortId = (id: string | null | undefined) => (id ? id.slice(0, 8) : '-')
 
 export const QUESTION_TYPE_LABEL: Record<string, string> = i18nMap({
-  MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói',
+  MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói', MULTIPLE_RESPONSE: 'Nhiều đáp án', TRUE_FALSE_GROUP: 'Đúng/Sai nhiều ý',
 })
 export const DIFFICULTY_LABEL: Record<string, string> = i18nMap({ EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' })
 export const ACCESS_MODE_LABEL: Record<string, string> = i18nMap({

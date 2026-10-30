@@ -116,7 +116,11 @@ public class Question {
     public enum QuestionType {
         MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY,
         /** Answered with a voice recording; graded by a teacher. */
-        SPEAKING
+        SPEAKING,
+        /** Several options may be correct; the student ticks all of them (all-or-nothing). */
+        MULTIPLE_RESPONSE,
+        /** 2-8 statements each judged true/false (THPT 2025 format); option.correct = the statement is true. */
+        TRUE_FALSE_GROUP
     }
 
     public enum DifficultyLevel {

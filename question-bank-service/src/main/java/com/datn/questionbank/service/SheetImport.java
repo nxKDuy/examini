@@ -40,12 +40,37 @@ public final class SheetImport {
     static QuestionType type(String raw, boolean hasOptions) {
         String k = key(raw);
         if (k.isEmpty()) return null;
+        if (k.matches("dung sai nhieu y|ds nhieu y|dung sai \\d y|dung sai tung y|nhieu y dung sai|true false group|tfg")) return QuestionType.TRUE_FALSE_GROUP;
+        if (k.matches("nhieu dap an|chon nhieu|chon nhieu dap an|nhieu dap an dung|multiple response|multiple answers|mr")) return QuestionType.MULTIPLE_RESPONSE;
         if (k.matches("trac nghiem|tn|mcq|multiple choice|nhieu lua chon|chon dap an")) return QuestionType.MULTIPLE_CHOICE;
         if (k.matches("dung sai|d s|ds|true false|tf|dung/sai")) return QuestionType.TRUE_FALSE;
         if (k.matches("tra loi ngan|dien|dien khuyet|short answer|short|tln")) return QuestionType.SHORT_ANSWER;
         if (k.matches("tu luan|viet|essay|writing|tl")) return QuestionType.ESSAY;
         if (k.matches("noi|speaking|ghi am|van dap")) return QuestionType.SPEAKING;
         try { return QuestionType.valueOf(raw.strip().toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException e) { return null; }
+    }
+
+    /**
+     * Answers of a true/false group: "Đ, S, Đ, S", "ĐSĐS", "a) Đ b) S …" or "1 0 1 0"; null when it is not such a list.
+     * Item labels (a), b. …) are dropped first so the letter D is never read as "Đúng".
+     */
+    static List<Boolean> truths(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String s = raw.replaceAll("(?i)(^|[\\s,;|/])[a-h]\\s*[).:]", " ").strip();
+        var tokens = new ArrayList<String>();
+        for (String part : s.split("[\\s,;|/\\-]+")) {
+            if (part.isBlank()) continue;
+            String k = key(part);
+            if (k.matches("[ds]{2,8}") && part.matches("[ĐđDdSs]+")) { for (char c : k.toCharArray()) tokens.add(String.valueOf(c)); continue; }
+            tokens.add(k);
+        }
+        var out = new ArrayList<Boolean>();
+        for (String t : tokens) {
+            if (t.matches("d|dung|t|true|1|x")) out.add(true);
+            else if (t.matches("s|sai|f|false|0")) out.add(false);
+            else return null;
+        }
+        return out.isEmpty() ? null : out;
     }
 
     static DifficultyLevel difficulty(String raw, DifficultyLevel fallback) {
@@ -95,7 +120,16 @@ public final class SheetImport {
             if (t == QuestionType.TRUE_FALSE && options.isEmpty()) {
                 options.add(new ImportParser.Option("Đúng", false, (short) 0)); options.add(new ImportParser.Option("Sai", false, (short) 1));
             }
-            if (t == QuestionType.MULTIPLE_CHOICE || t == QuestionType.TRUE_FALSE) {
+            if (t == QuestionType.TRUE_FALSE_GROUP) {
+                var truths = truths(answer);
+                if (truths == null || truths.size() != options.size()) { flags.add(ImportParser.Flag.MISSING_CORRECT_ANSWER); confidence -= 0.4; }
+                else { var marked = new ArrayList<ImportParser.Option>(); for (var o : options) marked.add(new ImportParser.Option(o.content(), truths.get(o.displayOrder()), o.displayOrder())); options = marked; }
+            } else if (t == QuestionType.MULTIPLE_RESPONSE) {
+                var marked = new ArrayList<ImportParser.Option>();
+                for (var o : options) marked.add(new ImportParser.Option(o.content(), letters.contains((char) ('A' + o.displayOrder())), o.displayOrder()));
+                options = marked;
+                if (options.stream().noneMatch(ImportParser.Option::correct)) { flags.add(ImportParser.Flag.MISSING_CORRECT_ANSWER); confidence -= 0.4; }
+            } else if (t == QuestionType.MULTIPLE_CHOICE || t == QuestionType.TRUE_FALSE) {
                 String ak = key(answer);
                 int tf = ak.matches("d|dung|true|t|dung roi") ? 0 : ak.matches("s|sai|false|f") ? 1 : -1;
                 var marked = new ArrayList<ImportParser.Option>();

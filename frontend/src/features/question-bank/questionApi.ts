@@ -1,6 +1,6 @@
 import api from '../../lib/api'
 
-export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING'
+export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP'
 export type MediaKind = 'IMAGE' | 'AUDIO'
 export interface MediaRef { id: string; kind: MediaKind; name?: string | null }
 export interface Passage { key: string; title?: string | null; content: string; media?: MediaRef[] | null }

@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, Hourglass, PenLine, PlayCircle } from 'lucide-react'
 import { examApi, type ResultItem } from './examApi'
@@ -111,12 +112,14 @@ function QuestionResult({ q }: { q: ResultItem }) {
         <span className="small">{t('Câu')} {q.position} · {QUESTION_TYPE_LABEL[q.questionType] ?? q.questionType}</span>
         {q.awardedPoints !== undefined && <span className="mono small">{formatScore(q.awardedPoints)}{q.pointValue !== undefined ? `/${formatScore(q.pointValue)}` : ''}</span>}
       </div>
+      <PassageView presentation={q.presentation} />
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{q.questionContent}</p>
+      <MediaList media={q.presentation?.media} label={t('Câu {0}', { 0: q.position })} />
       <div className="small" style={{ padding: '8px 10px', background: 'var(--color-subtle)' }}>
         <span className="xsmall muted">{t('Bài làm của bạn')}</span>
         <p className="prewrap">{mine ? (mine.unresolved ? <em>{mine.text}</em> : mine.text) : <em className="muted">{t('Không trả lời')}</em>}</p>
       </div>
-      {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(' · ')}</p></div>}
+      {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(q.questionType === 'TRUE_FALSE_GROUP' ? '\n' : ' · ')}</p></div>}
       {q.explanation?.trim() && <div className="small" aria-label={t('Giải thích')}><span className="xsmall muted">{t('Giải thích')}</span><p className="prewrap">{q.explanation}</p></div>}
       {q.feedback && <div className="small"><span className="xsmall muted">{t('Nhận xét')}</span><p className="prewrap">{q.feedback}</p></div>}
     </li>

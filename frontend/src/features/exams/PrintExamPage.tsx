@@ -114,6 +114,12 @@ function Sheet({ v, h, duration, showPoints }: { v: PaperVersion; h: Header; dur
           {images.map(m => <MediaImage key={m.id} id={m.id} alt={m.name ?? 'Hình'} maxHeight={260} />)}
           {item.question.questionType === 'MULTIPLE_CHOICE' && <div className={compactOptions(item.options) && !item.options.some(optionImage) ? 'paper-options paper-options-row' : 'paper-options'}>
             {item.options.map(o => { const img = optionImage(o); return <span key={o.letter}><strong>{o.letter}.</strong> {o.content}{img && <MediaImage id={img} alt={`Phương án ${o.letter}`} maxHeight={120} />}</span> })}</div>}
+          {item.question.questionType === 'MULTIPLE_RESPONSE' && <>
+            <p><em>(Chọn tất cả các đáp án đúng.)</em></p>
+            <div className={compactOptions(item.options) && !item.options.some(optionImage) ? 'paper-options paper-options-row' : 'paper-options'}>
+              {item.options.map(o => { const img = optionImage(o); return <span key={o.letter}><strong>{o.letter}.</strong> {o.content}{img && <MediaImage id={img} alt={`Phương án ${o.letter}`} maxHeight={120} />}</span> })}</div></>}
+          {item.question.questionType === 'TRUE_FALSE_GROUP' && <div className="paper-statements">
+            {item.options.map(o => <div key={o.letter} className="paper-statement"><span><strong>{o.letter})</strong> {o.content}</span><span className="paper-ds">Đ ☐ &nbsp; S ☐</span></div>)}</div>}
           {item.question.questionType === 'TRUE_FALSE' && <div className="paper-options paper-options-row">{item.options.map(o => <span key={o.letter}>☐ {o.content}</span>)}</div>}
           {item.question.questionType === 'SHORT_ANSWER' && <div className="paper-lines"><span>Trả lời: ……………………………………………………………………</span></div>}
           {item.question.questionType === 'ESSAY' && <>
@@ -142,7 +148,7 @@ function AnswerKey({ versions, title }: { versions: PaperVersion[]; title: strin
           return <td key={c}>{it.question.questionType === 'SHORT_ANSWER' && it.key.length > 6 ? '*' : it.question.questionType === 'TRUE_FALSE' ? it.key.slice(0, 1) : it.key}</td>
         })}</tr>)}</tbody>
       </table>)}
-      <p className="paper-note">TL: câu tự luận, chấm theo hướng dẫn riêng. Đ/S: Đúng/Sai.{long.length > 0 && ' (*) đáp án trả lời ngắn ghi bên dưới.'}</p>
+      <p className="paper-note">TL: câu tự luận, chấm theo hướng dẫn riêng. Đ/S: Đúng/Sai; câu nhiều ý ghi Đ/S theo thứ tự a, b, c, d.{long.length > 0 && ' (*) đáp án trả lời ngắn ghi bên dưới.'}</p>
       {long.length > 0 && <dl className="paper-long">{long.map(({ code, item }) => <Fragment key={`${code}-${item.number}`}><dt>Mã {code} – Câu {item.number}</dt><dd>{item.key}</dd></Fragment>)}</dl>}
     </article>
   )
@@ -150,7 +156,7 @@ function AnswerKey({ versions, title }: { versions: PaperVersion[]; title: strin
 
 /** Bubble answer sheet for the choice questions of one code (essay and short answers are written on the paper). */
 function AnswerSheet({ v, h }: { v: PaperVersion; h: Header }) {
-  const choice = v.items.filter(i => i.question.questionType === 'MULTIPLE_CHOICE' || i.question.questionType === 'TRUE_FALSE')
+  const choice = v.items.filter(i => i.question.questionType === 'MULTIPLE_CHOICE' || i.question.questionType === 'TRUE_FALSE' || i.question.questionType === 'MULTIPLE_RESPONSE')
   const width = Math.max(2, ...choice.map(i => i.question.questionType === 'TRUE_FALSE' ? 2 : i.options.length))
   return (
     <article className="paper-sheet paper-answer-sheet">
@@ -160,7 +166,7 @@ function AnswerSheet({ v, h }: { v: PaperVersion; h: Header }) {
         <span>Họ và tên: ……………………………………………</span><span>Lớp: ………</span><span>Số báo danh: ……………</span>
         <span className="paper-code">Mã đề {v.code}</span>
       </div>
-      <p className="paper-note">Tô kín một ô cho mỗi câu (câu Đúng/Sai: Đ hoặc S). Muốn đổi đáp án, gạch chéo ô cũ rồi tô ô mới.</p>
+      <p className="paper-note">Tô kín một ô cho mỗi câu (câu Đúng/Sai: Đ hoặc S; câu nhiều đáp án: tô mọi ô đúng). Muốn đổi đáp án, gạch chéo ô cũ rồi tô ô mới.</p>
       <div className="bubble-grid">
         {choice.map(i => <div key={i.number} className="bubble-row">
           <span className="bubble-n">{i.number}</span>

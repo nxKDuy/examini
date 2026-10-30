@@ -77,6 +77,7 @@ public class LocalQuestionGenerator implements AiProvider {
                 case SHORT_ANSWER -> fillIn(f, vi, p);
                 case ESSAY -> essay(f, vi, p);
                 case SPEAKING -> null; // speaking prompts come from AI providers, not the rule-based generator
+                case TRUE_FALSE_GROUP, MULTIPLE_RESPONSE -> statements(type, f, facts, usedSentences, pools, rnd, vi, p);
             };
             if (c == null) c = type == QuestionType.MULTIPLE_CHOICE && types.contains(QuestionType.TRUE_FALSE) ? trueFalse(f, pools, rnd, vi, p) : fillIn(f, vi, p);
             if (c == null || !types.contains(QuestionType.valueOf(c.type()))) { usedSentences.remove(f.sentence()); continue; }
@@ -251,6 +252,39 @@ public class LocalQuestionGenerator implements AiProvider {
         String why = makeFalse ? (vi ? "Sai. " : "False. ") + explain(f, vi) : (vi ? "Đúng. " : "True. ") + explain(f, vi);
         DifficultyLevel target = p.difficulty() == DifficultyLevel.HARD ? DifficultyLevel.MEDIUM : DifficultyLevel.EASY;
         return new Candidate("TRUE_FALSE", content, options, null, why, target.name(), raw("TRUE_FALSE", f));
+    }
+
+    /**
+     * Several statements from different sentences of the material, some made false by swapping the key term:
+     * judged one by one (TRUE_FALSE_GROUP, THPT 2025 style) or "choose all true statements" (MULTIPLE_RESPONSE).
+     */
+    static Candidate statements(QuestionType type, Fact first, List<Fact> facts, Set<String> used, Map<Kind, LinkedHashSet<String>> pools, Random rnd, boolean vi, Prompt p) {
+        var picked = new ArrayList<Fact>(List.of(first));
+        for (Fact f : facts) {
+            if (picked.size() >= 4) break;
+            if (!used.contains(f.sentence()) && picked.stream().noneMatch(x -> x.sentence().equals(f.sentence()))) picked.add(f);
+        }
+        if (picked.size() < 3) return null;
+        var options = new ArrayList<CandidateOption>();
+        var why = new StringBuilder();
+        char label = 'a';
+        for (int i = 0; i < picked.size(); i++) {
+            Fact f = picked.get(i);
+            boolean makeFalse = i > 0 && rnd.nextBoolean();
+            String statement = f.sentence();
+            if (makeFalse) {
+                var wrong = distractors(f, pools, 1, rnd);
+                if (wrong.isEmpty()) makeFalse = false;
+                else statement = f.sentence().substring(0, f.start()) + wrong.getFirst() + f.sentence().substring(f.end());
+            }
+            options.add(new CandidateOption(statement, !makeFalse));
+            why.append(label++).append(") ").append(makeFalse ? (vi ? "Sai" : "False") : (vi ? "Đúng" : "True")).append(". ");
+            used.add(f.sentence());
+        }
+        String content = type == QuestionType.TRUE_FALSE_GROUP
+                ? (vi ? "Mỗi nhận định sau về «" + p.topic() + "» đúng hay sai?" : "Is each statement about «" + p.topic() + "» true or false?")
+                : (vi ? "Chọn tất cả các nhận định đúng về «" + p.topic() + "»." : "Choose all the true statements about «" + p.topic() + "».");
+        return new Candidate(type.name(), content, options, null, why.toString().strip(), level(p.difficulty(), DifficultyLevel.MEDIUM), raw(type.name(), first));
     }
 
     static Candidate fillIn(Fact f, boolean vi, Prompt p) {

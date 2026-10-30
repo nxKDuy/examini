@@ -91,6 +91,27 @@ class GradingCoreTest {
         var reviewed=service.saveDraft(result.getId(),new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(spoken.questionId(),1.5f,"Phát âm tốt"))),teacher);assertEquals("PENDING",reviewed.status());
     }
 
+    @Test void multipleResponseIsAllOrNothingAndTrueFalseGroupFollowsTheThptScale(){
+        var o=List.of(new ExamClient.Option(UUID.randomUUID(),"2",0,true),new ExamClient.Option(UUID.randomUUID(),"4",1,false),new ExamClient.Option(UUID.randomUUID(),"7",2,true),new ExamClient.Option(UUID.randomUUID(),"9",3,false));
+        var image=Map.<String,Object>of("media",List.of(Map.of("id",UUID.randomUUID().toString(),"kind","IMAGE")));
+        var multi=new ExamClient.Question(UUID.randomUUID(),1,"MULTIPLE_RESPONSE","Số nguyên tố?",o,new BigDecimal("1"),null,null,0,image);
+        var wrong=new ExamClient.Question(UUID.randomUUID(),1,"MULTIPLE_RESPONSE","Số nguyên tố? (thiếu)",o,new BigDecimal("1"),null,null,1);
+        var group=new ExamClient.Question(UUID.randomUUID(),1,"TRUE_FALSE_GROUP","Hàm số",o,new BigDecimal("1"),null,null,2);
+        String ids="[\""+o.get(2).id()+"\",\""+o.get(0).id()+"\"]", half="[\""+o.get(0).id()+"\"]";
+        // a) Đ right, b) Đ wrong, c) Đ right, d) unanswered -> 2 right -> 0.25
+        String judged="{\""+o.get(0).id()+"\":true,\""+o.get(1).id()+"\":true,\""+o.get(2).id()+"\":true}";
+        submitted(List.of(multi,wrong,group),List.of(new ExamSessionClient.AnswerDto(multi.questionId(),ids),new ExamSessionClient.AnswerDto(wrong.questionId(),half),new ExamSessionClient.AnswerDto(group.questionId(),judged)));
+        var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
+        assertEquals(1f,items.get(0).autoScore());assertEquals("2; 7",items.get(0).selectedOptionContent());assertEquals(image,items.get(0).presentation());
+        assertEquals(0f,items.get(1).autoScore());
+        assertEquals(0.25f,items.get(2).autoScore());assertEquals("a) Đúng; b) Đúng; c) Đúng; d) —",items.get(2).selectedOptionContent());
+        assertEquals(ExamResult.Status.GRADED,result.getStatus());assertEquals(1.25f,result.getTotalScore());
+        assertEquals(List.of(0f,.1f,.25f,.5f,1f),java.util.stream.IntStream.rangeClosed(0,4).mapToObj(k->{
+            var m=new HashMap<String,Boolean>();for(int i=0;i<4;i++)m.put(o.get(i).id().toString(),i<k==o.get(i).correct());
+            try{return ObjectiveScoring.score(group,new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(m));}catch(Exception e){throw new RuntimeException(e);}}).toList());
+        assertEquals(List.of("a) 2 — Đúng","b) 4 — Sai","c) 7 — Đúng","d) 9 — Sai"),ObjectiveScoring.key(group));
+    }
+
     @Test void aiEssayScoreIsSuggestionAndTeacherMustResolve(){
         var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenReturn(new GeminiClient.GeminiGradeResponse(.8f,"AI suggestion"));
         submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));

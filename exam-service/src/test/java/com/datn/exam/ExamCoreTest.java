@@ -74,6 +74,16 @@ class ExamCoreTest {
             .andExpect(jsonPath("$[0].questionType").value("SPEAKING")).andExpect(jsonPath("$[0].presentation.maxPlays").value(2))
             .andExpect(jsonPath("$[0].presentation.passage.title").value("Bài đọc"));
     }
+    @Test void multiCorrectTypesPublishWithTheirKeysHiddenFromStudents()throws Exception {
+        var opts=List.of(new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ý a",0,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ý b",1,false),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ý c",2,true));
+        var group=new QuestionBankClient.Question(qid,1L,"ACTIVE","TRUE_FALSE_GROUP","Mỗi ý đúng hay sai?",opts,null,true,"PERSONAL",null,null,null);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(group));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(group));
+        UUID id=create();core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].questionType").value("TRUE_FALSE_GROUP")).andExpect(jsonPath("$[0].options.length()").value(3))
+            .andExpect(jsonPath("$[0].options[0].correct").doesNotExist());
+    }
     @Test void paperExportNeedsAPublishedSnapshotAndAManagerAndIsAudited()throws Exception {
         UUID id=create();
         core.member(id,owner,proctor,Exam.MemberRole.PROCTOR,false);core.accept(id,proctor,"TEACHER");

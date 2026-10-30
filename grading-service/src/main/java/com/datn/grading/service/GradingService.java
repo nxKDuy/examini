@@ -51,7 +51,7 @@ public class GradingService {
         for(var q:keys){
             max+=q.points().floatValue();String answer=answers.get(q.questionId());
             var grade=QuestionGrade.builder().examResult(result).questionId(q.questionId()).questionVersion(q.questionVersion()).position(q.position())
-                    .questionContent(q.content()).questionType(q.questionType()).pointValue(q.points().floatValue()).answerContent(answer).explanation(q.explanation()).build();
+                    .questionContent(q.content()).questionType(q.questionType()).pointValue(q.points().floatValue()).answerContent(answer).explanation(q.explanation()).presentation(q.presentation()).build();
             if("ESSAY".equals(q.questionType())&&answer!=null&&!answer.isBlank())try{
                 var aiGrade=ai.gradeEssay(q.content(),answer);float score=aiGrade.score()*q.points().floatValue();
                 validateScore(score,q.points().floatValue());grade.setAutoScore(score);grade.setFeedback(aiGrade.feedback());
@@ -60,7 +60,7 @@ public class GradingService {
             // Voice answers are always graded by a teacher (no automatic or AI score).
             else if("SPEAKING".equals(q.questionType())&&answer!=null&&!answer.isBlank()){grade.setAutoScore(null);grade.setScore(null);grade.setNeedsReview(true);result.setStatus(ExamResult.Status.NEEDS_REVIEW);}
             else {float score=ObjectiveScoring.score(q,answer);grade.setAutoScore(score);grade.setScore(score);}
-            if(answer!=null)q.options().stream().filter(o->o.id().toString().equals(answer)).findFirst().ifPresent(o->grade.setSelectedOptionContent(o.content()));
+            if(answer!=null&&q.options()!=null&&!q.options().isEmpty())grade.setSelectedOptionContent(ObjectiveScoring.display(q,answer));
             result.getQuestionGrades().add(grade);
         }
         result.setMaxScore(max);result.setTotalScore(derived(result));result.setPendingManualItemCount(pending(result));
@@ -109,7 +109,7 @@ public class GradingService {
             if(change==null||change.questionId()==null||!seen.add(change.questionId()))throw error(400,"Missing or duplicate questionId");
             var item=Optional.ofNullable(byId.get(change.questionId())).orElseThrow(()->error(400,"Question outside frozen snapshot"));
             Float oldScore=item.getScore();String oldFeedback=item.getFeedback();String newFeedback=text(change.feedback(),10000,"Item feedback");
-            boolean override=change.score()!=null&&!Set.of("ESSAY","SPEAKING").contains(item.getQuestionType())&&item.getAutoScore()!=null&&!Objects.equals(change.score(),item.getAutoScore());String overrideReason=override?required(change.overrideReason(),1000,"Objective score override reason"):text(change.overrideReason(),1000,"Override reason");
+            boolean override=change.score()!=null&&ObjectiveScoring.isObjective(item.getQuestionType())&&item.getAutoScore()!=null&&!Objects.equals(change.score(),item.getAutoScore());String overrideReason=override?required(change.overrideReason(),1000,"Objective score override reason"):text(change.overrideReason(),1000,"Override reason");
             if(change.score()!=null){validateScore(change.score(),item.getPointValue());item.setManualScore(change.score());item.setScore(change.score());item.setNeedsReview(false);item.setManualGradedBy(actor);item.setManualGradedAt(now);}
             item.setFeedback(newFeedback);
             if(!Objects.equals(oldScore,item.getScore())||!Objects.equals(oldFeedback,newFeedback))changes.add(new AuditChange(item.getQuestionId(),oldScore,item.getScore(),oldFeedback,newFeedback,overrideReason,override?"OBJECTIVE_SCORE_OVERRIDDEN":"ITEM_UPDATED"));
@@ -167,7 +167,7 @@ public class GradingService {
         var items=result.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->{
             var published=publishedItems.get(q.getQuestionId());
             return new SubmissionDto.StudentItem(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),
-                    published.answerDisplay()!=null?published.answerDisplay():answerDisplay(q),p.showQuestionBreakdown()?published.score():null,p.showFeedback()?published.feedback():null,reveal?correct(finalKeys.get(q.getQuestionId())):null,revealExplanation?published.explanation():null);
+                    published.answerDisplay()!=null?published.answerDisplay():answerDisplay(q),p.showQuestionBreakdown()?published.score():null,p.showFeedback()?published.feedback():null,reveal?correct(finalKeys.get(q.getQuestionId())):null,revealExplanation?published.explanation():null,q.getPresentation());
         }).toList();
         var history=publications.findByResultIdOrderByResultRevisionAsc(result.getId()).stream().map(h->new SubmissionDto.PublishedRevision(h.getResultRevision(),h.getReleasedAt(),p.showScore()?h.getTotalScore():null,p.showScore()?result.getMaxScore():null,h.getPublicReason())).toList();
         return new SubmissionDto.StudentResult(sessionId,result.getExamId(),result.getExamTitle(),result.getAttemptNumber(),"GRADED",publication.getResultRevision(),result.getSubmittedAt(),publication.getGradedAt(),publication.getReleasedAt(),
@@ -213,10 +213,10 @@ public class GradingService {
         return added;
     }
     private List<PublicationItem> readItems(ResultPublication publication){try{return json.readValue(publication.getItems(),new TypeReference<>(){});}catch(Exception e){throw new IllegalStateException("Invalid published result snapshot",e);}}
-    private static List<String> correct(ExamClient.Question q){if(q==null)return List.of();if("SHORT_ANSWER".equals(q.questionType()))return q.expectedAnswer()==null?List.of():List.of(q.expectedAnswer());return q.options().stream().filter(ExamClient.Option::correct).map(ExamClient.Option::content).toList();}
-    private static String answerDisplay(QuestionGrade q){return Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.getQuestionType())?q.getSelectedOptionContent():q.getAnswerContent();}
+    private static List<String> correct(ExamClient.Question q){return ObjectiveScoring.key(q);}
+    private static String answerDisplay(QuestionGrade q){return Set.of("MULTIPLE_CHOICE","TRUE_FALSE","MULTIPLE_RESPONSE","TRUE_FALSE_GROUP").contains(q.getQuestionType())?q.getSelectedOptionContent():q.getAnswerContent();}
     private SubmissionDto.SummaryResponse summary(ExamResult r){return new SubmissionDto.SummaryResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getStudentDisplayName(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason());}
-    private SubmissionDto.DetailResponse detail(ExamResult r){return new SubmissionDto.DetailResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getStudentDisplayName(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->new SubmissionDto.ItemResponse(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),q.getSelectedOptionContent(),q.getAutoScore(),q.getManualScore(),q.getScore(),q.isNeedsReview(),q.getFeedback(),q.getManualGradedBy(),q.getManualGradedAt())).toList(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason(),r.getSessionId());}
+    private SubmissionDto.DetailResponse detail(ExamResult r){return new SubmissionDto.DetailResponse(r.getId(),r.getExamId(),r.getExamTitle(),r.getUserId(),r.getStudentDisplayName(),r.getAttemptNumber(),r.getStatus().name(),r.getTotalScore(),r.getMaxScore(),r.getReleasedScore(),r.getPendingManualItemCount(),r.getSubmittedAt(),r.getGradedAt(),r.getDurationSeconds(),r.getFeedback(),r.getResultRevision(),r.getReleasedRevision(),r.getQuestionGrades().stream().sorted(Comparator.comparingInt(QuestionGrade::getPosition)).map(q->new SubmissionDto.ItemResponse(q.getQuestionId(),q.getQuestionVersion(),q.getPosition(),q.getQuestionContent(),q.getQuestionType(),q.getPointValue(),q.getAnswerContent(),q.getSelectedOptionContent(),q.getAutoScore(),q.getManualScore(),q.getScore(),q.isNeedsReview(),q.getFeedback(),q.getManualGradedBy(),q.getManualGradedAt(),q.getPresentation())).toList(),r.isInvalidated(),r.getInvalidatedAt(),r.getInvalidationReason(),r.getSessionId());}
     private record AuditChange(UUID questionId,Float oldScore,Float newScore,String oldFeedback,String newFeedback,String reason,String action){}
     public record PublicationItem(UUID questionId,Float score,String feedback,String answerDisplay,String explanation){}
 }

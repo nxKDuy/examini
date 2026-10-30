@@ -92,7 +92,7 @@ export function cleanPresentation(p: PresentationLike, type: string): Presentati
   const hasAudio = media.some(m => m.kind === 'AUDIO') || (passage?.media ?? []).some(m => m.kind === 'AUDIO')
   const out: PresentationLike = {
     ...(media.length ? { media } : {}),
-    ...(Object.keys(optionMedia).length && (type === 'MULTIPLE_CHOICE') ? { optionMedia } : {}),
+    ...(Object.keys(optionMedia).length && (type === 'MULTIPLE_CHOICE' || type === 'MULTIPLE_RESPONSE') ? { optionMedia } : {}),
     ...(passage ? { passage } : {}),
     ...(hasAudio && p.maxPlays ? { maxPlays: p.maxPlays } : {}),
     ...(type === 'ESSAY' && p.minWords ? { minWords: p.minWords } : {}),

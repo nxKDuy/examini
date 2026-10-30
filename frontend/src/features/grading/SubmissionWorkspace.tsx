@@ -18,6 +18,7 @@ import { t, useT } from '../../lib/i18n'
 import { examApi } from '../exams/examApi'
 import { spokenAnswer } from '../question-bank/media/mediaModel'
 import { useBlobUrl } from '../question-bank/media/useBlobUrl'
+import { MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 
 interface Loaded { rev: number; initial: GradeForm; form: GradeForm }
 const make = (d: SubmissionDetail): Loaded => { const f = formFromDetail(d); return { rev: d.resultRevision, initial: f, form: structuredClone(f) } }
@@ -237,7 +238,9 @@ function ItemCard({ sessionId, item, form, initial, problem, editable, onChange 
           <span className="mono small">{t('Điểm hiện có')} {formatScore(item.awardedPoints)}/{formatScore(item.pointValue)}</span>
         </span>
       </div>
+      <PassageView presentation={item.presentation} />
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{item.questionContent}</p>
+      <MediaList media={item.presentation?.media} label={t('Câu {0}', { 0: item.position })} />
       <div className="grade-answer small">
         <span className="xsmall muted">{t('Bài làm của thí sinh')}</span>
         {item.questionType === 'SPEAKING'

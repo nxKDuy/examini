@@ -62,7 +62,8 @@ public class SessionService {
         var questions=new ArrayList<>(exams.safe(examId,token));
         if(questions.isEmpty())throw error(409,"Published snapshot unavailable");
         if(exam.shuffleQuestions()){var mixed=shuffleKeepingPassages(questions,new Random());questions.clear();questions.addAll(mixed);}
-        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position(),q.presentation()));}
+        // True/false statements keep their a), b), c), d) order, like the printed exam.
+        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);if("TRUE_FALSE_GROUP".equals(q.questionType()))continue;var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position(),q.presentation()));}
         var admission=exams.claimStart(examId,reservation.admissionId(),user,token);
         Instant now=admission.startedAt();
         var s=ExamSession.builder().examId(examId).userId(user).startTime(LocalDateTime.ofInstant(now,ZoneOffset.UTC))
@@ -139,6 +140,27 @@ public class SessionService {
         return blocks.stream().flatMap(List::stream).toList();
     }
 
+    /**
+     * MULTIPLE_RESPONSE: a JSON array of distinct option ids, e.g. ["id1","id3"].
+     * TRUE_FALSE_GROUP: a JSON object option id -> true/false; statements left out are unanswered.
+     */
+    static void checkStructured(com.fasterxml.jackson.databind.ObjectMapper json,ExamClient.Question q,String content){
+        boolean multi="MULTIPLE_RESPONSE".equals(q.questionType()),group="TRUE_FALSE_GROUP".equals(q.questionType());
+        if(!multi&&!group)return;
+        var ids=new HashSet<String>();q.options().forEach(o->ids.add(o.id().toString()));
+        com.fasterxml.jackson.databind.JsonNode node;
+        try{node=json.readTree(content);}catch(Exception e){throw error(400,"Answer must be JSON for this question type");}
+        if(multi){
+            if(node==null||!node.isArray())throw error(400,"Answer must be a list of option ids");
+            var seen=new HashSet<String>();
+            for(var v:node)if(!v.isTextual()||!ids.contains(v.asText())||!seen.add(v.asText()))throw error(400,"Option outside this question");
+        }else{
+            if(node==null||!node.isObject())throw error(400,"Answer must map statements to true/false");
+            var fields=node.fields();
+            while(fields.hasNext()){var f=fields.next();if(!ids.contains(f.getKey())||!f.getValue().isBoolean())throw error(400,"Option outside this question");}
+        }
+    }
+
     // Do not roll back AUTO_SUBMITTED when rejecting a late answer.
     @Transactional(noRollbackFor=ResponseStatusException.class)
     public void saveAnswer(UUID sessionId,UUID userId,UUID questionId,String content){
@@ -148,6 +170,7 @@ public class SessionService {
         if(content==null || content.length()>20000)throw error(400,"Invalid answer length");
         if(Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.questionType()) && !content.isEmpty() && q.options().stream().noneMatch(o->o.id().toString().equals(content)))throw error(400,"Option outside this question");
         if("SPEAKING".equals(q.questionType()) && !content.isEmpty())throw error(400,"Speaking answers are recorded through the audio upload");
+        if(!content.isEmpty())checkStructured(json,q,content);
         var a=answers.findBySessionIdAndQuestionId(sessionId,questionId).orElseGet(()->SessionAnswer.builder().session(s).questionId(questionId).build());
         a.setAnswerContent(content);answers.save(a);
     }

@@ -95,4 +95,20 @@ class LocalQuestionGeneratorTest {
         assertFalse(none.transientFailure());
         assertThrows(GenerationException.class, () -> gen.generate(prompt("Ngắn.", 2, QuestionType.MULTIPLE_CHOICE)));
     }
+
+    @Test void statementGroupsComeFromDifferentSentencesAndKeepAtLeastOneTrue() {
+        // Six sentences give one group of four statements; a second group would reuse sentences, so it is not made.
+        var r = gen.generate(prompt(HISTORY, 2, QuestionType.TRUE_FALSE_GROUP));
+        assertEquals(1, r.candidates().size());
+        var group = r.candidates().get(0);
+        assertEquals("TRUE_FALSE_GROUP", group.type());
+        assertTrue(group.options().size() >= 3 && group.options().size() <= 4);
+        assertEquals(group.options().size(), group.options().stream().map(o -> o.content()).distinct().count());
+        var m = gen.generate(prompt(HISTORY, 1, QuestionType.MULTIPLE_RESPONSE));
+        var multi = m.candidates().get(0);
+        assertEquals("MULTIPLE_RESPONSE", multi.type());
+        assertTrue(multi.options().stream().anyMatch(o -> Boolean.TRUE.equals(o.correct())));
+        var drafts = AiDrafts.build(List.of(group, multi), 2, DifficultyLevel.MEDIUM, List.of());
+        assertTrue(drafts.items().stream().noneMatch(d -> d.flags().contains(Flag.MULTIPLE_ANSWERS) || d.flags().contains(Flag.MISSING_CORRECT_ANSWER)));
+    }
 }

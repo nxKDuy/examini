@@ -18,6 +18,7 @@ import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '.
 import { MediaImage, MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 import { blockOf, countWords, wordState } from '../question-bank/media/mediaModel'
 import SpeakingRecorder from './SpeakingRecorder'
+import { isAnswered, judge, judgedCount, parseChosen, parseJudged, statementLabel, toggleChosen } from '../question-bank/choiceModel'
 
 type SaveState = 'pending' | 'saving' | 'saved' | 'error'
 const TEXT_DEBOUNCE_MS = 800
@@ -246,7 +247,7 @@ export default function StudentExamPage() {
 
   const questions = session.questions
   const q = questions[index]
-  const answered = (qq: SafeQuestion) => (answers[qq.questionId] ?? '').trim() !== ''
+  const answered = (qq: SafeQuestion) => isAnswered(qq.questionType, answers[qq.questionId])
   const answeredCount = questions.filter(answered).length
   const unanswered = questions.map((qq, i) => (answered(qq) ? -1 : i)).filter(i => i >= 0)
   const states = Object.values(saveState)
@@ -409,6 +410,46 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
           </label>
         ))}
         {value && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Bỏ chọn')}</button></div>}
+      </fieldset>
+    )
+  }
+  if (question.questionType === 'MULTIPLE_RESPONSE') {
+    const chosen = new Set(parseChosen(value))
+    return (
+      <fieldset className="stack-sm">
+        <legend className="small" style={{ marginBottom: 4 }}><strong>{tt('Chọn tất cả đáp án đúng')}</strong> <span className="muted">{tt('(có thể nhiều hơn một)')}</span></legend>
+        {question.options.map((o, i) => (
+          <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
+            <input type="checkbox" value={o.id} checked={chosen.has(o.id)} disabled={disabled} onChange={e => onChange(toggleChosen(value, o.id, e.target.checked), true)} className="sr-only" />
+            <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
+            <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
+              {question.presentation?.optionMedia?.[String(o.displayOrder)] && <MediaImage id={question.presentation.optionMedia[String(o.displayOrder)]} alt={tt('Hình lựa chọn {0}', { 0: String.fromCharCode(65 + i) })} maxHeight={160} />}</span>
+          </label>
+        ))}
+        <div className="row xsmall muted" style={{ gap: 8 }}>{tt('Đã chọn {0}', { 0: chosen.size })}
+          {chosen.size > 0 && !disabled && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Bỏ chọn')}</button>}</div>
+      </fieldset>
+    )
+  }
+  if (question.questionType === 'TRUE_FALSE_GROUP') {
+    const judged = parseJudged(value)
+    return (
+      <fieldset className="stack-sm">
+        <legend className="small" style={{ marginBottom: 4 }}><strong>{tt('Chọn Đúng hoặc Sai cho từng ý')}</strong> <span className="muted">· {tt('đã làm {0}/{1} ý', { 0: judgedCount(value, question.options.length), 1: question.options.length })}</span></legend>
+        {question.options.map((o, i) => {
+          const v = judged[o.id]
+          return (
+            <div key={o.id} className="tf-row" data-judged={v !== undefined}>
+              <span className="option-key" aria-hidden>{statementLabel(i).slice(0, 1)}</span>
+              <span className="prewrap" id={`${name}-${i}`}>{o.content}</span>
+              <span className="tf-toggle" role="radiogroup" aria-labelledby={`${name}-${i}`}>
+                <label><input type="radio" className="sr-only" name={`${name}-${i}`} checked={v === true} disabled={disabled} onChange={() => onChange(judge(value, o.id, true), true)} />{tt('Đúng')}</label>
+                <label><input type="radio" className="sr-only" name={`${name}-${i}`} checked={v === false} disabled={disabled} onChange={() => onChange(judge(value, o.id, false), true)} />{tt('Sai')}</label>
+              </span>
+            </div>
+          )
+        })}
+        {Object.keys(judged).length > 0 && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Xóa lựa chọn')}</button></div>}
       </fieldset>
     )
   }

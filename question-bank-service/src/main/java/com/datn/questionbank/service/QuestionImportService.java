@@ -405,7 +405,8 @@ public class QuestionImportService {
         if (item.getCategoryId() == null) errors.add(new ItemError("CATEGORY_REQUIRED", "Chọn danh mục"));
         else if ((category = categories.findById(item.getCategoryId()).orElse(null)) == null) errors.add(new ItemError("CATEGORY_NOT_FOUND", "Danh mục không tồn tại"));
         var options = options(item);
-        boolean choice = item.getQuestionType() == QuestionType.MULTIPLE_CHOICE || item.getQuestionType() == QuestionType.TRUE_FALSE;
+        boolean choice = item.getQuestionType() == QuestionType.MULTIPLE_CHOICE || item.getQuestionType() == QuestionType.TRUE_FALSE
+                || item.getQuestionType() == QuestionType.MULTIPLE_RESPONSE;
         if (choice && options.stream().noneMatch(ImportOption::correct))
             errors.add(new ItemError("MISSING_CORRECT_ANSWER", "Chưa có đáp án đúng; hệ thống không tự đoán"));
         else {

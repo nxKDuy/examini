@@ -41,7 +41,7 @@ public final class AiDrafts {
             var rawOptions = c.options() == null ? List.<AiQuestionGenerator.CandidateOption>of()
                     : c.options().stream().filter(o -> o != null && !blank(o.content())).toList();
             QuestionType type = type(c.type(), rawOptions, c.expectedAnswer());
-            boolean choice = type == QuestionType.MULTIPLE_CHOICE || type == QuestionType.TRUE_FALSE;
+            boolean choice = com.datn.questionbank.service.QuestionValidation.isChoice(type);
 
             var options = new ArrayList<ImportParser.Option>();
             String expected = blank(c.expectedAnswer()) ? null : clip(c.expectedAnswer().strip(), MAX_TEXT);
@@ -55,8 +55,8 @@ public final class AiDrafts {
                     options.add(new ImportParser.Option(text, Boolean.TRUE.equals(o.correct()), order++));
                 }
                 long correct = options.stream().filter(ImportParser.Option::correct).count();
-                if (correct == 0) flags.add(Flag.MISSING_CORRECT_ANSWER);
-                if (correct > 1) flags.add(Flag.MULTIPLE_ANSWERS);
+                if (correct == 0 && type != QuestionType.TRUE_FALSE_GROUP) flags.add(Flag.MISSING_CORRECT_ANSWER);
+                if (correct > 1 && (type == QuestionType.MULTIPLE_CHOICE || type == QuestionType.TRUE_FALSE)) flags.add(Flag.MULTIPLE_ANSWERS);
                 expected = null; // choice questions keep their key in options only
             } else if (type == QuestionType.ESSAY && expected == null) {
                 flags.add(Flag.NO_ANSWER_ESSAY);

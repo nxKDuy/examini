@@ -6,7 +6,19 @@ have none.
 
 ## Question types
 
-`MULTIPLE_CHOICE | TRUE_FALSE | SHORT_ANSWER | ESSAY | SPEAKING`. `SPEAKING` has no options; the student records a
+`MULTIPLE_CHOICE | TRUE_FALSE | SHORT_ANSWER | ESSAY | SPEAKING | MULTIPLE_RESPONSE | TRUE_FALSE_GROUP`.
+
+- `MULTIPLE_RESPONSE`: 2–26 options, at least one correct. Answer = JSON array of option ids (`["id1","id3"]`).
+  All or nothing: full points only for exactly the correct set.
+- `TRUE_FALSE_GROUP` (THPT 2025 "Đúng/Sai" part): 2–8 statements as options, `correct` = the statement is true
+  (any number may be true). Answer = JSON object option id → true/false; statements left out are unanswered (wrong).
+  Score share by statements judged right: with 4 statements 1→10 %, 2→25 %, 3→50 %, 4→100 %; otherwise right/total.
+  Statements keep their order (never shuffled) and are labelled a), b), c), d).
+- Imports: type words `Nhiều đáp án`, `Đúng/Sai nhiều ý`; keys `A, C` and `Đ, S, Đ, Đ` / `a) Đ b) S …`
+  (Word/PDF statements may be written `a) …`).
+- Grading `ItemResponse.selectedOptionContent` is readable ("2; 7", "a) Đúng; b) Sai; …"); grading items and student
+  result items now carry the question `presentation`.
+ `SPEAKING` has no options; the student records a
 voice answer; grading always waits for a teacher (empty answer = 0). `expectedAnswer` of ESSAY/SPEAKING is the grading
 guide, never shown to students.
 

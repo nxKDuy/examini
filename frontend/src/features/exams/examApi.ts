@@ -31,7 +31,7 @@ export interface Session {
 /** Candidate-safe own result (manual-grading-api.md). Fields the policy hides are simply absent, never null-as-zero. */
 export interface ResultItem {
   questionId: string; questionVersion: number; position: number; questionContent: string; questionType: string; pointValue?: number
-  answer?: string; answerDisplay?: string | null; awardedPoints?: number; feedback?: string; correctAnswers?: string[]; explanation?: string | null
+  answer?: string; answerDisplay?: string | null; awardedPoints?: number; feedback?: string; correctAnswers?: string[]; explanation?: string | null; presentation?: Presentation | null
 }
 export interface ResultRevision { resultRevision: number; releasedAt?: string; score?: number; totalScore?: number; publicReason?: string }
 export interface Result {

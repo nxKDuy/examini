@@ -26,13 +26,17 @@ public final class QuestionValidation {
             } catch (IllegalArgumentException e) { throw new IllegalArgumentException("URL nguồn phải là HTTP(S) hợp lệ"); }
         }
         var options = q.getOptions();
-        boolean choice = q.getQuestionType() == Question.QuestionType.MULTIPLE_CHOICE
-                || q.getQuestionType() == Question.QuestionType.TRUE_FALSE;
-        if (choice) {
+        var type = q.getQuestionType();
+        if (isChoice(type)) {
             if (options.size() < 2 || options.size() > 26) throw new IllegalArgumentException("Cần 2–26 lựa chọn");
-            if (q.getQuestionType() == Question.QuestionType.TRUE_FALSE && options.size() != 2)
+            if (type == Question.QuestionType.TRUE_FALSE && options.size() != 2)
                 throw new IllegalArgumentException("Đúng/Sai cần đúng 2 lựa chọn");
-            if (options.stream().filter(QuestionOption::isCorrect).count() != 1)
+            long correct = options.stream().filter(QuestionOption::isCorrect).count();
+            if (type == Question.QuestionType.TRUE_FALSE_GROUP) {
+                if (options.size() > 8) throw new IllegalArgumentException("Đúng/Sai nhiều ý cần 2–8 ý");
+            } else if (type == Question.QuestionType.MULTIPLE_RESPONSE) {
+                if (correct < 1) throw new IllegalArgumentException("Cần ít nhất 1 đáp án đúng");
+            } else if (correct != 1)
                 throw new IllegalArgumentException("Cần đúng 1 đáp án đúng");
             var positions = new HashSet<Short>();
             var contents = new HashSet<String>();
@@ -49,6 +53,11 @@ public final class QuestionValidation {
             if (q.getQuestionType() == Question.QuestionType.SHORT_ANSWER)
                 text(q.getExpectedAnswer(), 10000, "Đáp án mong đợi");
         }
+    }
+    /** Types answered by picking options (the answer key lives in options). */
+    public static boolean isChoice(Question.QuestionType t) {
+        return t == Question.QuestionType.MULTIPLE_CHOICE || t == Question.QuestionType.TRUE_FALSE
+                || t == Question.QuestionType.MULTIPLE_RESPONSE || t == Question.QuestionType.TRUE_FALSE_GROUP;
     }
     private static void text(String value, int max, String name) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " không được trống");

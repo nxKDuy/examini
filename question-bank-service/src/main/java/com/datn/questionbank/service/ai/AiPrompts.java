@@ -18,6 +18,8 @@ final class AiPrompts {
                 - TRUE_FALSE: exactly 2 options, "%s" and "%s", exactly one correct.
                 - SHORT_ANSWER: no options; expectedAnswer is a short exact answer (a word, number or short phrase).
                 - ESSAY: no options; expectedAnswer is a brief marking guide.
+                - MULTIPLE_RESPONSE: 4-6 options, two or more with correct=true; the stem says to choose all correct answers.
+                - TRUE_FALSE_GROUP: a stem (context, data or a short text) followed by exactly 4 statements as options, each a full claim about the stem; correct=true when the statement is true; mix true and false statements.
                 - SPEAKING: no options; an oral task the student answers aloud in about 1-2 minutes; expectedAnswer is a brief marking guide (content, fluency, vocabulary).
                 - explanation: why the answer is correct, 1-3 sentences.
                 - difficulty: your honest estimate (EASY, MEDIUM, HARD) of how hard the question is for the target learners.

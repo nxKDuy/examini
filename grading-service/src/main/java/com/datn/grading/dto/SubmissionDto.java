@@ -3,6 +3,7 @@ package com.datn.grading.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public final class SubmissionDto {
@@ -32,7 +33,12 @@ public final class SubmissionDto {
     public record ItemResponse(UUID questionId,long questionVersion,int position,String questionContent,String questionType,
                                Float pointValue,String answerContent,String selectedOptionContent,Float autoScore,
                                Float manualScore,Float awardedPoints,boolean needsReview,String feedback,
-                               UUID manualGradedBy,Instant manualGradedAt) {}
+                               UUID manualGradedBy,Instant manualGradedAt,@JsonInclude(JsonInclude.Include.NON_NULL) Map<String,Object> presentation) {
+        public ItemResponse(UUID questionId,long questionVersion,int position,String questionContent,String questionType,Float pointValue,String answerContent,
+                            String selectedOptionContent,Float autoScore,Float manualScore,Float awardedPoints,boolean needsReview,String feedback,UUID manualGradedBy,Instant manualGradedAt){
+            this(questionId,questionVersion,position,questionContent,questionType,pointValue,answerContent,selectedOptionContent,autoScore,manualScore,awardedPoints,needsReview,feedback,manualGradedBy,manualGradedAt,null);
+        }
+    }
 
     public record ItemGrade(UUID questionId,Float score,String feedback,String overrideReason) {
         public ItemGrade(UUID questionId,Float score,String feedback){this(questionId,score,feedback,null);}
@@ -54,7 +60,12 @@ public final class SubmissionDto {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record StudentItem(UUID questionId,long questionVersion,int position,String questionContent,String questionType,
                               Float pointValue,String answer,String answerDisplay,Float awardedPoints,String feedback,
-                              List<String> correctAnswers,String explanation) {}
+                              List<String> correctAnswers,String explanation,@JsonInclude(JsonInclude.Include.NON_NULL) Map<String,Object> presentation) {
+        public StudentItem(UUID questionId,long questionVersion,int position,String questionContent,String questionType,Float pointValue,String answer,
+                           String answerDisplay,Float awardedPoints,String feedback,List<String> correctAnswers,String explanation){
+            this(questionId,questionVersion,position,questionContent,questionType,pointValue,answer,answerDisplay,awardedPoints,feedback,correctAnswers,explanation,null);
+        }
+    }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record PublishedRevision(long resultRevision,Instant releasedAt,Float score,Float totalScore,String publicReason) {}

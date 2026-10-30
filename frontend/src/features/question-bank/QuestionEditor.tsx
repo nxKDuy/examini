@@ -15,7 +15,9 @@ import Select from '../../components/Select'
 
 const TYPES: { value: QuestionType; label: string; hint: string }[] = i18nMap([
   { value: 'MULTIPLE_CHOICE', label: 'Trắc nghiệm', hint: '2 đến 26 lựa chọn, đúng một đáp án. Chấm tự động.' },
+  { value: 'MULTIPLE_RESPONSE', label: 'Nhiều đáp án', hint: 'Có thể đúng nhiều lựa chọn; phải chọn đủ và đúng mới được điểm.' },
   { value: 'TRUE_FALSE', label: 'Đúng/Sai', hint: 'Chọn mệnh đề đúng hay sai. Chấm tự động.' },
+  { value: 'TRUE_FALSE_GROUP', label: 'Đúng/Sai nhiều ý', hint: 'Kiểu đề THPT 2025: 2–8 ý a), b), c), d), mỗi ý chọn Đúng hoặc Sai; điểm theo số ý đúng.' },
   { value: 'SHORT_ANSWER', label: 'Trả lời ngắn', hint: 'So khớp với đáp án chuẩn. Chấm tự động.' },
   { value: 'ESSAY', label: 'Tự luận', hint: 'Giáo viên chấm tay sau khi thí sinh nộp bài.' },
   { value: 'SPEAKING', label: 'Nói', hint: 'Thí sinh ghi âm câu trả lời; giáo viên nghe và chấm.' },
@@ -49,7 +51,7 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
   const [type, setType] = useState<QuestionType>(initial?.questionType ?? 'MULTIPLE_CHOICE')
   const [difficulty, setDifficulty] = useState<Question['difficultyLevel']>(initial?.difficultyLevel ?? 'MEDIUM')
   const [content, setContent] = useState(initial?.content ?? '')
-  const [options, setOptions] = useState(initial?.questionType === 'MULTIPLE_CHOICE'
+  const [options, setOptions] = useState(initial && ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP'].includes(initial.questionType)
     ? initial.options.map(o => ({ content: o.content, correct: !!o.correct }))
     : [{ content: '', correct: true }, { content: '', correct: false }, { content: '', correct: false }, { content: '', correct: false }])
   const [trueCorrect, setTrueCorrect] = useState(initialTrueIsCorrect(initial))
@@ -90,6 +92,13 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
     if (type === 'MULTIPLE_CHOICE') {
       if (options.length < 2 || options.some(o => !o.content.trim())) return setError(tt('Nhập nội dung cho tất cả lựa chọn (ít nhất 2).'))
       if (options.filter(o => o.correct).length !== 1) return setError(tt('Chọn đúng một đáp án đúng.'))
+      opts = options.map((o, i) => ({ content: o.content.trim(), correct: o.correct, displayOrder: i }))
+    } else if (type === 'MULTIPLE_RESPONSE') {
+      if (options.length < 2 || options.some(o => !o.content.trim())) return setError(tt('Nhập nội dung cho tất cả lựa chọn (ít nhất 2).'))
+      if (!options.some(o => o.correct)) return setError(tt('Đánh dấu ít nhất một đáp án đúng.'))
+      opts = options.map((o, i) => ({ content: o.content.trim(), correct: o.correct, displayOrder: i }))
+    } else if (type === 'TRUE_FALSE_GROUP') {
+      if (options.length < 2 || options.length > 8 || options.some(o => !o.content.trim())) return setError(tt('Nhập nội dung cho 2–8 ý.'))
       opts = options.map((o, i) => ({ content: o.content.trim(), correct: o.correct, displayOrder: i }))
     } else if (type === 'TRUE_FALSE') {
       opts = [{ content: tt('Đúng'), correct: trueCorrect, displayOrder: 0 }, { content: 'Sai', correct: !trueCorrect, displayOrder: 1 }]
@@ -143,15 +152,20 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
         </Field>
         <PresentationFields value={presentation} onChange={setPresentation} type={type} />
 
-        {type === 'MULTIPLE_CHOICE' && (
+        {(type === 'MULTIPLE_CHOICE' || type === 'MULTIPLE_RESPONSE') && (
           <fieldset className="stack-sm">
             <legend className="field-label" style={{ marginBottom: 4 }}>{tt('Lựa chọn và đáp án đúng')}</legend>
-            <p className="field-hint" style={{ marginBottom: 4 }}>{tt('Chọn nút tròn ở lựa chọn đúng. Thí sinh không bao giờ thấy đáp án trước khi chấm.')}</p>
+            <p className="field-hint" style={{ marginBottom: 4 }}>{type === 'MULTIPLE_RESPONSE'
+              ? tt('Đánh dấu mọi lựa chọn đúng. Thí sinh được báo là câu có thể có nhiều đáp án.')
+              : tt('Chọn nút tròn ở lựa chọn đúng. Thí sinh không bao giờ thấy đáp án trước khi chấm.')}</p>
             {options.map((o, i) => (
               <div key={i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'center' }}>
                 <label className="check" style={{ alignItems: 'center' }} title={tt('Đáp án đúng')}>
-                  <input type="radio" name="mc-correct" checked={o.correct} aria-label={tt('Lựa chọn {0} là đáp án đúng', { 0: letter(i) })}
-                    onChange={() => setOptions(options.map((v, n) => ({ ...v, correct: n === i })))} />
+                  {type === 'MULTIPLE_RESPONSE'
+                    ? <input type="checkbox" checked={o.correct} aria-label={tt('Lựa chọn {0} là đáp án đúng', { 0: letter(i) })}
+                        onChange={e => setOptions(options.map((v, n) => n === i ? { ...v, correct: e.target.checked } : v))} />
+                    : <input type="radio" name="mc-correct" checked={o.correct} aria-label={tt('Lựa chọn {0} là đáp án đúng', { 0: letter(i) })}
+                        onChange={() => setOptions(options.map((v, n) => ({ ...v, correct: n === i })))} />}
                   <span className="option-key" aria-hidden>{letter(i)}</span>
                 </label>
                 <input className="input" aria-label={tt('Nội dung lựa chọn {0}', { 0: letter(i) })} maxLength={5000} value={o.content}
@@ -160,7 +174,7 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
                   onSet={id => setPresentation(p => ({ ...p, optionMedia: { ...p.optionMedia, [String(i)]: id } }))}
                   onClear={() => setPresentation(p => { const m = { ...p.optionMedia }; delete m[String(i)]; return { ...p, optionMedia: m } })} />
                 <button type="button" className="btn btn-ghost btn-icon" aria-label={tt('Xóa lựa chọn {0}', { 0: letter(i) })} disabled={options.length <= 2}
-                  onClick={() => { const next = options.filter((_, n) => n !== i); if (!next.some(v => v.correct)) next[0] = { ...next[0], correct: true }; setOptions(next); setPresentation(p => ({ ...p, optionMedia: shiftOptionMedia(p.optionMedia, i) })) }}>
+                  onClick={() => { const next = options.filter((_, n) => n !== i); if (type === 'MULTIPLE_CHOICE' && !next.some(v => v.correct)) next[0] = { ...next[0], correct: true }; setOptions(next); setPresentation(p => ({ ...p, optionMedia: shiftOptionMedia(p.optionMedia, i) })) }}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -170,6 +184,28 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
                 <Plus size={14} aria-hidden /> {tt('Thêm lựa chọn')}
               </button></div>
             )}
+          </fieldset>
+        )}
+
+        {type === 'TRUE_FALSE_GROUP' && (
+          <fieldset className="stack-sm">
+            <legend className="field-label" style={{ marginBottom: 4 }}>{tt('Các ý và đáp án Đúng/Sai')}</legend>
+            <p className="field-hint" style={{ marginBottom: 4 }}>{tt('Mỗi ý là một nhận định về đề bài. Chọn ý đó Đúng hay Sai. 4 ý chấm theo thang THPT: đúng 1 ý 10%, 2 ý 25%, 3 ý 50%, 4 ý 100% điểm câu.')}</p>
+            {options.slice(0, 8).map((o, i) => (
+              <div key={i} className="row" style={{ flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <span className="option-key" aria-hidden>{String.fromCharCode(97 + i)}</span>
+                <input className="input" style={{ flex: '1 1 260px' }} aria-label={tt('Nội dung ý {0}', { 0: String.fromCharCode(97 + i) })} maxLength={5000} value={o.content}
+                  onChange={e => setOptions(options.map((v, n) => n === i ? { ...v, content: e.target.value } : v))} />
+                <span className="row" role="radiogroup" aria-label={tt('Ý {0} đúng hay sai', { 0: String.fromCharCode(97 + i) })} style={{ gap: 4 }}>
+                  <label className="check small"><input type="radio" name={`tfg-${i}`} checked={o.correct} onChange={() => setOptions(options.map((v, n) => n === i ? { ...v, correct: true } : v))} /> {tt('Đúng')}</label>
+                  <label className="check small"><input type="radio" name={`tfg-${i}`} checked={!o.correct} onChange={() => setOptions(options.map((v, n) => n === i ? { ...v, correct: false } : v))} /> Sai</label>
+                </span>
+                <button type="button" className="btn btn-ghost btn-icon" aria-label={tt('Xóa ý {0}', { 0: String.fromCharCode(97 + i) })} disabled={options.length <= 2}
+                  onClick={() => setOptions(options.filter((_, n) => n !== i))}><Trash2 size={16} /></button>
+              </div>
+            ))}
+            {options.length < 8 && <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => setOptions([...options, { content: '', correct: false }])}>
+              <Plus size={14} aria-hidden /> {tt('Thêm ý')}</button></div>}
           </fieldset>
         )}
 

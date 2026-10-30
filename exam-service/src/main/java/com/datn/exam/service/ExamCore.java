@@ -267,12 +267,18 @@ public class ExamCore {
             if(q==null || !Boolean.TRUE.equals(q.eligible()) || q.questionVersion()==null || q.questionVersion()<1)
                 throw error(409,"Question is missing, ineligible or unversioned: "+id);
             if(points==null || points.signum()<=0)throw error(400,"Positive points required");
-            if(q.content()==null || q.content().isBlank() || !Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY","SPEAKING").contains(q.questionType()))
+            if(q.content()==null || q.content().isBlank() || !Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY","SPEAKING","MULTIPLE_RESPONSE","TRUE_FALSE_GROUP").contains(q.questionType()))
                 throw error(409,"Incomplete snapshot");
             var options=q.options()==null?List.<Snapshot.Option>of():q.options();
             if(Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.questionType()) &&
                (options.size()<2 || ("TRUE_FALSE".equals(q.questionType()) && options.size()!=2) || options.stream().filter(Snapshot.Option::correct).count()!=1 ||
                 options.stream().anyMatch(o->o.id()==null || o.content()==null) || options.stream().map(Snapshot.Option::id).distinct().count()!=options.size()))
+                throw error(409,"Invalid objective grading key");
+            // Several correct options / statements judged one by one: at least 2 options with ids; MULTIPLE_RESPONSE needs a correct one.
+            if(Set.of("MULTIPLE_RESPONSE","TRUE_FALSE_GROUP").contains(q.questionType()) &&
+               (options.size()<2 || options.size()>26 || ("TRUE_FALSE_GROUP".equals(q.questionType()) && options.size()>8)
+                || ("MULTIPLE_RESPONSE".equals(q.questionType()) && options.stream().noneMatch(Snapshot.Option::correct))
+                || options.stream().anyMatch(o->o.id()==null || o.content()==null) || options.stream().map(Snapshot.Option::id).distinct().count()!=options.size()))
                 throw error(409,"Invalid objective grading key");
             if("SHORT_ANSWER".equals(q.questionType()) && (q.expectedAnswer()==null || q.expectedAnswer().isBlank()))throw error(409,"Missing short-answer key");
             snapshots.add(new Snapshot(id,q.questionVersion(),q.questionType(),q.content(),options,points,q.expectedAnswer(),q.explanation(),pos++,q.presentation()));

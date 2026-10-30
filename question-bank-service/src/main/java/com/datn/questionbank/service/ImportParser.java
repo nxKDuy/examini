@@ -36,6 +36,7 @@ public final class ImportParser {
     private static final Pattern INLINE_OPTIONS = Pattern.compile("(?<=\\S)\\s+(?=A\\s*[.)]\\s+\\S.*?\\sB\\s*[.)]\\s+\\S)");
     private static final Pattern INLINE_NUMBER = Pattern.compile("(?<=\\S)\\s+(?=(\\d{1,3})\\s*[.)]\\s+(?![A-H]\\s*[.)])\\S)");
     private static final Pattern NUMBER_START = Pattern.compile("^(\\d{1,4})\\s*[.)]\\s+(.+)$");
+    private static final Pattern STATEMENT = Pattern.compile("^([a-h])\\)\\s*(\\S.*)$");
     private static final Pattern OPTION = Pattern.compile("^([A-H])\\s*[.):]\\s*(.*)$");
     // OCR often drops the space after the marker: "A.90 B.100".
     private static final Pattern INLINE_OPTION = Pattern.compile("\\s+([B-H])\\s*[.)]\\s*(?=\\S)");
@@ -103,6 +104,9 @@ public final class ImportParser {
             if (current == null) continue; // header text before the first question
             current.lines.add(line);
             Matcher m;
+            // THPT 2025 true/false statements are written "a) …", "b) …": read them as options (not inside the answer/explanation).
+            if (current.section != Section.ANSWER && current.section != Section.EXPLANATION && (m = STATEMENT.matcher(text)).matches())
+                text = Character.toUpperCase(m.group(1).charAt(0)) + ") " + m.group(2);
             if ((m = ANSWER.matcher(text)).matches()) {
                 // A second answer means two questions were merged; keep the first, never pick one silently.
                 if (current.answer != null) { current.flags.add(Flag.POSSIBLE_MERGED_QUESTIONS); current.section = Section.ANSWER; continue; }
@@ -217,8 +221,16 @@ public final class ImportParser {
         QuestionType hinted = d.typeHint == null ? null : SheetImport.type(d.typeHint, !d.options.isEmpty());
         String guide = null;
         if (d.options.isEmpty() && (hinted == QuestionType.SPEAKING || hinted == QuestionType.ESSAY)) { type = hinted; guide = answer; }
+        else if (!d.options.isEmpty() && (hinted == QuestionType.TRUE_FALSE_GROUP
+                || (hinted == null && answer != null && d.options.size() >= 2 && !isTrueFalse(d.options) && SheetImport.truths(answer) != null && SheetImport.truths(answer).size() == d.options.size()))) {
+            // THPT 2025 "Đúng/Sai" part: statements a) b) c) d), key "a) Đ b) S …"
+            type = QuestionType.TRUE_FALSE_GROUP;
+            var truths = SheetImport.truths(answer);
+            if (truths == null || truths.size() != d.options.size()) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
+            else for (int i = 0; i < truths.size(); i++) if (truths.get(i)) correct.add(i);
+        }
         else if (!d.options.isEmpty()) {
-            type = isTrueFalse(d.options) ? QuestionType.TRUE_FALSE : QuestionType.MULTIPLE_CHOICE;
+            type = hinted == QuestionType.MULTIPLE_RESPONSE ? QuestionType.MULTIPLE_RESPONSE : isTrueFalse(d.options) ? QuestionType.TRUE_FALSE : QuestionType.MULTIPLE_CHOICE;
             if (d.options.size() < 2) penalty += 0.3;
             if (answer == null) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
             else {
@@ -236,7 +248,7 @@ public final class ImportParser {
                     if (index >= 0) correct.add(index);
                 }
                 if (correct.isEmpty() || correct.size() != new HashSet<>(chosen).size()) { flags.add(Flag.ANSWER_NOT_IN_OPTIONS); penalty += 0.3; }
-                if (new HashSet<>(chosen).size() > 1) { flags.add(Flag.MULTIPLE_ANSWERS); penalty += 0.2; }
+                if (new HashSet<>(chosen).size() > 1 && type != QuestionType.MULTIPLE_RESPONSE) { flags.add(Flag.MULTIPLE_ANSWERS); penalty += 0.2; }
             }
         } else if (answer != null) { type = QuestionType.SHORT_ANSWER; expected = answer; }
         else { type = QuestionType.ESSAY; flags.add(Flag.NO_ANSWER_ESSAY); penalty += 0.2; }

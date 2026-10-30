@@ -113,20 +113,28 @@ class QuestionImportPersistenceTest {
         var sheet=run("mau.xlsx",ImportTemplates.excel(),category);
         assertEquals(Status.READY,sheet.status());assertEquals(FileKind.XLSX,sheet.fileKind());
         var rows=items(sheet.id(),ItemFilter.ALL);
-        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING),
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP),
                 rows.stream().map(ImportItemResponse::questionType).toList());
         assertTrue(rows.get(0).options().get(0).correct());assertEquals(4,rows.get(0).options().size());
         assertTrue(rows.get(1).options().get(0).correct());assertEquals("Đúng",rows.get(1).options().get(0).content());
         assertEquals("14",rows.get(2).expectedAnswer());assertEquals(DifficultyLevel.HARD,rows.get(3).difficultyLevel());
         assertTrue(rows.get(3).explanation().contains("Gợi ý chấm"));
         assertTrue(rows.stream().allMatch(ImportItemResponse::valid));
-        var result=imports.importItems(sheet.id(),null,owner);assertEquals(5,result.imported().size());
+        var mr=rows.get(5).options();assertEquals(List.of(true,false,true,false),mr.stream().map(ImportOption::correct).toList());
+        var tfg=rows.get(6).options();assertEquals(List.of(true,true,false,true),tfg.stream().map(ImportOption::correct).toList());
+        var result=imports.importItems(sheet.id(),null,owner);assertEquals(7,result.imported().size());
         var speaking=questionRepo.findById(result.imported().get(4).questionId()).orElseThrow();
         assertEquals(QuestionType.SPEAKING,speaking.getQuestionType());assertEquals(120,speaking.getPresentation().maxRecordSeconds());
 
         var word=run("mau.docx",ImportTemplates.word(),category);
         assertEquals(Status.READY,word.status());
-        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING),
+        var wordRows=items(word.id(),ItemFilter.ALL);
+        assertEquals(List.of(true,false,true,false),wordRows.get(5).options().stream().map(ImportOption::correct).toList());
+        assertEquals(List.of("Đồ thị cắt trục tung tại điểm (0; 3).","Hàm số đạt giá trị nhỏ nhất bằng −1.","Hàm số đồng biến trên (−∞; 2).","Phương trình y = 0 có hai nghiệm x = 1 và x = 3."),
+                wordRows.get(6).options().stream().map(ImportOption::content).toList());
+        assertEquals(List.of(true,true,false,true),wordRows.get(6).options().stream().map(ImportOption::correct).toList());
+        assertTrue(wordRows.stream().allMatch(ImportItemResponse::valid),()->wordRows.toString());
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP),
                 items(word.id(),ItemFilter.ALL).stream().map(ImportItemResponse::questionType).toList());
 
         String csv="\uFEFFCâu hỏi;Loại;Độ khó;A;B;Đáp án\nMặt trời mọc ở hướng nào?;trắc nghiệm;dễ;Đông;Tây;A\nThiếu đáp án;Trắc nghiệm;;X;Y;\n";
