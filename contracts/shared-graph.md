@@ -1,6 +1,6 @@
 # Shared Graphify
 
-Graphify is a local architecture aid, not an API contract. `WORKTREE_RULES.md` and `contracts/**` remain authoritative.
+Graphify is a local architecture aid, not an API contract. `contracts/**` remains authoritative.
 
 ## Read from any worktree
 
