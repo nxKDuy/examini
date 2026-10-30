@@ -102,7 +102,7 @@ CI (GitHub Actions) chạy test backend với PostgreSQL/Redis/Mailpit, kiểm t
 ├── pom.xml                    Maven multi-module
 ├── contracts/                 giao kèo API/sự kiện giữa các service
 ├── docker/postgres/           script tạo database
-├── scripts/                   backup.sh, kiểm thử end-to-end
+├── scripts/                   backup.sh (sao lưu/khôi phục)
 ├── eureka-server/  api-gateway/
 ├── auth-service/  organization-service/  question-bank-service/
 ├── exam-service/  exam-session-service/  grading-service/
