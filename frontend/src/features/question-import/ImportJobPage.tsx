@@ -168,7 +168,7 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
               <label className="check small" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={o.correct} onChange={e => setOpt(n, { correct: e.target.checked })} /> {t('Đúng')}</label>
               <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label={t('Bỏ phương án {0}', { 0: optionLetter(n) })} onClick={() => setD(x => ({ ...x, options: x.options.filter((_, i) => i !== n) }))}><Trash2 size={14} /></button>
             </div>)}
-            {d.options.length < 8 && <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setD(x => ({ ...x, options: [...x.options, { content: '', correct: false, displayOrder: x.options.length }] }))}><Plus size={14} aria-hidden /> {t('Thêm phương án')}</button>}
+            {d.options.length < 8 && <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} onClick={() => setD(x => ({ ...x, options: [...x.options, { content: '', correct: false, displayOrder: x.options.length }] }))}><Plus size={14} aria-hidden /> {t('Thêm phương án')}</button>}
             {!group && !d.options.some(o => o.correct) && <p className="field-error">{t('Chưa có đáp án đúng. Hệ thống không tự đoán; hãy chọn đáp án.')}</p>}
           </fieldset>}
           {!choice && <Field label={d.questionType === 'ESSAY' || d.questionType === 'SPEAKING' ? t('Hướng dẫn chấm') : t('Đáp án chuẩn')} htmlFor="imp-answer"><textarea id="imp-answer" className="input" rows={2} value={d.expectedAnswer} onChange={e => setD({ ...d, expectedAnswer: e.target.value })} /></Field>}

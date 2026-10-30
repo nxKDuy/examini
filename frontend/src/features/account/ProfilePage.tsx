@@ -139,7 +139,7 @@ function PasswordSection({ profile }: { profile: Profile }) {
         </Field>
         {change.isError && <Notice tone="danger" live>{errorText(change.error)}</Notice>}
         {done && <Notice tone="success" live>{t('Đã cập nhật mật khẩu. Các thiết bị khác đã được đăng xuất.')}</Notice>}
-        <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }} disabled={change.isPending} aria-busy={change.isPending}>
+        <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} disabled={change.isPending} aria-busy={change.isPending}>
           <KeyRound size={16} aria-hidden /> {change.isPending ? t('Đang lưu…') : profile.passwordSet ? t('Đổi mật khẩu') : t('Đặt mật khẩu')}</button>
       </form>
     </Section>
@@ -160,7 +160,7 @@ function GoogleSection({ profile }: { profile: Profile }) {
         {profile.googleLinked
           ? <>
               <p className="row small" style={{ gap: 8 }}><Link2 size={16} aria-hidden /> {t('Đã liên kết với một tài khoản Google.')}</p>
-              <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} disabled={unlink.isPending || !profile.passwordSet} onClick={() => unlink.mutate()}>
+              <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} disabled={unlink.isPending || !profile.passwordSet} onClick={() => unlink.mutate()}>
                 <Unlink size={16} aria-hidden /> {t('Hủy liên kết')}</button>
               {!profile.passwordSet && <p className="xsmall muted">{t('Đặt mật khẩu trước khi hủy liên kết, nếu không bạn sẽ không đăng nhập được.')}</p>}
             </>

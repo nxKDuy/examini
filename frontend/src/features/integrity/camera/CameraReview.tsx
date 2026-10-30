@@ -100,7 +100,7 @@ function IdentityPanel({ camera }: { camera: SessionCamera }) {
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>{t('Hủy')}</button>
               <span className="xsmall muted">{t('Kỳ thi có camera tiếp theo của thí sinh sẽ tạo hồ sơ mới.')}</span>
             </div>
-          : <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setConfirm(true)}>{t('Đặt lại hồ sơ khuôn mặt')}</button>)}
+          : <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} onClick={() => setConfirm(true)}>{t('Đặt lại hồ sơ khuôn mặt')}</button>)}
         {reset.isError && <p className="field-error">{errorText(reset.error)}</p>}
       </div>
     </section>
@@ -133,9 +133,9 @@ function SessionCameraDialog({ summary, names, onClose }: { summary: SessionCame
               : !d.recording ? <p className="small muted">{t('Chưa có video.')}</p>
               : video.url ? <>
                   <video className="camera-player" src={video.url} controls preload="metadata" />
-                  <a className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} href={video.url} download={`camera-${shortId(summary.userId)}-${shortId(summary.sessionId)}.${d.recording.mimeType.includes('mp4') ? 'mp4' : 'webm'}`}>
+                  <a className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} href={video.url} download={`camera-${shortId(summary.userId)}-${shortId(summary.sessionId)}.${d.recording.mimeType.includes('mp4') ? 'mp4' : 'webm'}`}>
                     <Download size={14} aria-hidden /> {t('Tải về máy')}</a></>
-              : <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} disabled={video.loading} aria-busy={video.loading} onClick={() => setWantVideo(true)}>
+              : <button type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} disabled={video.loading} aria-busy={video.loading} onClick={() => setWantVideo(true)}>
                   <Film size={16} aria-hidden /> {video.loading ? t('Đang tải video…') : t('Tải video ({0})', { 0: bytesText(d.recording.bytes) })}</button>}
             {d.recording && !purged && <p className="xsmall muted">{t('{0} đoạn · bắt đầu {1}', { 0: d.recording.chunks, 1: formatDateTime(d.recording.startedAt) })}</p>}
             {video.error ? <p className="field-error">{t('Không tải được video.')}</p> : null}

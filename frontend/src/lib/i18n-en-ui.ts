@@ -2186,4 +2186,7 @@ export const EN_UI: Record<string, string> = {
   "Đã chọn {0}": "{0} selected",
   "Đúng/Sai nhiều ý": "True/False statements",
   "đã làm {0}/{1} ý": "{0}/{1} statements answered",
+  'Trang gặp lỗi': 'Something went wrong',
+  'Màn hình này không hiển thị được. Dữ liệu của bạn không bị ảnh hưởng; hãy tải lại trang hoặc quay về Tổng quan.': 'This screen could not be shown. Your data is not affected; reload the page or go back to the Dashboard.',
+  'Về Tổng quan': 'Back to Dashboard',
 }

@@ -104,7 +104,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-block { width: 100%; }
 
 /* Forms: small grey labels, ruled inputs */
-.field { display: grid; gap: 6px; min-width: 0; }
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
 .field-label { font-size: 0.9rem; font-weight: 400; color: var(--color-muted); }
 .field-hint { font-size: 0.82rem; color: var(--color-muted); }
 .field-error { font-size: 0.85rem; color: var(--color-danger); }
@@ -263,7 +263,7 @@ a.stat:hover { background: var(--color-subtle); }
 .nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 18px; color: #000; font-size: 1.02rem; text-decoration: none; border-bottom: 1px solid var(--color-hairline); }
 .nav-link:hover { background: var(--color-subtle); }
 .nav-link.active { background: var(--color-accent); color: #fff; border-bottom-color: var(--color-accent); }
-.topbar { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #000; display: grid; grid-template-columns: minmax(0,1fr); padding: 0 28px; }
+.topbar { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #000; display: grid; grid-template-columns: minmax(0,1fr); padding: 0 max(28px, calc((100% - 1260px) / 2 + 28px)); }
 .topbar-main { min-height: 64px; display: flex; align-items: center; gap: 14px; min-width: 0; }
 /* Very narrow phones: the name block and decorative avatar give way so the bell and Đăng xuất stay on screen. */
 @media (max-width: 420px) { .topbar-who { display: none !important; } }
@@ -343,7 +343,7 @@ a.stat:hover { background: var(--color-subtle); }
 .camera-event { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; padding-bottom: 10px; border-bottom: 1px solid var(--color-hairline); }
 @media (max-width: 900px) { .camera-dock { bottom: calc(var(--dock-h, 0px) + 12px); right: 10px; } .camera-pip { width: 96px; } }
 @media (prefers-reduced-motion: reduce) { .camera-rec-dot { animation: none; } }
-.take-bar { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 14px; padding: 10px 24px; min-height: 64px; flex-wrap: wrap; }
+.take-bar { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 1px solid #000; display: flex; align-items: center; gap: 14px; padding: 10px max(24px, calc((100% - 1200px) / 2 + 24px)); min-height: 64px; flex-wrap: wrap; }
 .take-body { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 28px 24px 56px; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 270px; align-items: start; }
 @media (max-width: 900px) { .take-body { grid-template-columns: minmax(0, 1fr); padding: 16px 12px 40px; } }
 /* Copy monitoring: question text cannot be selected (answer fields stay editable). */
@@ -353,8 +353,8 @@ a.stat:hover { background: var(--color-subtle); }
 .timer[data-level="warn"] { background: var(--color-subtle); border-style: dashed; }
 .timer[data-level="critical"] { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
 /* Question palette: calendar grid; answered cells are solid blue with a white tick */
-.palette { display: grid; grid-template-columns: repeat(5, 44px); width: max-content; gap: 0; border-top: 1px solid #000; border-left: 1px solid #000; }
-.palette button { height: 44px; border: 0; border-right: 1px solid #000; border-bottom: 1px solid #000; background: #fff; font-size: 1.05rem;
+.palette { display: grid; grid-template-columns: repeat(5, 44px); width: max-content; gap: 0; padding: 1px 0 0 1px; }
+.palette button { height: 44px; border: 1px solid #000; margin: -1px 0 0 -1px; background: #fff; font-size: 1.05rem;
   cursor: pointer; font-variant-numeric: tabular-nums lining-nums; position: relative; text-align: left; padding: 2px 6px; }
 .palette button:hover { background: var(--color-subtle); }
 .palette button[data-answered="true"] { background: var(--color-accent); color: #fff; }
@@ -587,3 +587,17 @@ a.stat:hover { background: var(--color-subtle); }
 @media (max-width: 560px) { .tf-row { grid-template-columns: auto 1fr; } .tf-row .tf-toggle { grid-column: 1 / -1; justify-self: start; } }
 /* Phone: the three attempt navigation buttons must fit without horizontal scrolling. */
 @media (max-width: 420px) { .take-nav { gap: 4px; } .take-nav .btn { padding-left: 10px; padding-right: 10px; font-size: 0.875rem; } }
+
+/* Exam lobby: details on the left, the start panel stays in view on the right (desktop). */
+.lobby-grid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1024px) {
+  .lobby-grid { grid-template-columns: minmax(0, 1fr) 360px; }
+  .lobby-side { position: sticky; top: 128px; }
+}
+.lobby-side:empty { display: none; }
+@media (min-width: 1024px) {
+  .lobby-grid:not(:has(> .lobby-side > *)) { grid-template-columns: minmax(0, 1fr); }
+  /* Result: the score stays at the right, the question details read on the left. */
+  .lobby-grid:has(> .result-side) { grid-template-columns: minmax(0, 1fr) 320px; }
+  .lobby-grid > .result-side { order: 2; }
+}

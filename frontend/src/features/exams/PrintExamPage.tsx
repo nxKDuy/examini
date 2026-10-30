@@ -41,7 +41,7 @@ export default function PrintExamPage() {
   return (
     <div className="print-root">
       <aside className="print-controls stack" aria-label={t('Thiết lập bản in')}>
-        <Link to={`/exams/${id}`} className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }}><ArrowLeft size={14} aria-hidden /> {t('Quay lại đề thi')}</Link>
+        <Link to={`/exams/${id}`} className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }}><ArrowLeft size={14} aria-hidden /> {t('Quay lại đề thi')}</Link>
         <h1 style={{ fontSize: '1.4rem' }}>{t('In đề & trộn mã đề')}</h1>
         {paper.isError ? <ErrorState error={paper.error} title={t('Không lấy được nội dung đề')} />
           : <>
@@ -157,6 +157,7 @@ function AnswerKey({ versions, title }: { versions: PaperVersion[]; title: strin
 /** Bubble answer sheet for the choice questions of one code (essay and short answers are written on the paper). */
 function AnswerSheet({ v, h }: { v: PaperVersion; h: Header }) {
   const choice = v.items.filter(i => i.question.questionType === 'MULTIPLE_CHOICE' || i.question.questionType === 'TRUE_FALSE' || i.question.questionType === 'MULTIPLE_RESPONSE')
+  const groups = v.items.filter(i => i.question.questionType === 'TRUE_FALSE_GROUP')
   const width = Math.max(2, ...choice.map(i => i.question.questionType === 'TRUE_FALSE' ? 2 : i.options.length))
   return (
     <article className="paper-sheet paper-answer-sheet">
@@ -176,7 +177,17 @@ function AnswerSheet({ v, h }: { v: PaperVersion; h: Header }) {
           })}
         </div>)}
       </div>
-      {choice.length < v.items.length && <p className="paper-note">Các câu {v.items.filter(i => !choice.includes(i)).map(i => i.number).join(', ')} làm trực tiếp trên đề.</p>}
+      {groups.length > 0 && <>
+        <h3 className="paper-part">PHẦN ĐÚNG/SAI – mỗi ý tô Đ hoặc S</h3>
+        <div className="bubble-grid bubble-grid-tf">
+          {groups.map(i => <div key={i.number} className="bubble-tf">
+            <span className="bubble-n">{i.number}</span>
+            <div className="bubble-tf-items">{i.options.map(o => <span key={o.letter} className="bubble-row">
+              <span className="bubble-l">{o.letter})</span><span className="bubble">Đ</span><span className="bubble">S</span></span>)}</div>
+          </div>)}
+        </div>
+      </>}
+      {choice.length + groups.length < v.items.length && <p className="paper-note">Các câu {v.items.filter(i => !choice.includes(i) && !groups.includes(i)).map(i => i.number).join(', ')} làm trực tiếp trên đề.</p>}
     </article>
   )
 }

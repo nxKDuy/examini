@@ -28,6 +28,7 @@ import ExamLobbyPage from './features/exams/ExamLobbyPage'
 import StudentExamPage from './features/exams/StudentExamPage'
 import ExamResultPage from './features/exams/ExamResultPage'
 import { t, useT } from './lib/i18n'
+import RouteError from './components/RouteError'
 
 function AppRoutes() {
   useT()
@@ -95,7 +96,7 @@ function AppRoutes() {
 }
 
 // A data router (one splat route over the same <Routes> tree) so pages can block navigation with useBlocker while a draft is unsaved.
-const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }])
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes />, errorElement: <RouteError /> }])
 
 export default function App() {
   return <RouterProvider router={router} />

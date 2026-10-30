@@ -97,7 +97,7 @@ export default function ExamLobbyPage() {
   }
 
   return (
-    <div className="stack-lg" style={{ maxWidth: 880 }}>
+    <div className="stack-lg">
       <PageHeader title={a.examTitle} crumbs={[{ label: tt('Kỳ thi của tôi'), to: '/my-exams' }, { label: preview ? tt('Xem trước') : tt('Phòng chờ') }]}
         description={<span className="row"><StateBadge state={a.calendarState} />{exam && <span>{EXAM_TYPE_LABEL[exam.type]}</span>}</span>} />
 
@@ -118,6 +118,13 @@ export default function ExamLobbyPage() {
         </Notice>
       )}
 
+      <div className="lobby-grid">
+      <div className="stack-lg lobby-main">
+      {finishedId && (
+        <Notice tone="success" title={tt('Lượt gần nhất đã kết thúc')} action={<Link to={`/exam/result/${finishedId}`} className="btn btn-secondary btn-sm"><FileCheck2 size={16} aria-hidden /> {tt('Xem kết quả')}</Link>}>
+          {tt('Lượt gần nhất của bạn đã được nộp.')}
+        </Notice>
+      )}
       {mine && revoked && <RevokedNotice mine={mine} />}
       {mine && <StudentAttempts examId={id!} mine={mine} />}
 
@@ -153,12 +160,9 @@ export default function ExamLobbyPage() {
           {monitored(exam?.integrityPolicy) && <li>{tt('Kỳ thi có ghi nhận tín hiệu trình duyệt:')} {policySummary(exam!.integrityPolicy)}{tt('. Tín hiệu là dữ liệu ghi nhận, không phải kết luận gian lận.')}</li>}
         </ul>
       </Section>
+      </div>
 
-      {finishedId && (
-        <Notice tone="success" title={tt('Lượt gần nhất đã kết thúc')} action={<Link to={`/exam/result/${finishedId}`} className="btn btn-secondary btn-sm"><FileCheck2 size={16} aria-hidden /> {tt('Xem kết quả')}</Link>}>
-          {tt('Lượt gần nhất của bạn đã được nộp.')}
-        </Notice>
-      )}
+      <aside className="stack-lg lobby-side" aria-label={tt('Bắt đầu làm bài')}>
 
       {!preview && !resumeId && !revoked && (
         <section className="card card-body stack">
@@ -178,6 +182,8 @@ export default function ExamLobbyPage() {
           </div>
         </section>
       )}
+      </aside>
+      </div>
       {preview && error && <Notice tone="danger" live>{error}</Notice>}
     </div>
   )

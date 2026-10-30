@@ -31,12 +31,14 @@ export default function ExamResultPage() {
   const history = [...(r.history ?? [])].sort((a, b) => b.resultRevision - a.resultRevision)
 
   return (
-    <div className="stack-lg" style={{ maxWidth: 780 }}>
+    <div className="stack-lg">
       <PageHeader title={r.title || t('Kết quả bài thi')} crumbs={[{ label: t('Kỳ thi của tôi'), to: '/my-exams' }, { label: t('Kết quả') }]}
         description={<span className="row"><ResultStatusBadge status={r.status} />{phase === 'PUBLISHED' && <Badge tone="success">{t('Đã công bố')}</Badge>}{r.attemptNumber ? <span className="small muted">{t('Lần làm #')}{r.attemptNumber}</span> : null}</span>} />
 
       {r.invalidated && <Notice tone="danger" title={t('Lượt làm bài này đã bị vô hiệu hóa')} live>{t('Lý do:')} {r.invalidationReason?.trim() || t('không ghi')}{t('. Kết quả này không được tính là kết quả hợp lệ. Nếu cần thi lại, hãy liên hệ giáo viên để được cấp thêm lượt.')}</Notice>}
 
+      <div className="lobby-grid">
+      <aside className="stack-lg lobby-side result-side" aria-label={t('Điểm của bạn')}>
       {phase === 'PUBLISHED' && (
         <Section title={t('Điểm của bạn')}>
           {hasScore ? (
@@ -55,7 +57,12 @@ export default function ExamResultPage() {
           </p>
         </Section>
       )}
+      {phase === 'PUBLISHED' && r.feedback && (
+        <Section title={t('Nhận xét của giáo viên')}><p className="prewrap small">{r.feedback}</p></Section>
+      )}
+      </aside>
 
+      <div className="stack-lg lobby-main">
       {phase === 'WAITING' && (
         <Notice tone="info" title={t('Bài làm đã được ghi nhận')} live><span className="row" style={{ gap: 6 }}><Hourglass size={14} aria-hidden /> {t('Hệ thống đang chấm bài. Trang tự cập nhật khi có kết quả.')}</span></Notice>
       )}
@@ -69,10 +76,6 @@ export default function ExamResultPage() {
         <Notice tone="info" title={t('Bài chưa được nộp')} action={<Link to={`/exam/take/${id}`} className="btn btn-primary btn-sm"><PlayCircle size={16} aria-hidden /> {t('Tiếp tục làm bài')}</Link>}>{t('Lượt làm bài này vẫn đang diễn ra.')}</Notice>
       )}
       {phase === 'UNKNOWN' && <Notice tone="info" title={t('Trạng thái bài làm')} live>{t('Chưa có kết quả để hiển thị.')}</Notice>}
-
-      {phase === 'PUBLISHED' && r.feedback && (
-        <Section title={t('Nhận xét của giáo viên')}><p className="prewrap small">{r.feedback}</p></Section>
-      )}
 
       {phase === 'PUBLISHED' && questions.length > 0 && (
         <Section title={t('Chi tiết từng câu')} bodyClassName="">
@@ -98,6 +101,8 @@ export default function ExamResultPage() {
         </details>
       )}
       <div><Link to="/my-exams" className="btn btn-secondary">{t('Về Kỳ thi của tôi')}</Link></div>
+      </div>
+      </div>
     </div>
   )
 }

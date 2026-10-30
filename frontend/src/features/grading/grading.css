@@ -26,7 +26,7 @@
 .grade-item { border: 1px solid #000; background: #fff; padding: 14px 16px; display: grid; gap: 10px; scroll-margin-top: 90px; }
 .grade-item[data-review="true"] { border-left: 6px solid var(--color-accent); }
 .grade-answer { background: var(--color-subtle); padding: 8px 10px; }
-.grade-score { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: start; }
+.grade-score { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; align-items: start; }
 @media (max-width: 599px) { .grade-score { grid-template-columns: minmax(0, 1fr); } }
 .grade-compare { display: grid; gap: 0; border: 1px solid #000; }
 .grade-compare > div { padding: 10px 12px; border-bottom: 1px solid #000; }

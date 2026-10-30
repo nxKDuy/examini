@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BookOpenCheck, CheckCircle2, Download, FileUp, Plus, Sparkles } from 'lucide-react'
-import { questionBankApi, type Filters, type ImportResult, type Question } from './questionApi'
+import { questionBankApi, type Filters, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { QuestionStatusBadge } from '../../components/status'
-import { Dialog } from '../../components/Dialog'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Pagination } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime, shortId } from '../../lib/format'
@@ -34,7 +33,6 @@ export default function QuestionListPage() {
   // `?q=<id>` opens a question directly (links from copy sync to the new DRAFT children).
   const [selectedId, setSelectedId] = useState(() => params.get('q') ?? '')
   const [editing, setEditing] = useState<Question | null | 'new'>(null)
-  const [importing, setImporting] = useState(false)
   // Bulk activation of the actor's own drafts (Personal ACTIVE needs no review).
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [progress, setProgress] = useState(0)
@@ -71,7 +69,6 @@ export default function QuestionListPage() {
         title={admin ? tt('Câu hỏi') : tt('Kho cá nhân')}
         description={admin ? tt('Soạn bản nháp, kích hoạt để dùng.') : tt('Soạn bản nháp, kích hoạt, gom thành bộ và lưu trữ. Để đăng câu hoặc bộ lên cộng đồng, dùng nút + ở Ngân hàng công khai.')}
         actions={!admin && <>
-          <button type="button" className="btn btn-secondary" onClick={() => setImporting(true)}><FileUp size={16} aria-hidden /> {tt('Nhập CSV')}</button>
           <Link to="/questions/imports" className="btn btn-secondary"><FileUp size={16} aria-hidden /> {tt('Nhập tài liệu')}</Link>
           <Link to="/questions/imports?new=ai" className="btn btn-secondary"><Sparkles size={16} aria-hidden /> {tt('Tạo bằng AI')}</Link>
           <button type="button" className="btn btn-secondary" onClick={() => setExporting(true)}><Download size={16} aria-hidden /> {tt('Xuất')}</button>
@@ -165,43 +162,6 @@ export default function QuestionListPage() {
       {exporting && <ExportDialog filters={filters} onClose={() => setExporting(false)} />}
       {editing && <QuestionEditor initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
         onSaved={q => { setEditing(null); setSelectedId(q.id) }} />}
-      {importing && <ImportDialog onClose={() => setImporting(false)} />}
     </div>
-  )
-}
-
-function ImportDialog({ onClose }: { onClose: () => void }) {
-  useT()
-  const qc = useQueryClient()
-  const [subjectId, setSubjectId] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [result, setResult] = useState<ImportResult | null>(null)
-  const run = useMutation({
-    mutationFn: () => questionBankApi.importCsv(file!, categoryId),
-    onSuccess: async r => { setResult(r); await qc.invalidateQueries({ queryKey: ['questions'] }) },
-  })
-  return (
-    <Dialog title={tt('Nhập câu hỏi từ CSV')} onClose={onClose} busy={run.isPending}
-      description={tt('Câu hỏi nhập vào ở trạng thái Bản nháp. Tối đa 1000 dòng, 10MB.')}
-      footer={<>
-        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={run.isPending}>{result ? tt('Đóng') : tt('Hủy')}</button>
-        <button type="button" className="btn btn-primary" disabled={!file || !categoryId || run.isPending} onClick={() => run.mutate()}>{run.isPending ? tt('Đang nhập…') : tt('Nhập')}</button>
-      </>}>
-      <div className="stack">
-        <div className="grid-2"><SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={setSubjectId} onCategory={setCategoryId} required /></div>
-        <div className="field">
-          <label className="field-label" htmlFor="csv-file">{tt('Tệp CSV')}</label>
-          <input id="csv-file" type="file" accept=".csv,text/csv" className="input" onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null) }} />
-          <span className="field-hint">{tt('Cột bắt buộc: content, type, difficulty. Lựa chọn: option1, correct1, option2, correct2… (true/false). Trả lời ngắn và tự luận dùng cột expectedAnswer.')}</span>
-        </div>
-        {run.isError && <Notice tone="danger" live>{errorText(run.error)}</Notice>}
-        {result && (
-          <Notice tone={result.failed ? 'warning' : 'success'} live title={`${tt('Đã nhập {0}/{1} dòng', { 0: result.imported, 1: result.totalRows })}${result.failed ? tt(', {0} dòng lỗi', { 0: result.failed }) : ''}`}>
-            {result.errors.length > 0 && <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{result.errors.slice(0, 20).map((e, i) => <li key={i}>{e}</li>)}</ul>}
-          </Notice>
-        )}
-      </div>
-    </Dialog>
   )
 }
