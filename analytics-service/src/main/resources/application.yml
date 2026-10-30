@@ -3,6 +3,12 @@ jwt:
 analytics:
   # Permission-only credential (MAIN decision 5783207). Never the broad EXAM_INTERNAL_TOKEN.
   exam-permission-token: ${ANALYTICS_EXAM_PERMISSION_TOKEN:}
+  # Optional AI reading of exam results (same keys as question generation); blank = rule-based only.
+  ai:
+    gemini-api-key: ${GEMINI_API_KEY:}
+    gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
+    ollama-url: ${OLLAMA_URL:}
+    ollama-model: ${OLLAMA_MODEL:qwen2.5:7b-instruct}
 
 server:
   port: 8086

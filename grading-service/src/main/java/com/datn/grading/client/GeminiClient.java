@@ -25,5 +25,17 @@ public class GeminiClient {
             return new GeminiGradeResponse(score,result.path("feedback").asText());
         }catch(Exception failure){throw new IllegalStateException("Essay AI unavailable; manual review required");}
     }
+    public boolean available(){return !apiKey.isBlank() && !"demo-key".equals(apiKey);}
+    /** Free-form JSON answer for a prompt (study tips); empty on any failure so callers keep their rule text. */
+    public Optional<com.fasterxml.jackson.databind.JsonNode> json(String prompt){
+        if(!available())return Optional.empty();
+        try{
+            var factory=new SimpleClientHttpRequestFactory();factory.setConnectTimeout(5000);factory.setReadTimeout(30000);
+            var headers=new HttpHeaders();headers.setContentType(MediaType.APPLICATION_JSON);headers.set("x-goog-api-key",apiKey);
+            var body=Map.of("contents",List.of(Map.of("parts",List.of(Map.of("text",prompt)))),"generationConfig",Map.of("responseMimeType","application/json","temperature",0.4));
+            var raw=new RestTemplate(factory).postForObject("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent",new HttpEntity<>(body,headers),String.class);
+            return Optional.of(json.readTree(json.readTree(raw).path("candidates").path(0).path("content").path("parts").path(0).path("text").asText()));
+        }catch(Exception failure){return Optional.empty();}
+    }
     public record GeminiGradeResponse(float score,String feedback){}
 }

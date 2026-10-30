@@ -1,6 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
+import { progressApi } from '../progress/progressApi'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle } from 'lucide-react'
+import { BarChart3, BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle } from 'lucide-react'
+import { formatScore } from '../../lib/format'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section, Stat } from '../../components/ui'
@@ -44,6 +46,7 @@ function StudentDashboard() {
   useT()
   const my = useQuery({ queryKey: ['my-exams'], queryFn: examApi.my })
   const pub = useQuery({ queryKey: ['public-exams'], queryFn: examApi.publicExams })
+  const progress = useQuery({ queryKey: ['progress', 'mine'], queryFn: progressApi.mine, retry: false })
   const agenda = useAgendaCalendar()
   const nowMs = useNow(agenda.clockOffset, 30_000)
   // Availability and attempt state are the backend's answers (calendar items), not guesses from this browser's clock.
@@ -71,6 +74,7 @@ function StudentDashboard() {
         <Stat label={t('Kỳ thi đã tham gia / được giao')} value={my.data?.length ?? '-'} to="/my-exams" />
         <Stat label={t('Làm được ngay')} value={agenda.data ? doable.length : '-'} to="/calendar" />
         <Stat label={t('Kỳ thi công khai đang mở')} value={pub.data?.length ?? '-'} hint={t('Dành cho người dùng EXAMINI đã đăng nhập')} to="/my-exams" />
+        <Stat label={t('Điểm trung bình của tôi')} value={progress.data?.overview.averagePercent == null ? '-' : `${formatScore(progress.data.overview.averagePercent)}%`} hint={t('Xem tiến bộ và gợi ý ôn tập')} to="/progress" />
       </div>
       <TodayUpcoming />
       <div className="grid-2">
@@ -170,6 +174,9 @@ function TeacherDashboard() {
 function AdminDashboard() {
   useT()
   return <div className="grid-2">
+    <Section title={t('Thống kê hệ thống')} description={t('Người dùng, đề thi, lượt thi và mức độ dùng AI trên toàn hệ thống. Chỉ số đếm, không có dữ liệu cá nhân.')}>
+      <Link to="/admin/stats" className="btn btn-primary"><BarChart3 size={16} aria-hidden /> {t('Mở thống kê')}</Link>
+    </Section>
     <Section title={t('Ngân hàng câu hỏi')} description={t('Câu cá nhân không cần duyệt. Duyệt đóng góp tại từng tổ chức theo quyền BANK_REVIEW.')}>
       <Link to="/questions" className="btn btn-primary"><BookOpenCheck size={16} aria-hidden /> {t('Mở câu hỏi')}</Link>
     </Section>

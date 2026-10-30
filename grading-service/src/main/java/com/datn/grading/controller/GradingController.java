@@ -8,6 +8,10 @@ import java.util.UUID;
 @RestController @RequiredArgsConstructor
 public class GradingController {
     private final GradingService service;
+    private final com.datn.grading.service.StudentProgressService progress;
+    /** The signed-in student's own results across exams (policy-filtered) and study tips. */
+    @GetMapping("/grades/my") public com.datn.grading.dto.ProgressDto.Progress myProgress(@RequestAttribute UUID actor){return progress.progress(actor);}
+    @GetMapping("/grades/my/insights") public com.datn.grading.dto.ProgressDto.Insights myInsights(@RequestAttribute UUID actor,@RequestParam(defaultValue="false") boolean ai,@RequestParam(defaultValue="vi") String lang){return progress.insights(actor,ai,lang);}
     @GetMapping("/submissions") public Page<SubmissionDto.SummaryResponse> list(@RequestParam UUID examId,@RequestParam(required=false)String status,@RequestParam(required=false)Boolean released,Pageable page,@RequestAttribute UUID actor){return service.getSubmissions(examId,status,released,page,actor);}
     @GetMapping("/submissions/overview") public SubmissionDto.Overview overview(@RequestParam UUID examId,@RequestAttribute UUID actor){return service.overview(examId,actor);}
     @GetMapping("/submissions/{id}") public SubmissionDto.DetailResponse detail(@PathVariable UUID id,@RequestAttribute UUID actor){return service.detail(id,actor);}

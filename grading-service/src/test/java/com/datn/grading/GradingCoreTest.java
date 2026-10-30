@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/grading_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","spring.rabbitmq.listener.simple.auto-startup=false","grading.events.outbox-initial-delay-ms=3600000","grading.events.outbox-poll-ms=3600000","grading.events.max-attempts=4","grading.events.retry-base-ms=1000","grading.events.retry-max-ms=3000"})
 @AutoConfigureMockMvc
 class GradingCoreTest {
-    @Autowired GradingService service;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
+    @Autowired GradingService service;
+    @Autowired StudentProgressService progress;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
     @Autowired GradingAuditRepository audits;@Autowired GradingOutboxRepository outbox;@Autowired GradingOutboxRelay relay;@Autowired ObjectMapper json;
     @Autowired MockMvc mvc;
     @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean GeminiClient ai;@MockBean RabbitTemplate rabbit;
@@ -110,6 +111,24 @@ class GradingCoreTest {
             var m=new HashMap<String,Boolean>();for(int i=0;i<4;i++)m.put(o.get(i).id().toString(),i<k==o.get(i).correct());
             try{return ObjectiveScoring.score(group,new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(m));}catch(Exception e){throw new RuntimeException(e);}}).toList());
         assertEquals(List.of("a) 2 — Đúng","b) 4 — Sai","c) 7 — Đúng","d) 9 — Sai"),ObjectiveScoring.key(group));
+    }
+
+    @Test void myProgressShowsOnlyWhatThePolicyAllowsAndGivesStudyTips(){
+        var mc=question("MULTIPLE_CHOICE",null,0);var tf=question("TRUE_FALSE",null,1);
+        submitted(List.of(mc,tf),List.of(new ExamSessionClient.AnswerDto(mc.questionId(),mc.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(tf.questionId(),tf.options().get(1).id().toString())));
+        var p=progress.progress(user);
+        assertEquals(1,p.items().size());var item=p.items().getFirst();
+        assertEquals("PUBLISHED",item.phase());assertEquals(2.5f,item.score());assertEquals(50f,item.percent());
+        assertEquals(50f,p.overview().averagePercent());assertEquals(List.of("MULTIPLE_CHOICE","TRUE_FALSE"),p.overview().byType().stream().map(t->t.questionType()).toList());
+        assertEquals(100f,p.overview().byType().get(0).percent());assertEquals(0f,p.overview().byType().get(1).percent());
+        var tips=progress.insights(user,true,"vi");
+        assertEquals("RULES",tips.source());assertTrue(tips.summary().contains("50%"));assertFalse(tips.aiAvailable());
+        assertTrue(progress.progress(UUID.randomUUID()).items().isEmpty());
+        // Score hidden by policy: listed, but no score, percent or breakdown.
+        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,false,false,true,true,true,"CLOSED"));
+        var hidden=progress.progress(user);
+        assertNull(hidden.items().getFirst().percent());assertNull(hidden.overview().averagePercent());assertTrue(hidden.overview().byType().isEmpty());
+        assertTrue(progress.insights(user,false,"en").summary().startsWith("No published scores"));
     }
 
     @Test void aiEssayScoreIsSuggestionAndTeacherMustResolve(){

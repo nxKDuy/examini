@@ -236,6 +236,17 @@ class QuestionImportPersistenceTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test void adminStatsShowQuestionsAndAiUsageToSystemAdministratorsOnly() throws Exception {
+        run("mau.xlsx",ImportTemplates.excel(),category);
+        var admin="Bearer "+io.jsonwebtoken.Jwts.builder().subject(UUID.randomUUID().toString()).claim("type","access").claim("role","ADMIN").claim("systemPrivilege","ADMIN")
+                .expiration(new Date(System.currentTimeMillis()+60000)).signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+                        "test-only-jwt-key-32-bytes-or-longer-never-production".getBytes(java.nio.charset.StandardCharsets.UTF_8))).compact();
+        http.perform(get("/questions/admin/stats").header("Authorization",admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.importJobs").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1))).andExpect(jsonPath("$.perDay.length()").value(30))
+                .andExpect(jsonPath("$.ai.jobs").isNumber());
+        http.perform(get("/questions/admin/stats").header("Authorization",jwt(owner))).andExpect(status().isForbidden());
+    }
+
     String jwt(QuestionActor actor){
         return "Bearer "+io.jsonwebtoken.Jwts.builder().subject(actor.userId().toString()).claim("type","access").claim("role",actor.role())
                 .expiration(new Date(System.currentTimeMillis()+60000)).signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(

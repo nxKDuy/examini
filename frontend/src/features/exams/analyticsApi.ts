@@ -24,6 +24,8 @@ export interface QuestionStats {
   questionId: string; questionVersion: number; questionType: string; position: number; pointValue: number
   attempts: number; answered: number; correct: number; partial: number; incorrect: number; unanswered: number; pendingReview: number
   correctRate: number | null; averageAwardedPoints: number | null
+  /** Upper-lower 27 % discrimination index, -1..1; null with fewer than 10 graded attempts. */
+  discrimination?: number | null
 }
 export interface CandidateResult {
   sessionId: string; resultId: string; candidateId: string; attemptNumber: number | null; status: string
@@ -36,6 +38,20 @@ export interface StudentSummary {
 export interface AnalyticsPage<T> { content: T[]; page: number; size: number; totalElements: number; totalPages: number }
 export type AnalyticsStatus = 'PENDING' | 'NEEDS_REVIEW' | 'GRADED'
 
+export type InsightIssue = 'TOO_HARD' | 'TOO_EASY' | 'OFTEN_SKIPPED' | 'NEGATIVE_DISCRIMINATION' | 'LOW_DISCRIMINATION'
+export interface QuestionFlag { position: number; questionType: string; issue: InsightIssue | string; detail: string }
+export interface ExamInsights {
+  examId: string; source: 'RULES' | 'AI'; model: string | null; level: 'GOOD' | 'FAIR' | 'AVERAGE' | 'WEAK' | 'UNKNOWN'
+  summary: string; strengths: string[]; concerns: string[]; actions: string[]; flags: QuestionFlag[]; aiAvailable: boolean; generatedAt: string
+}
+export interface AdminOverview {
+  days: number; attempts: number; submissions: number; graded: number; needsReview: number; activeExams: number; activeStudents: number
+  invalidated: number; publishedAveragePercent: number | null; publishedResults: number
+  perDay: { day: string; attempts: number; submissions: number }[]
+  topExams: { examId: string; attempts: number; students: number; averagePercent: number | null }[]
+  publishedDistribution: { fromPercent: number; toPercent: number; count: number }[]
+}
+
 export const analyticsApi = {
   summary: (examId: string) => api.get<ExamSummary>(`/analytics/exams/${examId}/summary`).then(r => r.data),
   questions: (examId: string) => api.get<QuestionStats[]>(`/analytics/exams/${examId}/questions`).then(r => r.data),
@@ -45,6 +61,8 @@ export const analyticsApi = {
   allResults: (examId: string, page: number, size = 100) => api.get<AnalyticsPage<CandidateResult>>(
     `/analytics/exams/${examId}/results`, { params: { page, size } },
   ).then(r => r.data),
+  insights: (examId: string, ai: boolean, lang: string) => api.get<ExamInsights>(`/analytics/exams/${examId}/insights`, { params: { ai, lang }, timeout: 60_000 }).then(r => r.data),
+  adminOverview: (days = 30) => api.get<AdminOverview>('/analytics/admin/overview', { params: { days } }).then(r => r.data),
   students: (examId: string, page: number, size = 20) => api.get<AnalyticsPage<StudentSummary>>(
     `/analytics/exams/${examId}/students`, { params: { page, size } },
   ).then(r => r.data),

@@ -43,6 +43,7 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             if ("STUDENT".equals(role)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Teacher role required");
             req.setAttribute("actor", UUID.fromString(claims.getSubject()));
             req.setAttribute("actorRole", role);
+            req.setAttribute("systemPrivilege", String.valueOf(claims.get("systemPrivilege", String.class)));
             return true;
         } catch (ResponseStatusException e) {
             throw e;

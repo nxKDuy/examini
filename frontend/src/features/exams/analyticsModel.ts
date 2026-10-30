@@ -54,3 +54,10 @@ export function difficultyOf(correctRate: number | null, graded: number): Diffic
   if (correctRate === null || graded < 5) return 'UNKNOWN'
   return correctRate >= 0.7 ? 'EASY' : correctRate < 0.3 ? 'HARD' : 'MEDIUM'
 }
+
+export type Discrimination = 'GOOD' | 'FAIR' | 'POOR' | 'NEGATIVE' | 'UNKNOWN'
+/** Classic item-analysis bands for the upper-lower discrimination index. */
+export function discriminationOf(d: number | null | undefined): Discrimination {
+  if (d === null || d === undefined) return 'UNKNOWN'
+  return d < 0 ? 'NEGATIVE' : d < 0.2 ? 'POOR' : d < 0.3 ? 'FAIR' : 'GOOD'
+}

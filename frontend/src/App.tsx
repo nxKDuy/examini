@@ -6,6 +6,8 @@ import { ForgotPasswordPage, ResetPasswordPage } from './features/auth/PasswordP
 const ProfilePage = lazy(() => import('./features/account/ProfilePage'))
 const PrintExamPage = lazy(() => import('./features/exams/PrintExamPage'))
 const AdminUsersPage = lazy(() => import('./features/account/AdminUsersPage'))
+const AdminStatsPage = lazy(() => import('./features/admin/AdminStatsPage'))
+const ProgressPage = lazy(() => import('./features/progress/ProgressPage'))
 import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import { LoadingState } from './components/ui'
@@ -64,6 +66,7 @@ function AppRoutes() {
         </Route>
 
         <Route element={<ProtectedRoute persona="STUDENT"><AppLayout /></ProtectedRoute>}>
+          <Route path="/progress" element={<ProgressPage />} />
           <Route path="/my-exams" element={<MyExamsPage />} />
           <Route path="/exam/lobby/discover" element={<Navigate to="/my-exams" replace />} />
           <Route path="/exam/lobby/:id" element={<ExamLobbyPage />} />
@@ -86,6 +89,7 @@ function AppRoutes() {
 
         <Route element={<ProtectedRoute adminOnly><AppLayout /></ProtectedRoute>}>
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/stats" element={<AdminStatsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

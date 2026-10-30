@@ -84,6 +84,14 @@ class ExamCoreTest {
             .andExpect(jsonPath("$[0].questionType").value("TRUE_FALSE_GROUP")).andExpect(jsonPath("$[0].options.length()").value(3))
             .andExpect(jsonPath("$[0].options[0].correct").doesNotExist());
     }
+    @Test void adminStatsCountExamsAndResolveTitlesForAdministratorsOnly()throws Exception {
+        UUID id=create();
+        String admin="Bearer "+Jwts.builder().subject(UUID.randomUUID().toString()).claim("role","ADMIN").claim("systemPrivilege","ADMIN").claim("type","access").expiration(new Date(System.currentTimeMillis()+60000)).signWith(Keys.hmacShaKeyFor("unit-test-only-signing-key-32-bytes-minimum".getBytes(StandardCharsets.UTF_8))).compact();
+        mvc.perform(get("/exams/admin/stats").param("ids",id.toString()).header("Authorization",admin)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1))).andExpect(jsonPath("$.byStatus.DRAFT").exists())
+            .andExpect(jsonPath("$.createdPerDay.length()").value(30)).andExpect(jsonPath("$.titles['"+id+"']").value("Exam"));
+        mvc.perform(get("/exams/admin/stats").header("Authorization",token(owner,"TEACHER"))).andExpect(status().isForbidden());
+    }
     @Test void paperExportNeedsAPublishedSnapshotAndAManagerAndIsAudited()throws Exception {
         UUID id=create();
         core.member(id,owner,proctor,Exam.MemberRole.PROCTOR,false);core.accept(id,proctor,"TEACHER");

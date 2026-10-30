@@ -4,7 +4,8 @@ import { useParticipantNames } from '../participants/useParticipantNames'
 import { PersonCell } from '../participants/PersonCell'
 import { download, fileSlug, scoreCsv } from './scoreExport'
 import { allResults } from './analyticsApi'
-import { difficultyOf, type Difficulty } from './analyticsModel'
+import { difficultyOf, discriminationOf, type Difficulty, type Discrimination } from './analyticsModel'
+import ExamInsightsCard from './ExamInsightsCard'
 import type { PublishedStats } from './analyticsApi'
 import { errorText } from '../../lib/errors'
 import { useQuery } from '@tanstack/react-query'
@@ -12,7 +13,7 @@ import { Link } from 'react-router-dom'
 import { analyticsApi, type AnalyticsStatus } from './analyticsApi'
 import { NO_DATA, STUDENT_FILTERS, analyticsStatusLabel, attemptMetrics, filterStudents, headlineKpis, resultPageCount, type Kpi } from './analyticsModel'
 import { Badge, EmptyState, ErrorState, LoadingState, Section } from '../../components/ui'
-import { formatDateTime, formatScore, shortId } from '../../lib/format'
+import { QUESTION_TYPE_LABEL, formatDateTime, formatScore, shortId } from '../../lib/format'
 import './analytics.css'
 import { t, useT } from '../../lib/i18n'
 import Select from '../../components/Select'
@@ -44,6 +45,7 @@ export default function ExamAnalyticsPanel({ examId, actorId, examTitle = '' }: 
   const rows = filterStudents(students.data?.content ?? [], status)
 
   return <div className="stack-lg analytics-panel">
+    <ExamInsightsCard examId={examId} actorId={actorId} />
     <Section title={t('Tổng quan kết quả')} description={t('Số liệu từ Analytics; ô chưa có dữ liệu nêu rõ lý do thay vì hiện số ước đoán.')}>
       {summary.isLoading ? <LoadingState rows={2} /> : summary.isError ? <ErrorState error={summary.error} onRetry={() => void summary.refetch()} /> : s ? <>
         <div className="analytics-kpis" aria-label={t('Chỉ số chính')}>{headlineKpis(s).map(k => <Metric key={k.key} kpi={k} />)}</div>
@@ -56,10 +58,10 @@ export default function ExamAnalyticsPanel({ examId, actorId, examTitle = '' }: 
 
     <Section title={t('Hiệu quả câu hỏi')} description={t('Theo câu hỏi và phiên bản đã chụp trong đề, không truy vấn ngân hàng câu hỏi.')}>
       {questions.isLoading ? <LoadingState rows={3} /> : questions.isError ? <ErrorState error={questions.error} onRetry={() => void questions.refetch()} /> : !questions.data?.length ? <EmptyState title={t('Chưa có thống kê câu hỏi')} description={t('Số liệu xuất hiện sau khi Analytics nhận kết quả.')} /> : <div className="table-wrap"><table className="table analytics-table">
-        <thead><tr><th scope="col">{t('Câu')}</th><th scope="col">{t('Loại')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Đúng')}</th><th scope="col">{t('Một phần')}</th><th scope="col">{t('Sai')}</th><th scope="col">{t('Bỏ trống')}</th><th scope="col">{t('Chờ chấm')}</th><th scope="col">{t('Tỷ lệ đúng')}</th><th scope="col">{t('Độ khó')}</th><th scope="col">{t('Điểm TB')}</th></tr></thead>
+        <thead><tr><th scope="col">{t('Câu')}</th><th scope="col">{t('Loại')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Đúng')}</th><th scope="col">{t('Một phần')}</th><th scope="col">{t('Sai')}</th><th scope="col">{t('Bỏ trống')}</th><th scope="col">{t('Chờ chấm')}</th><th scope="col">{t('Tỷ lệ đúng')}</th><th scope="col">{t('Độ khó')}</th><th scope="col" title={t('Chênh lệch tỷ lệ làm đúng giữa 27% thí sinh điểm cao nhất và 27% thấp nhất. Từ 0,3 là tốt; dưới 0,2 phân loại kém; âm thường do sai đáp án.')}>{t('Độ phân biệt')}</th><th scope="col">{t('Điểm TB')}</th></tr></thead>
         <tbody>{questions.data.map(q => <tr key={`${q.questionId}:${q.questionVersion}`}>
           <td><strong>{t('Câu')} {q.position}</strong><div className="small muted">v{q.questionVersion} · {shortId(q.questionId)}</div></td><td>{questionType(q.questionType)}</td><td>{q.attempts}</td><td>{q.correct}</td><td>{q.partial}</td><td>{q.incorrect}</td><td>{q.unanswered}</td><td>{q.pendingReview}</td>
-          <td>{q.correctRate === null ? t(NO_DATA) : `${(q.correctRate * 100).toFixed(1)}%`}</td><td><DifficultyBadge value={difficultyOf(q.correctRate, q.attempts - q.pendingReview)} /></td><td>{q.averageAwardedPoints === null ? t(NO_DATA) : `${formatScore(q.averageAwardedPoints)} / ${formatScore(q.pointValue)}`}</td>
+          <td>{q.correctRate === null ? t(NO_DATA) : `${(q.correctRate * 100).toFixed(1)}%`}</td><td><DifficultyBadge value={difficultyOf(q.correctRate, q.attempts - q.pendingReview)} /></td><td><DiscriminationBadge value={q.discrimination} /></td><td>{q.averageAwardedPoints === null ? t(NO_DATA) : `${formatScore(q.averageAwardedPoints)} / ${formatScore(q.pointValue)}`}</td>
         </tr>)}</tbody>
       </table></div>}
     </Section>
@@ -115,11 +117,20 @@ const DIFFICULTY: Record<Difficulty, { label: () => string; tone: 'success' | 'w
 }
 function DifficultyBadge({ value }: { value: Difficulty }) { return <Badge tone={DIFFICULTY[value].tone}>{DIFFICULTY[value].label()}</Badge> }
 
+const DISCRIMINATION: Record<Discrimination, { label: () => string; tone: 'success' | 'warning' | 'danger' | 'muted' | 'info' }> = {
+  GOOD: { label: () => t('Tốt'), tone: 'success' }, FAIR: { label: () => t('Khá'), tone: 'info' }, POOR: { label: () => t('Kém'), tone: 'warning' },
+  NEGATIVE: { label: () => t('Âm – xem lại đáp án'), tone: 'danger' }, UNKNOWN: { label: () => t('Chưa đủ 10 bài'), tone: 'muted' },
+}
+function DiscriminationBadge({ value }: { value?: number | null }) {
+  const k = discriminationOf(value)
+  return <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><Badge tone={DISCRIMINATION[k].tone}>{DISCRIMINATION[k].label()}</Badge>{value !== null && value !== undefined && <span className="xsmall muted mono">{value.toFixed(2)}</span>}</span>
+}
+
 function Metric({ kpi }: { kpi: Kpi }) {
   return <div className="analytics-metric"><span className="small muted">{kpi.label}</span>
     {kpi.value === null ? <><strong className="analytics-na">{t(NO_DATA)}</strong><small className="muted">{kpi.reason}</small></> : <><strong>{kpi.value}</strong>{kpi.detail && <small className="muted">{kpi.detail}</small>}</>}</div>
 }
 
 function questionType(value: string) {
-  return ({ MULTIPLE_CHOICE: t('Trắc nghiệm'), TRUE_FALSE: t('Đúng / Sai'), SHORT_ANSWER: t('Trả lời ngắn'), ESSAY: t('Tự luận') } as Record<string, string>)[value] ?? value
+  return QUESTION_TYPE_LABEL[value] ?? value
 }

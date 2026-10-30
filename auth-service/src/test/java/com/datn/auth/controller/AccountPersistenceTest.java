@@ -118,6 +118,22 @@ class AccountPersistenceTest {
         post("/auth/login", "{\"email\":\"" + email + "\",\"password\":\"brandnew1\"}").andExpect(status().isOk());
     }
 
+    @Test void adminStatsCountAccountsWithoutPersonalData() throws Exception {
+        String id = unique();
+        User admin = users.save(User.builder().email("stat." + id + "@example.com").fullName("Admin").passwordHash(passwords.encode("adminpass1"))
+                .role(User.Role.ADMIN).systemPrivilege(User.SystemPrivilege.ADMIN).build());
+        JsonNode st = body(post("/auth/register", "{\"email\":\"hs." + id + "@example.com\",\"password\":\"secret123\",\"fullName\":\"HS\",\"persona\":\"STUDENT\"}"));
+        String a = bearer(tokensFor(admin));
+        var before = body(mvc.perform(get("/auth/admin/stats").header("Authorization", a)).andExpect(status().isOk()));
+        long total = before.get("total").asLong();
+        assertTrue(total >= 2 && before.get("students").asLong() >= 1 && before.get("admins").asLong() >= 1);
+        assertEquals(30, before.get("newPerDay").size());
+        assertTrue(before.get("newInPeriod").asLong() >= 2);
+        assertEquals(total, before.get("students").asLong() + before.get("teachers").asLong() + before.get("admins").asLong());
+        mvc.perform(get("/auth/admin/stats").header("Authorization", bearer(st))).andExpect(status().isForbidden());
+        mvc.perform(get("/auth/admin/stats").param("days", "0").header("Authorization", a)).andExpect(status().isBadRequest());
+    }
+
     @Test void adminListsLocksAndCreatesResetLinks() throws Exception {
         String id = unique();
         User admin = users.save(User.builder().email("admin." + id + "@example.com").fullName("Admin").passwordHash(passwords.encode("adminpass1"))
