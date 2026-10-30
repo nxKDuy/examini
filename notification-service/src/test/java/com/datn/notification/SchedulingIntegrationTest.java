@@ -319,6 +319,12 @@ class SchedulingIntegrationTest extends IntegrationTestSupport {
         String text=msg.get("Text").asText();
         assertTrue(text.contains("Kỳ thi \"Toán 12\" đã có lịch") && text.contains("GMT+07:00, Asia/Ho_Chi_Minh") && text.contains("http://app.test/exam/lobby/"+exam),text);
         assertFalse(text.toLowerCase().contains("joincode") || text.contains("correct"));
+        // the exam travels as an iCalendar attachment with the same UID as the calendar feed
+        JsonNode attachments=msg.get("Attachments");
+        assertEquals(1,attachments.size());
+        assertEquals("lich-thi.ics",attachments.get(0).get("FileName").asText());
+        assertTrue(attachments.get(0).get("ContentType").asText().startsWith("text/calendar"));
+        assertTrue(text.contains("lich-thi.ics"));
         clock.advance(Duration.ofHours(1));while(deliveries.runDue()>0){}
         assertEquals(1,mailpit("/api/v1/search?query="+URLEncoder.encode("to:\""+to+"\"",StandardCharsets.UTF_8)).get("messages_count").asInt(),"SENT email is not resent");
     }

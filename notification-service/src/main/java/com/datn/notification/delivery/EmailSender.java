@@ -15,10 +15,13 @@ public class EmailSender {
     }
     public boolean configured(){return !host.isBlank() && !from.isBlank() && mail.getIfAvailable()!=null;}
     /** Throws on any SMTP failure; acceptance by the SMTP server is the strongest guarantee available (no inbox proof). */
-    public void send(String to,String subject,String text)throws Exception{
+    public void send(String to,String subject,String text)throws Exception{send(to,subject,text,null);}
+    /** With {@code ics} non-null the exam is attached as an iCalendar file (mail apps offer "Add to calendar"). */
+    public void send(String to,String subject,String text,String ics)throws Exception{
         JavaMailSender sender=mail.getObject();MimeMessage m=sender.createMimeMessage();
-        var h=new MimeMessageHelper(m,false,StandardCharsets.UTF_8.name());
+        var h=new MimeMessageHelper(m,ics!=null,StandardCharsets.UTF_8.name());
         h.setFrom(new InternetAddress(from));h.setTo(to);h.setSubject(subject);h.setText(text,false);
+        if(ics!=null)h.addAttachment("lich-thi.ics",new org.springframework.core.io.ByteArrayResource(ics.getBytes(StandardCharsets.UTF_8)),"text/calendar; charset=UTF-8; method=PUBLISH");
         sender.send(m);
     }
 }

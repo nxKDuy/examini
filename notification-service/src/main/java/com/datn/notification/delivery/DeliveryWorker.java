@@ -126,7 +126,10 @@ public class DeliveryWorker {
             if(c==null){finish(r,"SKIPPED","NO_CONTACT",null,null);continue;}
             if(expired(r))continue;
             try{
-                email.send(c.email(),"[EXAMINI] "+r.title(),r.message()+"\n\nXem chi tiết: "+url(r)+"\n\nEmail tự động từ EXAMINI, vui lòng không trả lời.");
+                String ics=ExamInvite.ics(r.type(),r.examId(),r.meta(),url(r),clock.instant());
+                email.send(c.email(),"[EXAMINI] "+r.title(),r.message()+"\n\nXem chi tiết: "+url(r)
+                        +(ics==null?"":"\n\nTệp lich-thi.ics đính kèm: mở để thêm kỳ thi vào lịch trên điện thoại hoặc máy tính.")
+                        +"\n\nEmail tự động từ EXAMINI, vui lòng không trả lời.",ics);
                 finish(r,"SENT",null,null,null);
             }catch(Exception e){
                 log.warn("Email delivery {} to {} failed: {}",r.id(),AuthContactClient.mask(c.email()),e.getClass().getSimpleName());

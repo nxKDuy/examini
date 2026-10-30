@@ -190,6 +190,16 @@ class JwtAuthFilterTest {
         }
     }
 
+    @Test
+    void calendarFeedIsTheOnlyAnonymousExamRoute() {
+        var feed = forward(MockServerHttpRequest.get("/exams/calendar/feed/AbCdEfGhIjKlMnOpQrStUvWxYz12.ics").header("X-User-Id", "spoofed").build());
+        assertNull(feed.getRequest().getHeaders().getFirst("X-User-Id"), "identity headers are still stripped");
+        assertRejected(MockServerHttpRequest.get("/exams/calendar/feed").build());
+        assertRejected(MockServerHttpRequest.get("/exams/calendar/feed/short.ics").build());
+        assertRejected(MockServerHttpRequest.post("/exams/calendar/feed/AbCdEfGhIjKlMnOpQrStUvWxYz12.ics").build());
+        assertRejected(MockServerHttpRequest.get("/exams/calendar/feed/AbCdEfGhIjKlMnOpQrStUvWxYz12.ics/../../exams").build());
+    }
+
     private ServerWebExchange forward(MockServerHttpRequest request) {
         AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
         ServerWebExchange exchange = MockServerWebExchange.from(request);
