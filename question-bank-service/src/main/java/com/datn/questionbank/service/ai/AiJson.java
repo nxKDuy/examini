@@ -11,25 +11,68 @@ final class AiJson {
     private AiJson() {}
     static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Parses {"questions":[...]} (or a bare array, optionally inside a ``` fence) into candidates. */
+    /**
+     * Parses {"questions":[...]} (or a bare array, optionally inside a ``` fence) into candidates. Models without a
+     * response schema often rename fields, so common variants are accepted: question/stem/text for the content,
+     * options as plain strings or {text|label}, and the key as a per-option flag or an "answer" (letter, index or
+     * the option's text). The key is only ever taken from what the model wrote; an unmatched answer stays unmarked.
+     */
     static List<Candidate> questions(String text) {
         JsonNode payload;
         try { payload = JSON.readTree(stripFence(text == null ? "" : text)); }
         catch (Exception e) { throw new GenerationException("AI trả về sai định dạng", e); }
-        JsonNode list = payload == null ? null : payload.isArray() ? payload : payload.path("questions");
+        JsonNode list = payload == null ? null : payload.isArray() ? payload : first(payload, "questions", "items", "quiz", "data");
         if (list == null || !list.isArray()) throw new GenerationException("AI trả về sai định dạng");
         var out = new ArrayList<Candidate>();
         for (JsonNode q : list) {
             if (!q.isObject()) continue;
+            JsonNode opts = first(q, "options", "choices", "answers", "statements");
+            String answer = text(first(q, "answer", "correctAnswer", "correct_answer", "correctOption", "key"));
+            JsonNode answers = first(q, "correctAnswers", "correct_answers", "correctOptions");
             var options = new ArrayList<CandidateOption>();
-            for (JsonNode o : q.path("options"))
-                options.add(new CandidateOption(text(o.path("content")), o.path("correct").isBoolean() ? o.path("correct").asBoolean() : null));
+            if (opts != null && opts.isArray()) {
+                int i = 0;
+                for (JsonNode o : opts) {
+                    String label = o.isObject() ? text(first(o, "label", "letter", "key")) : null;
+                    String content = o.isObject() ? text(first(o, "content", "text", "option", "value", "statement")) : o.asText(null);
+                    if (content != null) content = content.replaceFirst("^\\s*[A-Fa-f][.)]\\s+", "");
+                    JsonNode flag = o.isObject() ? first(o, "correct", "isCorrect", "is_correct", "true", "truth") : null;
+                    Boolean correct;
+                    if (flag != null && flag.isBoolean()) correct = flag.asBoolean();
+                    else if (keyed(answer, answers, i, label, content)) correct = Boolean.TRUE;
+                    else correct = answer != null || answers != null ? Boolean.FALSE : null;
+                    options.add(new CandidateOption(content, correct));
+                    i++;
+                }
+            }
+            String expected = text(first(q, "expectedAnswer", "expected_answer", "markingGuide", "rubric"));
+            if (expected == null && options.isEmpty()) expected = answer;
             String raw;
             try { raw = JSON.writerWithDefaultPrettyPrinter().writeValueAsString(q); } catch (Exception e) { raw = q.toString(); }
-            out.add(new Candidate(text(q.path("type")), text(q.path("content")), options, text(q.path("expectedAnswer")),
-                    text(q.path("explanation")), text(q.path("difficulty")), raw));
+            out.add(new Candidate(text(first(q, "type", "questionType", "question_type")), text(first(q, "content", "question", "stem", "text", "prompt")),
+                    options, expected, text(first(q, "explanation", "rationale", "solution")), text(first(q, "difficulty", "level")), raw));
         }
         return out;
+    }
+
+    /** True when the model's own key points at option {@code i}: by letter, 1-based number, label or exact text. */
+    static boolean keyed(String answer, JsonNode answers, int i, String label, String content) {
+        var keys = new ArrayList<String>();
+        if (answer != null) keys.add(answer);
+        if (answers != null && answers.isArray()) answers.forEach(a -> keys.add(a.asText()));
+        String letter = String.valueOf((char) ('A' + i));
+        for (String k : keys) {
+            String t = k.strip();
+            if (t.equalsIgnoreCase(letter) || t.matches("(?i)" + letter + "[.)]?") || t.equals(String.valueOf(i + 1))) return true;
+            if (label != null && t.equalsIgnoreCase(label.strip())) return true;
+            if (content != null && t.equalsIgnoreCase(content.strip())) return true;
+        }
+        return false;
+    }
+
+    private static JsonNode first(JsonNode node, String... names) {
+        for (String n : names) { JsonNode v = node.get(n); if (v != null && !v.isNull()) return v; }
+        return null;
     }
 
     private static String text(JsonNode node) { return node == null || node.isMissingNode() || node.isNull() ? null : node.asText(); }

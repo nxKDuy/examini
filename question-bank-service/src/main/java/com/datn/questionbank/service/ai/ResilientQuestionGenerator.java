@@ -54,15 +54,27 @@ public class ResilientQuestionGenerator implements AiQuestionGenerator {
      * A JSON completion from the first usable language model (cooling providers skipped), for checks after
      * generation. Empty when no model can answer: the caller then simply skips the check.
      */
+    /** Checks run in the background, so a short rate-limit wait (free tiers count tokens per minute) is acceptable. */
+    static final Duration MAX_CHECK_WAIT = Duration.ofSeconds(30);
+
     @Override
     public java.util.Optional<String> completeJson(String system, String user) {
         for (AiProvider p : chain) {
             if (!p.available() || !p.llm() || cooling(p)) continue;
-            try { return java.util.Optional.of(p.completeJson(system, user)); }
-            catch (GenerationException e) {
-                log.warn("AI provider {} could not run a check: {}", p.name(), e.getMessage());
-                if (e.transientFailure()) coolUntil.put(p.name(), clock.instant().plus(e.retryAfter() == null ? DEFAULT_COOLDOWN : e.retryAfter().compareTo(MAX_COOLDOWN) > 0 ? MAX_COOLDOWN : e.retryAfter()));
-            } catch (RuntimeException e) { log.warn("AI provider {} crashed during a check", p.name(), e); }
+            for (int attempt = 0; attempt < 2; attempt++) {
+                try { return java.util.Optional.of(p.completeJson(system, user)); }
+                catch (GenerationException e) {
+                    log.warn("AI provider {} could not run a check: {}", p.name(), e.getMessage());
+                    if (!e.transientFailure()) break;
+                    Duration wait = e.retryAfter() == null ? Duration.ofSeconds(5) : e.retryAfter();
+                    if (attempt == 0 && wait.compareTo(MAX_CHECK_WAIT) <= 0) {
+                        try { sleeper.sleep(wait.plusMillis(500)); continue; }
+                        catch (InterruptedException ie) { Thread.currentThread().interrupt(); return java.util.Optional.empty(); }
+                    }
+                    coolUntil.put(p.name(), clock.instant().plus(e.retryAfter() == null ? DEFAULT_COOLDOWN : e.retryAfter().compareTo(MAX_COOLDOWN) > 0 ? MAX_COOLDOWN : e.retryAfter()));
+                    break;
+                } catch (RuntimeException e) { log.warn("AI provider {} crashed during a check", p.name(), e); break; }
+            }
         }
         return java.util.Optional.empty();
     }

@@ -59,7 +59,7 @@ public class OpenAiCompatibleQuestionGenerator implements AiProvider {
     @Override
     public Result generate(Prompt prompt) {
         if (!available()) throw new GenerationException("Chưa cấu hình AI tương thích OpenAI (AI_OPENAI_URL, AI_OPENAI_MODEL)");
-        String text = chat(AiPrompts.system(prompt), AiPrompts.user(prompt), 0.7);
+        String text = chat(AiPrompts.system(prompt), AiPrompts.user(prompt), 0.7, AiJson.jsonSchema());
         return new Result(AiJson.questions(text), List.of(), model());
     }
 
@@ -69,23 +69,32 @@ public class OpenAiCompatibleQuestionGenerator implements AiProvider {
         return chat(system, user, 0.0);
     }
 
-    private String chat(String system, String user, double temperature) {
-        try {
-            return send(system, user, temperature, true);
-        } catch (HttpStatusCodeException e) {
-            // Some servers/models do not accept response_format: retry once in plain mode (the prompt still asks for JSON).
-            if (e.getStatusCode().value() == 400 || e.getStatusCode().value() == 422) {
-                try { return send(system, user, temperature, false); }
-                catch (HttpStatusCodeException again) { throw failure(again.getStatusCode().value(), again.getResponseHeaders(), again); }
-                catch (RestClientException again) { throw new GenerationException(host() + " không phản hồi", true, null, again); }
+    private String chat(String system, String user, double temperature) { return chat(system, user, temperature, null); }
+
+    /**
+     * Strongest output contract first: a JSON schema (OpenAI/Groq structured outputs), then plain JSON mode, then no
+     * constraint (the prompt still spells out the shape). A 400/422 means "not supported here" and moves one step down.
+     */
+    private String chat(String system, String user, double temperature, Map<String, Object> schema) {
+        var formats = new java.util.ArrayList<Map<String, Object>>();
+        if (schema != null) formats.add(Map.of("type", "json_schema", "json_schema", Map.of("name", "questions", "schema", schema, "strict", false)));
+        formats.add(Map.of("type", "json_object"));
+        formats.add(null);
+        for (int i = 0; i < formats.size(); i++) {
+            try {
+                return send(system, user, temperature, formats.get(i));
+            } catch (HttpStatusCodeException e) {
+                int s = e.getStatusCode().value();
+                if ((s == 400 || s == 422) && i < formats.size() - 1) continue;
+                throw failure(s, e.getResponseHeaders(), e);
+            } catch (RestClientException e) {
+                throw new GenerationException(host() + " không phản hồi", true, null, e);
             }
-            throw failure(e.getStatusCode().value(), e.getResponseHeaders(), e);
-        } catch (RestClientException e) {
-            throw new GenerationException(host() + " không phản hồi", true, null, e);
         }
+        throw new GenerationException(host() + " từ chối yêu cầu");
     }
 
-    private String send(String system, String user, double temperature, boolean jsonMode) {
+    private String send(String system, String user, double temperature, Map<String, Object> format) {
         var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (!apiKey.isEmpty()) headers.setBearerAuth(apiKey);
@@ -93,7 +102,7 @@ public class OpenAiCompatibleQuestionGenerator implements AiProvider {
         body.put("model", modelName);
         body.put("temperature", temperature);
         body.put("messages", List.of(Map.of("role", "system", "content", system), Map.of("role", "user", "content", user)));
-        if (jsonMode) body.put("response_format", Map.of("type", "json_object"));
+        if (format != null) body.put("response_format", format);
         byte[] raw = http.postForObject(baseUrl + "/chat/completions", new HttpEntity<>(body, headers), byte[].class);
         return content(raw == null ? "" : new String(raw, java.nio.charset.StandardCharsets.UTF_8)); // JSON is UTF-8 even without a charset
     }
@@ -119,6 +128,7 @@ public class OpenAiCompatibleQuestionGenerator implements AiProvider {
         if (status >= 500) return new GenerationException(who + " tạm thời lỗi (" + status + ")", true, after, cause);
         if (status == 401 || status == 403) return new GenerationException("Khóa API của " + who + " không hợp lệ hoặc không có quyền", false, null, cause);
         if (status == 404) return new GenerationException(who + " không có mô hình " + modelName, false, null, cause);
+        if (status == 413) return new GenerationException(who + ": yêu cầu vượt giới hạn token mỗi phút của gói hiện tại (giảm số câu hoặc đổi mô hình)", false, null, cause);
         return new GenerationException(who + " từ chối yêu cầu (" + status + ")", false, null, cause);
     }
 

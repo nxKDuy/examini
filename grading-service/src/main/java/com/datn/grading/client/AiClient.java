@@ -30,7 +30,7 @@ public class AiClient {
     private final ObjectMapper json = new ObjectMapper();
 
     @Value("${ai.gemini.key:${gemini.api.key:}}") String geminiKey = "";
-    @Value("${ai.gemini.model:${gemini.api.model:gemini-2.5-flash}}") String geminiModel = "gemini-2.5-flash";
+    @Value("${ai.gemini.model:${gemini.api.model:gemini-3.5-flash-lite}}") String geminiModel = "gemini-3.5-flash-lite";
     @Value("${ai.openai.url:}") String openaiUrl = "";
     @Value("${ai.openai.key:}") String openaiKey = "";
     @Value("${ai.openai.model:}") String openaiModel = "";

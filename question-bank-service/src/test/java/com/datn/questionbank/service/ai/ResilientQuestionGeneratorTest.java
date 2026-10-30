@@ -101,4 +101,17 @@ class ResilientQuestionGeneratorTest {
         openai.available = false;
         assertEquals(Optional.empty(), g.completeJson("s", "u"), "only the rule generator is left: no check");
     }
+
+    @Test void checksWaitOutAShortRateLimitOnce() {
+        var hits = new int[1];
+        var groq = new Fake("openai") { public String completeJson(String s, String u) {
+            if (hits[0]++ == 0) throw rateLimited(Duration.ofSeconds(7)); return "{}"; } };
+        var pauses = new ArrayList<Duration>();
+        var g = new ResilientQuestionGenerator(List.of(groq), "openai", new MutableClock(), pauses::add);
+        assertEquals(Optional.of("{}"), g.completeJson("s", "u"));
+        assertEquals(List.of(Duration.ofMillis(7500)), pauses);
+        var slow = new Fake("openai") { public String completeJson(String s, String u) { throw rateLimited(Duration.ofMinutes(5)); } };
+        var g2 = new ResilientQuestionGenerator(List.of(slow), "openai", new MutableClock(), d -> { throw new AssertionError("no long waits"); });
+        assertEquals(Optional.empty(), g2.completeJson("s", "u"));
+    }
 }

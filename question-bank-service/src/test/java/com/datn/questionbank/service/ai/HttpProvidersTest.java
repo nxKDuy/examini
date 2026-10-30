@@ -146,7 +146,7 @@ class HttpProvidersTest {
             ex.getResponseBody().write(out); ex.close();
         });
         assertEquals("100", g.generate(PROMPT).candidates().getFirst().expectedAnswer());
-        assertEquals(2, calls.get());
+        assertEquals(3, calls.get(), "schema, then JSON mode, then plain");
         assertTrue(requests.getFirst().endsWith("AUTH=null"), "no key → no Authorization header");
     }
 }

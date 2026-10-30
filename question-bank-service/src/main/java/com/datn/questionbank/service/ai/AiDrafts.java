@@ -37,7 +37,7 @@ public final class AiDrafts {
             if (c == null || blank(c.content())) { dropped++; continue; }
             if (out.size() >= requested) { extra++; continue; }
             var flags = EnumSet.of(Flag.AI_GENERATED);
-            String content = c.content().strip();
+            String content = AiText.plain(c.content()).strip();
             if (content.length() > MAX_CONTENT) { content = content.substring(0, MAX_CONTENT); flags.add(Flag.CONTENT_TRUNCATED); }
 
             var rawOptions = c.options() == null ? List.<AiQuestionGenerator.CandidateOption>of()
@@ -46,13 +46,13 @@ public final class AiDrafts {
             boolean choice = com.datn.questionbank.service.QuestionValidation.isChoice(type);
 
             var options = new ArrayList<ImportParser.Option>();
-            String expected = blank(c.expectedAnswer()) ? null : clip(c.expectedAnswer().strip(), MAX_TEXT);
+            String expected = blank(c.expectedAnswer()) ? null : clip(AiText.plain(c.expectedAnswer()).strip(), MAX_TEXT);
             if (choice) {
                 var texts = new HashSet<String>();
                 short order = 0;
                 for (var o : rawOptions) {
                     if (options.size() >= MAX_OPTIONS) { flags.add(Flag.CONTENT_TRUNCATED); break; }
-                    String text = clip(o.content().strip(), MAX_OPTION);
+                    String text = clip(AiText.plain(o.content()).strip(), MAX_OPTION);
                     if (!texts.add(AiQuality.light(text))) flags.add(Flag.DUPLICATE_OPTION);
                     options.add(new ImportParser.Option(text, Boolean.TRUE.equals(o.correct()), order++));
                 }
@@ -69,7 +69,7 @@ public final class AiDrafts {
                     options.stream().map(o -> (Boolean) o.correct()).toList(), batchKeys, existingKeys));
             batchKeys.add(key(content));
 
-            String explanation = blank(c.explanation()) ? null : clip(c.explanation().strip(), MAX_TEXT);
+            String explanation = blank(c.explanation()) ? null : clip(AiText.plain(c.explanation()).strip(), MAX_TEXT);
             long problems = flags.stream().filter(f -> f != Flag.AI_GENERATED).count();
             double confidence = Math.max(0, BASE_CONFIDENCE - PENALTY * problems);
             String raw = c.raw() == null || c.raw().isBlank() ? content : clip(c.raw(), MAX_TEXT);

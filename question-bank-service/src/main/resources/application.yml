@@ -9,7 +9,7 @@ question-bank:
   # AI question generation; blank key disables it (GET /question-imports/ai/status → available=false).
   ai:
     gemini-api-key: ${GEMINI_API_KEY:}
-    gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
+    gemini-model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     timeout-seconds: ${QB_AI_TIMEOUT_SECONDS:120}
     # Fallback order; "local" (rule-based, no network) keeps generation working when every LLM is down or out of quota.
     providers: ${QB_AI_PROVIDERS:gemini,openai,ollama,local}

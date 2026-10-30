@@ -46,7 +46,7 @@ eureka:
 ai:
   gemini:
     key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.5-flash}
+    model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
   # Any OpenAI-compatible API (free tiers: Groq, OpenRouter ":free" models, Mistral…; or a local LM Studio/vLLM).
   openai:
     url: ${AI_OPENAI_URL:}

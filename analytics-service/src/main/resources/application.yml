@@ -6,7 +6,7 @@ analytics:
   # Optional AI reading of exam results (same keys as question generation); blank = rule-based only.
   ai:
     gemini-api-key: ${GEMINI_API_KEY:}
-    gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
+    gemini-model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     openai-url: ${AI_OPENAI_URL:}
     openai-key: ${AI_OPENAI_KEY:}
     openai-model: ${AI_OPENAI_MODEL:}

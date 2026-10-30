@@ -23,7 +23,7 @@ import java.util.Optional;
 public class AiWriter {
     private final ObjectMapper json = new ObjectMapper();
     @Value("${analytics.ai.gemini-api-key:}") String geminiKey = "";
-    @Value("${analytics.ai.gemini-model:gemini-2.5-flash}") String geminiModel = "gemini-2.5-flash";
+    @Value("${analytics.ai.gemini-model:gemini-3.5-flash-lite}") String geminiModel = "gemini-3.5-flash-lite";
     @Value("${analytics.ai.openai-url:}") String openaiUrl = "";
     @Value("${analytics.ai.openai-key:}") String openaiKey = "";
     @Value("${analytics.ai.openai-model:}") String openaiModel = "";

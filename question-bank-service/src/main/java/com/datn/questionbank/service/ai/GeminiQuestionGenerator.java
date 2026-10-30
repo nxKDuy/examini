@@ -21,7 +21,7 @@ public class GeminiQuestionGenerator implements AiProvider {
 
     @org.springframework.beans.factory.annotation.Autowired
     public GeminiQuestionGenerator(@Value("${question-bank.ai.gemini-api-key:}") String apiKey,
-                                   @Value("${question-bank.ai.gemini-model:gemini-2.5-flash}") String modelName,
+                                   @Value("${question-bank.ai.gemini-model:gemini-3.5-flash-lite}") String modelName,
                                    @Value("${question-bank.ai.timeout-seconds:120}") int timeoutSeconds) {
         this(apiKey, modelName, timeoutSeconds, ENDPOINT);
     }

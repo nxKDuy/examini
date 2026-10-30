@@ -198,7 +198,7 @@ services:
       ORGANIZATION_SERVICE_URL: http://organization-service:8088
       ORG_AUTHZ_QB_TOKEN: ${ORG_AUTHZ_QB_TOKEN:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       QB_AI_PROVIDERS: ${QB_AI_PROVIDERS:-gemini,openai,ollama,local}
       AI_OPENAI_URL: ${AI_OPENAI_URL:-}
       AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
@@ -319,7 +319,7 @@ services:
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       AI_OPENAI_URL: ${AI_OPENAI_URL:-}
       AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
       AI_OPENAI_MODEL: ${AI_OPENAI_MODEL:-}
@@ -355,7 +355,7 @@ services:
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       AI_OPENAI_URL: ${AI_OPENAI_URL:-}
       AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
       AI_OPENAI_MODEL: ${AI_OPENAI_MODEL:-}
