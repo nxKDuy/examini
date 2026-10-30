@@ -8,6 +8,9 @@ if ! command -v docker >/dev/null 2>&1 && [ -x /Applications/Docker.app/Contents
   export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
 fi
 
+# Khoá bí mật lưu mã hoá trên repo (.env.enc): giải mã ra .env nếu chưa có.
+if [ ! -f .env ] && [ -f .env.enc ]; then ./scripts/secrets.sh unlock; fi
+
 echo "[1/4] Backend (Docker Compose)..."
 docker compose -p datn up -d --wait --wait-timeout 60 postgres
 docker compose -p datn exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres' < docker/postgres/ensure-notification-db.sql

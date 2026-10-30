@@ -53,10 +53,14 @@ mức Bloom từ tài liệu; tạo đề từ ma trận/blueprint; in đề + p
 ## Chạy bằng Docker (khuyến nghị)
 
 ```bash
-cp .env.example .env          # điền JWT_SECRET và các token nội bộ (openssl rand -base64 48)
-                              # AUTH_BOOTSTRAP_EMAIL / AUTH_BOOTSTRAP_PASSWORD để tạo Admin đầu tiên
+./scripts/secrets.sh unlock   # giải mã .env.enc → .env (hỏi mật khẩu một lần, có thể lưu vào .env.key)
 docker compose up -d --build  # lần đầu mất vài phút; đợi mọi container "healthy": docker compose ps
 ```
+
+**Khoá bí mật (.env).** Repo chỉ chứa `.env.enc` — bản mã hoá AES-256 của `.env` (khoá AI, mật khẩu CSDL, JWT…), nên
+máy quét khoá của GitHub/Google/Groq không đọc được và không tự khoá. Mật khẩu giải mã được gửi riêng cho thành viên,
+không nằm trên repo; `start.sh`/`start.bat` tự giải mã khi chưa có `.env`. Sửa `.env` xong thì chạy
+`./scripts/secrets.sh lock` và commit `.env.enc`. Cài mới không có mật khẩu: `cp .env.example .env` rồi tự điền.
 
 Mở **http://localhost** (hoặc `http://localhost:${WEB_PORT}` nếu đã đổi `WEB_PORT`). nginx chuyển `/api/*` tới gateway
 nên trình duyệt chỉ cần một địa chỉ. Các cổng phụ trợ: Eureka `8761`, Gateway `8080`, RabbitMQ UI `15673`.

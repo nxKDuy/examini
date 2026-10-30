@@ -16,3 +16,7 @@ target/
 backups/
 __pycache__/
 *.pyc
+# Mật khẩu giải mã .env.enc và bản sao lưu .env: chỉ nằm trên máy
+.env.key
+.env.bak.*
+.env.tmp
