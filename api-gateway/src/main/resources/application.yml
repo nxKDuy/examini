@@ -6,6 +6,14 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      # Backends (Tomcat) close idle keep-alive connections after ~20 s. Drop pooled ones sooner so the gateway never
+      # sends a request on a socket the service is closing ("Connection prematurely closed BEFORE response" → 500
+      # on answer saves under load).
+      httpclient:
+        pool:
+          max-idle-time: 10s
+          max-life-time: 60s
+          eviction-interval: 5s
       default-filters:
         - JwtAuthFilter
       discovery:

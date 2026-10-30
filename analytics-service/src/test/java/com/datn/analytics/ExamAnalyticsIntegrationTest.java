@@ -96,8 +96,8 @@ class ExamAnalyticsIntegrationTest {
         http.perform(get("/analytics/exams/" + exam + "/insights").header("Authorization", jwt(teacher, "TEACHER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("RULES")).andExpect(jsonPath("$.level").value("AVERAGE"))
                 .andExpect(jsonPath("$.aiAvailable").value(false))
-                .andExpect(jsonPath("$.flags[?(@.position == 1 && @.issue == 'NEGATIVE_DISCRIMINATION')]").exists())
-                .andExpect(jsonPath("$.concerns").value(hasItem(containsString("Câu 1: học sinh giỏi"))))
+                .andExpect(jsonPath("$.flags[?(@.position == 2 && @.issue == 'NEGATIVE_DISCRIMINATION')]").exists())
+                .andExpect(jsonPath("$.concerns").value(hasItem(containsString("Câu 2: học sinh giỏi"))))
                 .andExpect(jsonPath("$.actions").value(hasItem(containsString("Kiểm tra lại đáp án"))));
         // ai=true without a configured model falls back to the rule reading
         http.perform(get("/analytics/exams/" + exam + "/insights?ai=true&lang=en").header("Authorization", jwt(teacher, "TEACHER")))

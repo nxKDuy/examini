@@ -134,7 +134,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
               <span className="small">{t('Câu cần chấm tay:')}</span>
               {d.items.filter(i => i.needsReview).map(i => {
                 const open = unresolved.some(u => u.questionId === i.questionId)
-                return <button key={i.questionId} type="button" data-open={open} onClick={() => jump(i.questionId)} aria-label={t('Câu {0}{1}', { 0: i.position, 1: open ? ', chưa chấm' : ', đã chấm' })}>{i.position}</button>
+                return <button key={i.questionId} type="button" data-open={open} onClick={() => jump(i.questionId)} aria-label={t('Câu {0}{1}', { 0: i.position + 1, 1: open ? ', chưa chấm' : ', đã chấm' })}>{i.position + 1}</button>
               })}
             </div>
           )}
@@ -232,7 +232,7 @@ function ItemCard({ sessionId, item, form, initial, problem, editable, onChange 
   return (
     <li id={fid} className="grade-item" data-review={item.needsReview}>
       <div className="spread">
-        <span className="small">{t('Câu')} {item.position} · {QUESTION_TYPE_LABEL[item.questionType]} {t('· phiên bản')} {item.questionVersion}</span>
+        <span className="small">{t('Câu')} {item.position + 1} · {QUESTION_TYPE_LABEL[item.questionType]} {t('· phiên bản')} {item.questionVersion}</span>
         <span className="row">
           {item.needsReview && <Badge tone="warning" icon={<PenLine size={12} aria-hidden />}>{t('Cần chấm tay')}</Badge>}
           <span className="mono small">{t('Điểm hiện có')} {formatScore(item.awardedPoints)}/{formatScore(item.pointValue)}</span>
@@ -240,7 +240,7 @@ function ItemCard({ sessionId, item, form, initial, problem, editable, onChange 
       </div>
       <PassageView presentation={item.presentation} />
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{item.questionContent}</p>
-      <MediaList media={item.presentation?.media} label={t('Câu {0}', { 0: item.position })} />
+      <MediaList media={item.presentation?.media} label={t('Câu {0}', { 0: item.position + 1 })} />
       <div className="grade-answer small">
         <span className="xsmall muted">{t('Bài làm của thí sinh')}</span>
         {item.questionType === 'SPEAKING'

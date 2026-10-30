@@ -6,6 +6,7 @@ import { exitFullscreen } from '../../lib/fullscreen'
 import { useT, t as tt, locale } from '../../lib/i18n'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
+import { SAVE_RETRIES, isTransientSaveError, saveRetryDelay } from './saveRetry'
 import { useAuthStore } from '../../store/authStore'
 import { useIntegrityMonitor } from '../integrity/useIntegrityMonitor'
 import { useCameraProctor } from '../integrity/camera/useCameraProctor'
@@ -52,6 +53,7 @@ export default function StudentExamPage() {
   const latest = useRef<Record<string, string>>({})
   const queues = useRef<Record<string, Promise<unknown>>>({})
   const timers = useRef<Record<string, number>>({})
+  const retries = useRef<Record<string, number>>({})
   const stateRef = useRef<Record<string, SaveState>>({})
   const announced = useRef<Set<number>>(new Set())
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -154,12 +156,22 @@ export default function StudentExamPage() {
     queues.current[qid] = run
     run.then(() => {
       if (queues.current[qid] !== run) return
+      delete retries.current[qid]
       setQState(qid, (latest.current[qid] ?? '') === value ? (timers.current[qid] ? 'pending' : 'saved') : 'pending')
       setLastSavedAt(new Date())
     }, e => {
       if (queues.current[qid] !== run) return
-      setQState(qid, 'error')
       const info = errorInfo(e)
+      // Saving an answer overwrites it, so a dropped connection or a busy server is retried quietly a few times.
+      const tries = retries.current[qid] ?? 0
+      if (isTransientSaveError(info.status) && tries < SAVE_RETRIES) {
+        retries.current[qid] = tries + 1
+        setQState(qid, 'pending')
+        timers.current[qid] = window.setTimeout(() => void persist(qid), saveRetryDelay(tries))
+        return
+      }
+      delete retries.current[qid]
+      setQState(qid, 'error')
       setActionError(info.message)
       if (info.status === 409 || info.status === 403) void sync()
     })
@@ -177,7 +189,8 @@ export default function StudentExamPage() {
   }
 
   const flush = useCallback(async () => {
-    Object.keys(timers.current).forEach(qid => void persist(qid))
+    const failed = Object.entries(stateRef.current).filter(([, st]) => st === 'error').map(([qid]) => qid)
+    new Set([...Object.keys(timers.current), ...failed]).forEach(qid => void persist(qid))
     await Promise.allSettled(Object.values(queues.current))
     return Object.entries(stateRef.current).filter(([, s]) => s !== 'saved').map(([qid]) => qid)
   }, [persist])

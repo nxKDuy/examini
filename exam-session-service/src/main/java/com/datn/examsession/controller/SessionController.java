@@ -5,8 +5,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 @RestController @RequestMapping("/sessions") @RequiredArgsConstructor
 public class SessionController {
-    private final SessionService service;private final com.datn.examsession.client.ExamClient exams;
-    @PostMapping("/start") public SessionService.StartSessionResponse start(@RequestParam(required=false) UUID examId,@RequestParam(required=false) String examCode,@RequestHeader("Authorization") String bearer,@RequestAttribute UUID actor){if(examId==null){if(examCode==null)throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"Exam identity required");examId=exams.byCode(examCode,bearer).id();}return service.startExam(examId,actor);}
+    private final SessionService service;private final com.datn.examsession.client.ExamClient exams;private final com.datn.examsession.service.StartGate startGate;
+    @PostMapping("/start") public SessionService.StartSessionResponse start(@RequestParam(required=false) UUID examId,@RequestParam(required=false) String examCode,@RequestHeader("Authorization") String bearer,@RequestAttribute UUID actor){if(examId==null){if(examCode==null)throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"Exam identity required");examId=exams.byCode(examCode,bearer).id();}UUID exam=examId;return startGate.run(exam,()->service.startExam(exam,actor));}
     @GetMapping("/{id}") public SessionService.StartSessionResponse get(@PathVariable UUID id,@RequestAttribute UUID actor){return service.get(id,actor);}
     @PostMapping("/{id}/answers") public void answer(@PathVariable UUID id,@RequestParam UUID questionId,@RequestAttribute UUID actor,@RequestBody Answer req){service.saveAnswer(id,actor,questionId,req.content());}
     @PostMapping("/{id}/submit") public void submit(@PathVariable UUID id,@RequestAttribute UUID actor){service.submitExam(id,actor);}

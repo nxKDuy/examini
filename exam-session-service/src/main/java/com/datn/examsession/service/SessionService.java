@@ -34,7 +34,11 @@ public class SessionService {
             var s=load(active.get().getId());expire(s);
             if(s.getStatus()==ExamSession.Status.IN_PROGRESS)return response(s);
         }
-        for(var s:sessions.findByExamIdAndStatus(examId,ExamSession.Status.IN_PROGRESS))expire(load(s.getId()));
+        // Lock only sessions that are actually past their deadline. Locking every running session kept them locked
+        // through the HTTP calls below, so other students' answer saves queued on those rows holding pooled
+        // connections until the pool ran dry (30 s timeouts / dropped connections while a class was starting).
+        Instant sweepAt=Instant.now();
+        for(var s:sessions.findByExamIdAndStatus(examId,ExamSession.Status.IN_PROGRESS))if(!sweepAt.isBefore(s.getExpiresAt()))expire(load(s.getId()));
         if(token.isBlank())throw error(503,"Exam service integration not configured");
         var exam=exams.authorize(examId,user,token);
         var reservation=exams.reserveStart(examId,user,token);

@@ -64,6 +64,25 @@ nên trình duyệt chỉ cần một địa chỉ. Các cổng phụ trợ: Eur
 AI là tuỳ chọn: đặt `GEMINI_API_KEY`, hoặc chạy model tại chỗ `docker compose --profile ai up -d ollama` rồi đặt
 `OLLAMA_URL=http://ollama:11434`. Không có cả hai thì các chức năng AI dùng bộ sinh/nhận xét theo luật.
 
+### Dữ liệu demo
+
+```bash
+python3 scripts/seed_demo.py   # sau khi mọi container healthy; chạy lại không tạo trùng
+```
+
+Tạo qua API thật nên mọi service đều có dữ liệu khớp nhau: 4 giáo viên, 24 học sinh thuộc 2 lớp (tổ chức), 4 môn với
+~54 câu hỏi đủ mọi dạng (có câu kèm hình, bài đọc dùng chung), 9 đề thi ở mọi trạng thái (đã thi + công bố điểm, đang chờ
+chấm tự luận, đang mở, vào bằng mã, đã lên lịch, bản nháp), bài làm và điểm của học sinh trải đều 26 ngày gần nhất để các
+biểu đồ Tiến bộ / Thống kê có dữ liệu. Mật khẩu chung `Examini@2026`:
+
+| Vai trò | Tài khoản |
+|---|---|
+| Giáo viên | `gv.toan@examini.demo`, `gv.anh@examini.demo`, `gv.ly@examini.demo`, `gv.hoa@examini.demo` |
+| Học sinh | `hs01@examini.demo` … `hs24@examini.demo` (hs01–12 lớp 12A1, hs13–24 lớp 12A2) |
+| Admin | tài khoản bootstrap trong `.env` |
+
+Chỉ dùng cho môi trường demo/phát triển. Xoá sạch để seed lại: `docker compose down -v && docker compose up -d`.
+
 ## Phát triển cục bộ
 
 ```bash
@@ -92,6 +111,9 @@ CI (GitHub Actions) chạy test backend với PostgreSQL/Redis/Mailpit, kiểm t
   (khoá theo tài khoản vẫn do auth-service đảm nhận). Vượt ngưỡng trả `429` kèm `Retry-After`. Chỉnh bằng biến
   `GATEWAY_RATE_LIMIT_SIGN_IN_PER_MINUTE`… hoặc tắt bằng `GATEWAY_RATE_LIMIT_ENABLED=false`.
 - **Ảnh camera giám sát** tự xoá sau `CAMERA_RETENTION_DAYS` ngày kể từ hạn thi.
+- **Nâng cấp từ bản cũ:** volume file đính kèm tạo trước bản sửa quyền thư mục thuộc root nên service không ghi được;
+  chạy một lần `docker compose exec -u 0 question-bank-service chown -R appuser:appgroup /data` và
+  `docker compose exec -u 0 exam-session-service chown -R appuser:appgroup /data`.
 - **Production:** đặt `APP_BASE_URL` đúng tên miền, cấu hình SMTP, `AUTH_RESET_LOG_LINKS=false`, đặt HTTPS phía trước nginx.
 
 ## Cấu trúc thư mục

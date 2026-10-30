@@ -65,7 +65,7 @@ public class ExamInsightsService {
         f.put("scoreDistributionPercentBuckets", s.scoreDistribution().stream().map(b -> b.fromPercent() + "-" + b.toPercent() + ": " + b.count()).toList());
         f.put("questions", qs.stream().map(q -> {
             var m = new LinkedHashMap<String, Object>();
-            m.put("position", q.position()); m.put("type", q.questionType()); m.put("attempts", q.attempts());
+            m.put("position", q.position() + 1); m.put("type", q.questionType()); m.put("attempts", q.attempts());
             m.put("correctRate", q.correctRate()); m.put("unanswered", q.unanswered()); m.put("discrimination", q.discrimination());
             return m;
         }).toList());
@@ -85,7 +85,7 @@ public class ExamInsightsService {
                     en ? "No submissions yet. The reading appears once students submit." : "Chưa có bài nộp. Nhận xét sẽ có khi thí sinh nộp bài.",
                     List.of(), List.of(), List.of(), List.of(), aiAvailable, Instant.now());
         }
-        String pct = avg == null ? "–" : avg.stripTrailingZeros().toPlainString() + "%";
+        String pct = avg == null ? "–" : avg.setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString() + "%";
         String summary = en
                 ? "%d submissions, %d graded; average %s of the maximum score (%s).".formatted(s.submissions(), s.graded(), pct, levelText(level, true))
                 : "%d bài nộp, %d bài đã chấm; điểm trung bình đạt %s điểm tối đa (%s).".formatted(s.submissions(), s.graded(), pct, levelText(level, false));
@@ -115,11 +115,12 @@ public class ExamInsightsService {
             if (judged < MIN_ATTEMPTS || q.correctRate() == null) continue;
             double rate = q.correctRate().doubleValue();
             double d = q.discrimination() == null ? Double.NaN : q.discrimination().doubleValue();
-            if (rate >= 0.85) easy.add(q.position());
-            if (rate < 0.3) { hard.add(q.position()); flags.add(new QuestionFlag(q.position(), q.questionType(), "TOO_HARD", round(rate * 100) + "%")); }
-            if (rate >= 0.95 && !Double.isNaN(d) && d < 0.1) flags.add(new QuestionFlag(q.position(), q.questionType(), "TOO_EASY", round(rate * 100) + "%"));
-            if (q.attempts() > 0 && q.unanswered() * 5 >= q.attempts()) { skipped.add(q.position()); flags.add(new QuestionFlag(q.position(), q.questionType(), "OFTEN_SKIPPED", share(q.unanswered(), q.attempts()))); }
-            if (!Double.isNaN(d) && d < 0) { negative.add(q.position()); flags.add(new QuestionFlag(q.position(), q.questionType(), "NEGATIVE_DISCRIMINATION", q.discrimination().toPlainString())); }
+            int no = q.position() + 1; // snapshot positions are 0-based; people count questions from 1
+            if (rate >= 0.85) easy.add(no);
+            if (rate < 0.3) { hard.add(no); flags.add(new QuestionFlag(no, q.questionType(), "TOO_HARD", round(rate * 100) + "%")); }
+            if (rate >= 0.95 && !Double.isNaN(d) && d < 0.1) flags.add(new QuestionFlag(no, q.questionType(), "TOO_EASY", round(rate * 100) + "%"));
+            if (q.attempts() > 0 && q.unanswered() * 5 >= q.attempts()) { skipped.add(no); flags.add(new QuestionFlag(no, q.questionType(), "OFTEN_SKIPPED", share(q.unanswered(), q.attempts()))); }
+            if (!Double.isNaN(d) && d < 0) { negative.add(no); flags.add(new QuestionFlag(no, q.questionType(), "NEGATIVE_DISCRIMINATION", q.discrimination().toPlainString())); }
             else if (!Double.isNaN(d) && d < 0.2 && rate < 0.95) { weak.add(q.position()); flags.add(new QuestionFlag(q.position(), q.questionType(), "LOW_DISCRIMINATION", q.discrimination().toPlainString())); }
         }
         if (!easy.isEmpty()) strengths.add(en ? "Most students answered %s correctly (85%%+).".formatted(list(Q, easy)) : "Đa số học sinh làm đúng %s (từ 85%%).".formatted(list(Q, easy)));

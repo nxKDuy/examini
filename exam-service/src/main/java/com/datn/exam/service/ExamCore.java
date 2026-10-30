@@ -24,6 +24,7 @@ public class ExamCore {
     private final com.datn.exam.client.SessionClient sessions;
     private final ExamEventPublisher events;
     private final java.time.Clock clock;
+    private final jakarta.persistence.EntityManager entityManager;
     @Value("${exam.internal-token:}") private String internalToken="";
     @Value("${exam.capacity.platform-limit:100}") private int platformLimit = 100;
     @Value("${question-bank.internal-token:}") private String questionToken = "";
@@ -170,24 +171,36 @@ public class ExamCore {
     public int effectiveAttemptLimit(Exam e,UUID user) {
         return Math.addExact(e.getAttemptLimit(),participants.findByExamIdAndUserId(e.getId(),user).map(ExamParticipant::getExtraAttempts).orElse(0));
     }
+    /**
+     * Joining checks eligibility with Session over HTTP. That call runs before the exam row is locked: holding the
+     * lock across it serialised every join of an exam behind a network round-trip and, when a class joined at once,
+     * exhausted the connection pool (30 s timeouts → 500). The lock now only covers the capacity check and insert.
+     */
     public Exam join(UUID id, UUID user, String code) {
-        Exam e=load(id);if(user==null)throw error(401,"Authentication required");
-        if(e.getStatus()!=Exam.Status.PUBLISHED && e.getStatus()!=Exam.Status.OPEN)throw error(409,"Exam is not available to join");
+        if(user==null)throw error(401,"Authentication required");
+        Exam e=exams.findById(id).orElseThrow(() -> error(404,"Exam not found"));
         Instant now=clock.instant();
-        if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))throw error(409,"Join is not available before startAt");
-        if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Exam schedule has ended");
+        joinable(e,now);
         var row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
         if(row!=null && !row.isActive()) throw error(403,"PARTICIPATION_REVOKED");
         if(e.getAccessMode()==Exam.AccessMode.ASSIGNED && row==null) throw error(403,"Not assigned");
         if(e.getAccessMode()==Exam.AccessMode.JOIN_CODE && row==null && !e.getCode().equals(code)) throw error(403,"Invalid join code");
         checkAttempts(e,user,row);
-        if(row==null) {
-            if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>=e.getMaxParticipants()) throw error(409,"Participant capacity full");
-            participants.saveAndFlush(new ExamParticipant(e.getId(),user,e.getAccessMode().name(),null,now));
-            recipientChanged(e,"JOINED",user);
-            events.participantChanged(e,user,"JOINED",user,null,null,counts(e.getId()));
-        }
+        if(row!=null) return e;
+        entityManager.refresh(e,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        joinable(e,now);
+        row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
+        if(row!=null) { if(!row.isActive()) throw error(403,"PARTICIPATION_REVOKED"); return e; }
+        if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>=e.getMaxParticipants()) throw error(409,"Participant capacity full");
+        participants.saveAndFlush(new ExamParticipant(e.getId(),user,e.getAccessMode().name(),null,now));
+        recipientChanged(e,"JOINED",user);
+        events.participantChanged(e,user,"JOINED",user,null,null,counts(e.getId()));
         return e;
+    }
+    private void joinable(Exam e,Instant now){
+        if(e.getStatus()!=Exam.Status.PUBLISHED && e.getStatus()!=Exam.Status.OPEN)throw error(409,"Exam is not available to join");
+        if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))throw error(409,"Join is not available before startAt");
+        if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Exam schedule has ended");
     }
     private void checkAttempts(Exam e,UUID user,ExamParticipant row){
         if(internalToken.isBlank())throw error(503,"Session integration not configured");

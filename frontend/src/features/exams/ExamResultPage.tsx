@@ -114,12 +114,12 @@ function QuestionResult({ q }: { q: ResultItem }) {
   return (
     <li className="card card-pad stack-sm" style={{ boxShadow: 'none' }}>
       <div className="spread">
-        <span className="small">{t('Câu')} {q.position} · {QUESTION_TYPE_LABEL[q.questionType] ?? q.questionType}</span>
+        <span className="small">{t('Câu')} {q.position + 1} · {QUESTION_TYPE_LABEL[q.questionType] ?? q.questionType}</span>
         {q.awardedPoints !== undefined && <span className="mono small">{formatScore(q.awardedPoints)}{q.pointValue !== undefined ? `/${formatScore(q.pointValue)}` : ''}</span>}
       </div>
       <PassageView presentation={q.presentation} />
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{q.questionContent}</p>
-      <MediaList media={q.presentation?.media} label={t('Câu {0}', { 0: q.position })} />
+      <MediaList media={q.presentation?.media} label={t('Câu {0}', { 0: q.position + 1 })} />
       <div className="small" style={{ padding: '8px 10px', background: 'var(--color-subtle)' }}>
         <span className="xsmall muted">{t('Bài làm của bạn')}</span>
         <p className="prewrap">{mine ? (mine.unresolved ? <em>{mine.text}</em> : mine.text) : <em className="muted">{t('Không trả lời')}</em>}</p>

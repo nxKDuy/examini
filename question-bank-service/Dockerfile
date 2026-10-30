@@ -10,6 +10,8 @@ WORKDIR /app
 # Local OCR for document import (contracts/question-import.md): Tesseract with Vietnamese + English data.
 RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-vie tesseract-ocr-data-eng
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Volume mount points must exist and belong to appuser: a new named volume takes this ownership, otherwise it is root-owned and uploads fail.
+RUN mkdir -p /data/question-media && chown -R appuser:appgroup /data
 COPY --from=builder /app/question-bank-service/target/*.jar app.jar
 USER appuser
 ENTRYPOINT ["java", "-jar", "app.jar"]
