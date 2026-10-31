@@ -140,7 +140,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
       </div>}
       {similar && <AiGenerateDialog onClose={() => setSimilar(false)} prefill={{
         topic: t('Câu hỏi tương tự (cùng kiến thức, khác số liệu/ngữ cảnh): {0}', { 0: q.content.slice(0, 380) }),
-        material: [q.presentation?.passage?.content, q.content, ...q.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o.content}`), q.expectedAnswer, q.explanation].filter(Boolean).join('\n').slice(0, 20000),
+        material: [q.presentation?.passage?.content, q.content, ...q.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o.content}${o.correct ? ' ' + t('(đáp án đúng)') : ''}`), q.expectedAnswer, q.explanation].filter(Boolean).join('\n').slice(0, 20000),
         categoryId: q.categoryId, questionTypes: [q.questionType], difficulty: q.difficultyLevel,
       }} />}
       {sharing && <SubmitToOrgDialog questionId={q.id} version={q.questionVersion} onClose={() => setSharing(false)} onDone={text => { setSharing(false); setMessage({ tone: 'success', text }); void qc.invalidateQueries({ queryKey: ['banks'] }) }} />}

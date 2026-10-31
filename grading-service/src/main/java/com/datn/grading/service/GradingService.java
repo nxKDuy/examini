@@ -53,7 +53,7 @@ public class GradingService {
             var grade=QuestionGrade.builder().examResult(result).questionId(q.questionId()).questionVersion(q.questionVersion()).position(q.position())
                     .questionContent(q.content()).questionType(q.questionType()).pointValue(q.points().floatValue()).answerContent(answer).explanation(q.explanation()).presentation(q.presentation()).build();
             if("ESSAY".equals(q.questionType())&&answer!=null&&!answer.isBlank())try{
-                var aiGrade=ai.gradeEssay(q.content(),q.expectedAnswer(),answer,q.points().floatValue());float score=aiGrade.score()*q.points().floatValue();
+                var aiGrade=ai.gradeEssay(AnswerTutor.withPassage(q.presentation(),q.content()),q.expectedAnswer(),answer,q.points().floatValue());float score=aiGrade.score()*q.points().floatValue();
                 validateScore(score,q.points().floatValue());grade.setAutoScore(score);grade.setFeedback(aiGrade.feedback());
             }catch(RuntimeException unavailable){grade.setAutoScore(null);
             }finally{grade.setScore(null);grade.setNeedsReview(true);result.setStatus(ExamResult.Status.NEEDS_REVIEW);}

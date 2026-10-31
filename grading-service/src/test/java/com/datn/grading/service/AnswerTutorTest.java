@@ -77,6 +77,13 @@ class AnswerTutorTest {
         assertTrue(AnswerTutor.prompt(item(List.of("5"), 0f, "4"), false).contains("READING PASSAGE (shared by several questions; the answer may depend on it)\n(none)"));
     }
 
+    @Test void essayPromptGetsThePassageInFront() {
+        assertEquals("Viết đoạn văn.", AnswerTutor.withPassage(null, "Viết đoạn văn."));
+        assertEquals("Viết đoạn văn.", AnswerTutor.withPassage(java.util.Map.of("media", List.of()), "Viết đoạn văn."));
+        assertEquals("READING PASSAGE — Green cities:\nCycle lanes.\n\nTASK:\nViết đoạn văn.",
+                AnswerTutor.withPassage(java.util.Map.of("passage", java.util.Map.of("title", "Green cities", "content", " Cycle lanes. ")), "Viết đoạn văn."));
+    }
+
     @Test void hourlyAllowancePerStudent() {
         var t = tutor(2);
         assertTrue(t.allow(student));

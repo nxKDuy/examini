@@ -135,6 +135,13 @@ public class AnswerTutor {
                 item.answerDisplay() == null || item.answerDisplay().isBlank() ? "(left blank)" : clip(item.answerDisplay(), 3000));
     }
 
+    /** Question text with its shared reading passage in front, for prompts that only take one question string. */
+    public static String withPassage(Map<String, Object> presentation, String content) {
+        if (presentation == null || !(presentation.get("passage") instanceof Map<?, ?> p) || p.get("content") == null) return content;
+        Object title = p.get("title");
+        return "READING PASSAGE" + (title == null ? "" : " — " + title) + ":\n" + clip(String.valueOf(p.get("content")).strip(), 6000) + "\n\nTASK:\n" + content;
+    }
+
     /** The shared reading passage of the question, if any (presentation.passage.title/content). */
     static String passage(SubmissionDto.StudentItem item) {
         if (item.presentation() == null || !(item.presentation().get("passage") instanceof Map<?, ?> p)) return "(none)";
