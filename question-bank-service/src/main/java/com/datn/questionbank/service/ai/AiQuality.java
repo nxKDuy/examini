@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -50,9 +51,42 @@ public final class AiQuality {
 
         var keys = options.stream().map(AiDrafts::key).toList();
         if (keys.stream().anyMatch(k -> CATCH_ALL.matcher(k).find())) flags.add(Flag.CATCH_ALL_OPTION);
-        if (weakDistractors(options.stream().filter(AiQuality::wordy).map(AiQuality::light).toList())) flags.add(Flag.WEAK_DISTRACTORS);
+        if (weakDistractors(options.stream().filter(AiQuality::wordy).map(AiQuality::light).toList()) || numbersTooClose(options)) flags.add(Flag.WEAK_DISTRACTORS);
         if (type == QuestionType.MULTIPLE_CHOICE && answerInStem(stem, keys, correct)) flags.add(Flag.ANSWER_IN_STEM);
+        if (type == QuestionType.MULTIPLE_CHOICE && longestIsKey(options, correct)) flags.add(Flag.LONGEST_IS_KEY);
         return flags;
+    }
+
+    private static final Pattern NUMBER_OPTION = Pattern.compile("^\\s*([-−+]?\\d+(?:[.,]\\d+)?)\\s*([\\p{L}/%°²³·.]*)\\s*$");
+    /**
+     * Two numeric answers in the same unit within 3 % of each other ("0,95 Hz" vs "0,96 Hz"): a rounding difference,
+     * so a careful student can defend both. Exact equality is left to the duplicate check.
+     */
+    static boolean numbersTooClose(List<String> options) {
+        var values = new java.util.ArrayList<double[]>();
+        var units = new java.util.ArrayList<String>();
+        for (String o : options) {
+            Matcher m = NUMBER_OPTION.matcher(o);
+            if (!m.matches()) continue;
+            try { values.add(new double[]{Double.parseDouble(m.group(1).replace(',', '.').replace('−', '-'))}); units.add(m.group(2).toLowerCase(java.util.Locale.ROOT)); }
+            catch (NumberFormatException ignored) {}
+        }
+        for (int i = 0; i < values.size(); i++)
+            for (int j = i + 1; j < values.size(); j++) {
+                double a = values.get(i)[0], b = values.get(j)[0];
+                if (!units.get(i).equals(units.get(j)) || a == b) continue;
+                if (Math.abs(a - b) <= 0.03 * Math.max(Math.abs(a), Math.abs(b))) return true;
+            }
+        return false;
+    }
+
+    /** One key, at least 25 characters, and at least 1.5× as long as every distractor (3+ options). */
+    static boolean longestIsKey(List<String> options, List<Boolean> correct) {
+        if (options.size() < 3 || correct.stream().filter(Boolean.TRUE::equals).count() != 1) return false;
+        int k = correct.indexOf(Boolean.TRUE), key = options.get(k).strip().length();
+        if (key < 25) return false;
+        for (int i = 0; i < options.size(); i++) if (i != k && options.get(i).strip().length() * 1.5 > key) return false;
+        return true;
     }
 
     static boolean nearDuplicate(String key, List<String> others) {

@@ -148,7 +148,8 @@ ImportJob.generation (null on document jobs) = AiGeneration { topic, model, requ
   characters). `difficultyLevel` is the AI's per-item estimate (fallback: the request).
 - **Quality gate** (rule-based, review flags only, each lowers `confidence` by 0.15): `SOURCE_REFERENCE` ("theo đoạn văn trên",
   "according to the passage" in a stem ≤ 400 characters), `CATCH_ALL_OPTION` ("tất cả các đáp án trên", "none of the above"),
-  `WEAK_DISTRACTORS` (worded options ≥ 90 % alike or one inside another; options with digits/math symbols are exempt),
+  `LONGEST_IS_KEY` (single-answer key ≥ 25 characters and ≥ 1.5× every distractor),
+  `WEAK_DISTRACTORS` (worded options ≥ 90 % alike or one inside another; numeric options in the same unit within 3 % of each other),
   `ANSWER_IN_STEM` (the keyed option's words appear in the stem and no distractor's do). `DUPLICATE_OPTION` compares
   options case/space-insensitively but keeps accents and symbols (`x = 1` ≠ `x = −1`).
 - **Key cross-check** (`QB_AI_VERIFY_KEYS`, default true; skipped for `local` output): the first available language model

@@ -12,7 +12,7 @@ export const FLAG_LABEL: Record<string, string> = i18nMap({
   QUESTION_SPLIT_UNCERTAIN: 'Có thể bị tách câu sai', NUMBERING_GAP: 'Số câu bị nhảy', POSSIBLE_MERGED_QUESTIONS: 'Có thể dồn nhiều câu',
   AI_GENERATED: 'Do AI tạo', POSSIBLE_DUPLICATE: 'Có thể trùng câu đã có',
   SOURCE_REFERENCE: 'Nhắc tới tài liệu học sinh không thấy', CATCH_ALL_OPTION: 'Có phương án "tất cả/không có"',
-  WEAK_DISTRACTORS: 'Phương án nhiễu quá giống nhau', ANSWER_IN_STEM: 'Đề bài lộ đáp án', KEY_DISPUTED: 'AI giải lại ra đáp án khác',
+  WEAK_DISTRACTORS: 'Phương án nhiễu quá giống nhau hoặc chỉ khác do làm tròn', ANSWER_IN_STEM: 'Đề bài lộ đáp án', LONGEST_IS_KEY: 'Đáp án đúng dài hơn hẳn (dễ đoán)', KEY_DISPUTED: 'AI giải lại ra đáp án khác',
 })
 
 export const FILTERS: { value: ItemFilter; label: string; count: (s: ImportSummary) => number }[] = i18nMap([

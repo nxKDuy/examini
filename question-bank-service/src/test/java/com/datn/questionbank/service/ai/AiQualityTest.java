@@ -83,4 +83,40 @@ class AiQualityTest {
         return new Candidate("MULTIPLE_CHOICE", stem, List.of(new CandidateOption("Một", true), new CandidateOption("Hai", false),
                 new CandidateOption("Ba", false), new CandidateOption("Bốn", false)), null, null, "EASY", null);
     }
+
+    @Test void longestKeyIsFlaggedOnlyWhenClearlyLonger() {
+        List<Boolean> first = List.of(true, false, false, false);
+        assertTrue(AiQuality.longestIsKey(List.of("Vì lực ma sát nghỉ cân bằng với thành phần trọng lực song song mặt phẳng nghiêng", "Vì vật nhẹ", "Vì không có lực", "Vì mặt phẳng trơn"), first));
+        assertFalse(AiQuality.longestIsKey(List.of("Hà Nội", "Huế", "Đà Nẵng", "Sài Gòn"), first), "short keys are never flagged");
+        assertFalse(AiQuality.longestIsKey(List.of("Lực ma sát nghỉ cân bằng trọng lực", "Lực ma sát trượt lớn hơn trọng lực", "Phản lực vuông góc mặt nghiêng", "Trọng lực bằng không"), first),
+                "similar lengths are fine");
+        var flags = AiQuality.check("Vì sao vật đứng yên trên mặt phẳng nghiêng?", QuestionType.MULTIPLE_CHOICE,
+                List.of("Vì lực ma sát nghỉ cân bằng với thành phần trọng lực song song mặt phẳng nghiêng", "Vì vật nhẹ", "Vì không có lực", "Vì mặt phẳng trơn"), first, List.of(), List.of());
+        assertTrue(flags.contains(Flag.LONGEST_IS_KEY));
+    }
+
+    @Test void keyPositionIsSpreadAndStable() {
+        var counts = new int[4];
+        for (int q = 0; q < 200; q++) {
+            var opts = List.of(new com.datn.questionbank.service.ImportParser.Option("đúng", true, (short) 0), new com.datn.questionbank.service.ImportParser.Option("b", false, (short) 1),
+                    new com.datn.questionbank.service.ImportParser.Option("c", false, (short) 2), new com.datn.questionbank.service.ImportParser.Option("d", false, (short) 3));
+            var out = AiDrafts.balanced(opts, "Câu hỏi số " + q + " về chủ đề kiểm thử");
+            assertEquals(out, AiDrafts.balanced(opts, "Câu hỏi số " + q + " về chủ đề kiểm thử"), "same stem, same order");
+            int at = -1;
+            for (int i = 0; i < 4; i++) { assertEquals(i, out.get(i).displayOrder()); if (out.get(i).correct()) at = i; }
+            counts[at]++;
+            final int key = at;
+            // Rotation keeps the cyclic order of the options.
+            assertEquals(List.of("đúng", "b", "c", "d"), java.util.stream.IntStream.range(0, 4).mapToObj(i -> out.get((key + i) % 4).content()).toList());
+        }
+        for (int c : counts) assertTrue(c > 30, "every slot gets the key sometimes: " + Arrays.toString(counts));
+    }
+
+    @Test void numericOptionsThatOnlyDifferByRoundingAreWeak() {
+        assertTrue(AiQuality.numbersTooClose(List.of("1,00 Hz", "6/π Hz", "0,95 Hz", "0,96 Hz")));
+        assertFalse(AiQuality.numbersTooClose(List.of("1,56 s", "0,78 s", "3,12 s", "2,22 s")), "T, T/2, 2T are real slips");
+        assertFalse(AiQuality.numbersTooClose(List.of("50 cm/s", "50 m/s", "5 cm/s", "500 cm/s")), "different units are compared separately");
+        assertTrue(AiQuality.check("Tần số f bằng", QuestionType.MULTIPLE_CHOICE, List.of("1,00 Hz", "0,50 Hz", "0,95 Hz", "0,96 Hz"),
+                List.of(false, false, true, false), List.of(), List.of()).contains(Flag.WEAK_DISTRACTORS));
+    }
 }

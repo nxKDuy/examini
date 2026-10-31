@@ -25,6 +25,8 @@ public final class ImportParser {
         /** Quality gate (AiQuality): refers to a text the student never sees; an "all/none of the above" option;
          *  options too alike to be real alternatives; the stem gives the answer away. */
         SOURCE_REFERENCE, CATCH_ALL_OPTION, WEAK_DISTRACTORS, ANSWER_IN_STEM,
+        /** The key is clearly the longest option: test-wise students pick it without knowing the answer. */
+        LONGEST_IS_KEY,
         /** A model re-solving the question without the key reached a different answer (AiKeyCheck). */
         KEY_DISPUTED }
     public record Option(String content, boolean correct, short displayOrder) {}

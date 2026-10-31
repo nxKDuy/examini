@@ -59,6 +59,7 @@ public final class AiDrafts {
                     boolean structured = type == QuestionType.FILL_BLANK || type == QuestionType.MATCHING;
                     options.add(new ImportParser.Option(text, structured || Boolean.TRUE.equals(o.correct()), order++));
                 }
+                if (type == QuestionType.MULTIPLE_CHOICE) options = balanced(options, content);
                 long correct = options.stream().filter(ImportParser.Option::correct).count();
                 if (correct == 0 && type != QuestionType.TRUE_FALSE_GROUP) flags.add(Flag.MISSING_CORRECT_ANSWER);
                 if (correct > 1 && (type == QuestionType.MULTIPLE_CHOICE || type == QuestionType.TRUE_FALSE)) flags.add(Flag.MULTIPLE_ANSWERS);
@@ -83,6 +84,24 @@ public final class AiDrafts {
         if (extra > 0) warnings.add("AI trả về thừa " + extra + " câu; chỉ giữ " + requested + " câu đầu");
         if (out.size() < requested) warnings.add("AI chỉ tạo được " + out.size() + "/" + requested + " câu");
         return new Drafts(out, warnings);
+    }
+
+    /**
+     * Language models put the key in the first slots far more often than chance. A single-answer question has its
+     * options rotated (order otherwise kept) so the key lands on a position derived from the stem: spread evenly over
+     * A–D across a batch, and the same on every run for the same question.
+     */
+    static ArrayList<ImportParser.Option> balanced(List<ImportParser.Option> options, String stem) {
+        int n = options.size(), k = -1;
+        for (int i = 0; i < n; i++) if (options.get(i).correct()) { if (k >= 0) return new ArrayList<>(options); k = i; }
+        if (k < 0 || n < 2) return new ArrayList<>(options);
+        int target = Math.floorMod(key(stem).hashCode(), n), shift = Math.floorMod(target - k, n);
+        var out = new ArrayList<ImportParser.Option>(n);
+        for (int i = 0; i < n; i++) {
+            var o = options.get(Math.floorMod(i - shift, n));
+            out.add(new ImportParser.Option(o.content(), o.correct(), (short) i));
+        }
+        return out;
     }
 
     /** Declared type when valid; otherwise inferred from shape, never from content guesses. */

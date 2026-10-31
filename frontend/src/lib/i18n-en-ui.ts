@@ -2481,4 +2481,6 @@ export const EN_UI: Record<string, string> = {
   'Điểm hiện ở đây ngay khi giáo viên công bố.': 'Scores appear here as soon as your teacher releases them.',
   'Nên ôn thêm: dạng {0} ({1}% số điểm).': 'Practise more: {0} ({1}% of marks).',
   'Xem gợi ý ôn tập': 'See study tips',
+  'Đáp án đúng dài hơn hẳn (dễ đoán)': 'The key is clearly the longest (easy to guess)',
+  'Phương án nhiễu quá giống nhau hoặc chỉ khác do làm tròn': 'Distractors too alike or differing only by rounding',
 }

@@ -27,7 +27,8 @@ class AiDraftsTest {
         assertEquals(SourceMethod.AI, p.method());
         assertEquals(AiDrafts.BASE_CONFIDENCE, p.confidence());
         assertEquals(List.of((short) 0, (short) 1, (short) 2, (short) 3), p.options().stream().map(o -> o.displayOrder()).toList());
-        assertTrue(p.options().get(1).correct());
+        assertEquals(1, p.options().stream().filter(o -> o.correct()).count(), "one key, wherever the balancing put it");
+        assertEquals("Lựa chọn B", p.options().stream().filter(o -> o.correct()).findFirst().orElseThrow().content());
         assertTrue(d.warnings().isEmpty());
     }
 

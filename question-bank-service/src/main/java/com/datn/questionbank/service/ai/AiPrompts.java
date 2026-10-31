@@ -14,7 +14,10 @@ final class AiPrompts {
                 Rules:
                 - Write every question, option, answer and explanation in %s.
                 - Each question must be self-contained, unambiguous and test one idea.
-                - MULTIPLE_CHOICE: 4 options, exactly one with correct=true, plausible distractors, no "all of the above"/"none of the above", options must differ.
+                - MULTIPLE_CHOICE: 4 options, exactly one with correct=true, no "all of the above"/"none of the above", options must differ.
+                  Each distractor comes from a real mistake learners make (a typical misconception, a calculation slip, a confused term),
+                  and all options have similar length, grammar and precision so the key cannot be spotted by its form.
+                  Numeric distractors must differ clearly from the key (a wrong formula, a missed factor or unit), never by rounding.
                 - TRUE_FALSE: exactly 2 options, "%s" and "%s", exactly one correct.
                 - SHORT_ANSWER: no options; expectedAnswer is a short exact answer (a word, number or short phrase).
                 - ESSAY: no options; expectedAnswer is a brief marking guide.
@@ -24,7 +27,7 @@ final class AiPrompts {
                 - MATCHING: 3-6 options, each one correct pair written "left => right" with correct=true (e.g. "Việt Nam => Hà Nội"); every left and every right is distinct; the stem says what to match.
                 - SPEAKING: no options; an oral task the student answers aloud in about 1-2 minutes; expectedAnswer is a brief marking guide (content, fluency, vocabulary).
                 - Write mathematics, chemistry and physics in plain Unicode text (x², x³, √x, ≤, ≥, ≠, π, Δ, H₂O, →), never LaTeX: no $…$, \\frac, ^{…} or _{…}.
-                - explanation: why the answer is correct, 1-3 sentences.
+                - explanation: why the answer is correct and, for choice questions, why the most tempting wrong option is wrong; 1-3 sentences.
                 - difficulty: your honest estimate (EASY, MEDIUM, HARD) of how hard the question is for the target learners.
                 - When SOURCE MATERIAL is given, every question must be answerable from it; do not invent facts outside it.
                 - Do not repeat or trivially reword any EXISTING QUESTION.
