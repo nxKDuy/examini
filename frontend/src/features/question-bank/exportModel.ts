@@ -8,9 +8,11 @@ export interface ExportQuestion {
   expectedAnswer?: string | null; explanation?: string | null
   presentation?: { passage?: { title?: string | null; content: string } | null } | null
 }
+import { alternatives, pairOf } from './structuredModel'
+
 export type ExportFormat = 'csv' | 'moodle' | 'aiken'
 
-const TYPE_WORD: Record<string, string> = { MULTIPLE_CHOICE: 'Trắc nghiệm', MULTIPLE_RESPONSE: 'Nhiều đáp án', TRUE_FALSE_GROUP: 'Đúng/Sai nhiều ý', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói' }
+const TYPE_WORD: Record<string, string> = { MULTIPLE_CHOICE: 'Trắc nghiệm', MULTIPLE_RESPONSE: 'Nhiều đáp án', TRUE_FALSE_GROUP: 'Đúng/Sai nhiều ý', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói', FILL_BLANK: 'Điền vào chỗ trống', MATCHING: 'Nối cột' }
 const LEVEL_WORD: Record<string, string> = { EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' }
 const LETTERS = 'ABCDEFGH'
 const sorted = (q: ExportQuestion) => [...q.options].sort((a, b) => a.displayOrder - b.displayOrder)
@@ -24,6 +26,8 @@ function answerOf(q: ExportQuestion): string {
   const opts = sorted(q)
   if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') return opts.map((o, i) => (o.correct ? LETTERS[i] ?? '' : '')).filter(Boolean).join(',')
   if (q.questionType === 'TRUE_FALSE_GROUP') return opts.map(o => (o.correct ? 'Đ' : 'S')).join(', ')
+  if (q.questionType === 'FILL_BLANK') return opts.map(o => o.content).join('; ')
+  if (q.questionType === 'MATCHING') return ''
   if (q.questionType === 'TRUE_FALSE') { const c = opts.find(o => o.correct); return c ? (c.content.trim().toLowerCase() === 'sai' || c.content.trim().toLowerCase() === 'false' ? 'Sai' : 'Đúng') : '' }
   return q.expectedAnswer ?? ''
 }
@@ -32,7 +36,7 @@ const csvCell = (v: string) => (/[",;\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}
 export function toCsv(list: ExportQuestion[]): string {
   const head = ['Câu hỏi', 'Loại', 'Độ khó', ...LETTERS.split(''), 'Đáp án', 'Giải thích']
   const rows = list.map(q => {
-    const opts = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP'].includes(q.questionType) ? sorted(q).slice(0, 8).map(o => o.content) : []
+    const opts = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP', 'MATCHING'].includes(q.questionType) ? sorted(q).slice(0, 8).map(o => o.content) : []
     return [fullText(q), TYPE_WORD[q.questionType] ?? q.questionType, LEVEL_WORD[q.difficultyLevel] ?? '',
       ...Array.from({ length: 8 }, (_, i) => opts[i] ?? ''), answerOf(q), q.explanation ?? '']
   })
@@ -59,6 +63,16 @@ export function toMoodleXml(list: ExportQuestion[], category = 'EXAMINI'): strin
         out.push(`  <question type="truefalse"><name>${plain(`${q.content.replace(/\s+/g, ' ').slice(0, 50)} (${label})`)}</name><questiontext format="html">${html(`${fullText(q)}\n${label}) ${o.content}`)}</questiontext>${fb}<defaultgrade>1</defaultgrade>`,
           `    <answer fraction="${o.correct ? 100 : 0}">${plain('true')}</answer>`, `    <answer fraction="${o.correct ? 0 : 100}">${plain('false')}</answer>`, '  </question>')
       })
+    } else if (q.questionType === 'FILL_BLANK') {
+      // Moodle "Embedded answers (Cloze)": each gap becomes {1:SHORTANSWER:=answer~=other spelling}.
+      const esc = (s: string) => s.replace(/[}#~/"\\=]/g, m => '\\' + m)
+      let k = 0
+      const cloze = fullText(q).replace(/_{3,}/g, () => { const alts = alternatives(opts[k++]?.content); return `{1:SHORTANSWER:${alts.map(a => '=' + esc(a)).join('~')}}` })
+      out.push(`  <question type="cloze">${name}<questiontext format="html">${html(cloze)}</questiontext>${fb}</question>`)
+    } else if (q.questionType === 'MATCHING') {
+      out.push(`  <question type="matching">${name}${text}${fb}<defaultgrade>1</defaultgrade><shuffleanswers>true</shuffleanswers>`)
+      for (const o of opts) { const p = pairOf(o.content); if (p) out.push(`    <subquestion format="html">${html(p.left)}<answer>${plain(p.right)}</answer></subquestion>`) }
+      out.push('  </question>')
     } else if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') {
       const correct = opts.filter(o => o.correct).length || 1
       const single = correct === 1

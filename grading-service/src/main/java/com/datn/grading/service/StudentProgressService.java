@@ -88,7 +88,8 @@ public class StudentProgressService {
             "MULTIPLE_CHOICE", new String[]{"trắc nghiệm", "multiple choice"}, "TRUE_FALSE", new String[]{"đúng/sai", "true/false"},
             "SHORT_ANSWER", new String[]{"trả lời ngắn", "short answer"}, "ESSAY", new String[]{"tự luận", "essay"},
             "SPEAKING", new String[]{"nói", "speaking"}, "MULTIPLE_RESPONSE", new String[]{"nhiều đáp án", "multiple answers"},
-            "TRUE_FALSE_GROUP", new String[]{"đúng/sai nhiều ý", "true/false statements"});
+            "TRUE_FALSE_GROUP", new String[]{"đúng/sai nhiều ý", "true/false statements"},
+            "FILL_BLANK", new String[]{"điền vào chỗ trống", "fill in the blanks"}, "MATCHING", new String[]{"nối cột", "matching"});
 
     /** Study tips from the student's own figures; ai=true lets the model phrase them (it only gets these figures). */
     @Transactional(readOnly = true)
@@ -139,6 +140,9 @@ public class StudentProgressService {
                 if ("TRUE_FALSE_GROUP".equals(t.questionType()) && t.percent() < 60)
                     tips.add(new Tip("HABIT", en ? "For true/false statements, judge each statement on its own and check signs, units and words like “always”."
                             : "Với câu Đúng/Sai nhiều ý, xét từng ý độc lập, để ý dấu, đơn vị và các từ như “luôn”, “mọi”."));
+                if ("FILL_BLANK".equals(t.questionType()) && t.percent() < 60)
+                    tips.add(new Tip("HABIT", en ? "For fill-in-the-blank questions, read the whole sentence first and check spelling and the form of the word."
+                            : "Với câu điền vào chỗ trống, đọc cả câu trước khi điền, kiểm tra chính tả và dạng của từ."));
                 if ("ESSAY".equals(t.questionType()) && t.percent() < 60)
                     tips.add(new Tip("HABIT", en ? "For essays, outline first (opening, 2–3 points, conclusion) and answer exactly what is asked."
                             : "Với câu tự luận, lập dàn ý trước (mở bài, 2–3 ý chính, kết luận) và trả lời đúng trọng tâm câu hỏi."));

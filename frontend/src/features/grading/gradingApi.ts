@@ -2,7 +2,7 @@ import type { Presentation } from '../question-bank/questionApi'
 import api from '../../lib/api'
 
 export type GradingStatus = 'PENDING' | 'NEEDS_REVIEW' | 'GRADED'
-export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP'
+export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP' | 'FILL_BLANK' | 'MATCHING'
 
 /** Contract: manual-grading-api.md (MAIN lock 0d6090e). Scores are the draft/current result; publishedScore is what the Student sees. */
 export interface Submission {

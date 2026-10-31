@@ -111,4 +111,22 @@ class LocalQuestionGeneratorTest {
         var drafts = AiDrafts.build(List.of(group, multi), 2, DifficultyLevel.MEDIUM, List.of());
         assertTrue(drafts.items().stream().noneMatch(d -> d.flags().contains(Flag.MULTIPLE_ANSWERS) || d.flags().contains(Flag.MISSING_CORRECT_ANSWER)));
     }
+
+    @Test void clozeAndMatchingDraftsAreValidQuestions() {
+        var fill = gen.generate(prompt(HISTORY, 1, QuestionType.FILL_BLANK)).candidates().get(0);
+        assertEquals("FILL_BLANK", fill.type());
+        assertEquals(fill.options().size(), com.datn.questionbank.service.StructuredTypes.blanks(fill.content()));
+        var match = gen.generate(prompt(HISTORY, 1, QuestionType.MATCHING)).candidates().get(0);
+        assertEquals("MATCHING", match.type());
+        assertTrue(match.options().size() >= 3);
+        assertTrue(match.options().stream().allMatch(o -> com.datn.questionbank.service.StructuredTypes.pair(o.content()) != null));
+        var drafts = AiDrafts.build(List.of(fill, match), 2, DifficultyLevel.MEDIUM, List.of());
+        for (var d : drafts.items()) {
+            assertTrue(d.options().stream().allMatch(com.datn.questionbank.service.ImportParser.Option::correct));
+            var q = com.datn.questionbank.entity.Question.builder().category(new com.datn.questionbank.entity.Category()).content(d.content())
+                    .questionType(d.type()).difficultyLevel(DifficultyLevel.MEDIUM).build();
+            for (var o : d.options()) q.getOptions().add(com.datn.questionbank.entity.QuestionOption.builder().question(q).content(o.content()).correct(o.correct()).displayOrder(o.displayOrder()).build());
+            com.datn.questionbank.service.QuestionValidation.validate(q);
+        }
+    }
 }

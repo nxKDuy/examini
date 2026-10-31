@@ -27,7 +27,9 @@ public final class QuestionValidation {
         }
         var options = q.getOptions();
         var type = q.getQuestionType();
-        if (isChoice(type)) {
+        if (type == Question.QuestionType.FILL_BLANK || type == Question.QuestionType.MATCHING) {
+            structured(q);
+        } else if (isChoice(type)) {
             if (options.size() < 2 || options.size() > 26) throw new IllegalArgumentException("Cần 2–26 lựa chọn");
             if (type == Question.QuestionType.TRUE_FALSE && options.size() != 2)
                 throw new IllegalArgumentException("Đúng/Sai cần đúng 2 lựa chọn");
@@ -54,10 +56,43 @@ public final class QuestionValidation {
                 text(q.getExpectedAnswer(), 10000, "Đáp án mong đợi");
         }
     }
-    /** Types answered by picking options (the answer key lives in options). */
+    /** FILL_BLANK: one option per ___ gap, in order. MATCHING: 2–10 "left => right" pairs, no side repeated. */
+    private static void structured(Question q) {
+        var options = q.getOptions();
+        var positions = new HashSet<Short>();
+        for (var o : options) {
+            text(o.getContent(), 1000, "Nội dung lựa chọn");
+            if (o.getDisplayOrder() < 0 || !positions.add(o.getDisplayOrder()))
+                throw new IllegalArgumentException("Thứ tự lựa chọn phải không âm và không trùng");
+        }
+        if (q.getExpectedAnswer() != null && !q.getExpectedAnswer().isBlank())
+            throw new IllegalArgumentException("Dạng câu này giữ đáp án trong options");
+        if (q.getQuestionType() == Question.QuestionType.FILL_BLANK) {
+            int blanks = StructuredTypes.blanks(q.getContent());
+            if (blanks < 1 || blanks > StructuredTypes.MAX_BLANKS)
+                throw new IllegalArgumentException("Điền vào chỗ trống cần 1–" + StructuredTypes.MAX_BLANKS + " chỗ trống, đánh dấu bằng ___");
+            if (options.size() != blanks)
+                throw new IllegalArgumentException("Số đáp án (" + options.size() + ") phải bằng số chỗ trống ___ (" + blanks + ")");
+            for (var o : options)
+                if (StructuredTypes.alternatives(o.getContent()).isEmpty()) throw new IllegalArgumentException("Mỗi chỗ trống cần ít nhất một đáp án");
+        } else {
+            if (options.size() < 2 || options.size() > StructuredTypes.MAX_PAIRS)
+                throw new IllegalArgumentException("Nối cột cần 2–" + StructuredTypes.MAX_PAIRS + " cặp");
+            var lefts = new HashSet<String>();
+            var rights = new HashSet<String>();
+            for (var o : options) {
+                var pair = StructuredTypes.pair(o.getContent());
+                if (pair == null) throw new IllegalArgumentException("Mỗi cặp nối phải có dạng \"vế trái => vế phải\"");
+                if (!lefts.add(pair[0].toLowerCase(java.util.Locale.ROOT)) || !rights.add(pair[1].toLowerCase(java.util.Locale.ROOT)))
+                    throw new IllegalArgumentException("Các vế trong câu nối cột không được trùng nhau");
+            }
+        }
+    }
+    /** Types whose answer key lives in options. */
     public static boolean isChoice(Question.QuestionType t) {
         return t == Question.QuestionType.MULTIPLE_CHOICE || t == Question.QuestionType.TRUE_FALSE
-                || t == Question.QuestionType.MULTIPLE_RESPONSE || t == Question.QuestionType.TRUE_FALSE_GROUP;
+                || t == Question.QuestionType.MULTIPLE_RESPONSE || t == Question.QuestionType.TRUE_FALSE_GROUP
+                || t == Question.QuestionType.FILL_BLANK || t == Question.QuestionType.MATCHING;
     }
     private static void text(String value, int max, String name) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " không được trống");

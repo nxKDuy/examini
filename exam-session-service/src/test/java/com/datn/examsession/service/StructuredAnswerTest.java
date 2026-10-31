@@ -35,4 +35,18 @@ class StructuredAnswerTest {
         bad("TRUE_FALSE_GROUP", "not json");
         ok("ESSAY", "free text {");
     }
+
+    @Test void fillBlankMapsGapsToTextAndMatchingUsesTheListedTargets() {
+        ok("FILL_BLANK", "{\"" + a + "\":\"Hà Nội\",\"" + b + "\":\"\"}");
+        ok("FILL_BLANK", "{}");
+        bad("FILL_BLANK", "{\"" + a + "\":true}");
+        bad("FILL_BLANK", "{\"" + UUID.randomUUID() + "\":\"x\"}");
+        bad("FILL_BLANK", "{\"" + a + "\":\"" + "x".repeat(501) + "\"}");
+        bad("FILL_BLANK", "[]");
+        var match = new ExamClient.Question(UUID.randomUUID(), 1, "MATCHING", "Nối", List.of(new ExamClient.Option(a, "Việt Nam", 0), new ExamClient.Option(b, "Pháp", 1)),
+                BigDecimal.ONE, 0, Map.of("matchTargets", List.of("Hà Nội", "Paris")));
+        SessionService.checkStructured(json, match, "{\"" + a + "\":\"Paris\",\"" + b + "\":\"Paris\"}"); // a target may be picked twice; it scores once
+        assertThrows(ResponseStatusException.class, () -> SessionService.checkStructured(json, match, "{\"" + a + "\":\"Tokyo\"}"));
+        assertThrows(ResponseStatusException.class, () -> SessionService.checkStructured(json, match, "{\"" + c + "\":\"Paris\"}"));
+    }
 }

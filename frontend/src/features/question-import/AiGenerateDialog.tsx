@@ -14,7 +14,7 @@ import { t, useT } from '../../lib/i18n'
 import Select from '../../components/Select'
 import './import.css'
 
-const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE', 'TRUE_FALSE_GROUP', 'SHORT_ANSWER', 'ESSAY', 'SPEAKING']
+const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE', 'TRUE_FALSE_GROUP', 'SHORT_ANSWER', 'FILL_BLANK', 'MATCHING', 'ESSAY', 'SPEAKING']
 /** Bloom's taxonomy as Vietnamese teachers name it (mức độ nhận thức). */
 const BLOOM: { value: CognitiveLevel | ''; label: () => string }[] = [
   { value: '', label: () => t('Không chỉ định') },

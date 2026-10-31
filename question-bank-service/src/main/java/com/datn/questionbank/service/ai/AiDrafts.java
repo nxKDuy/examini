@@ -53,8 +53,11 @@ public final class AiDrafts {
                 for (var o : rawOptions) {
                     if (options.size() >= MAX_OPTIONS) { flags.add(Flag.CONTENT_TRUNCATED); break; }
                     String text = clip(AiText.plain(o.content()).strip(), MAX_OPTION);
-                    if (!texts.add(AiQuality.light(text))) flags.add(Flag.DUPLICATE_OPTION);
-                    options.add(new ImportParser.Option(text, Boolean.TRUE.equals(o.correct()), order++));
+                    if (type == QuestionType.MATCHING) { String pair = com.datn.questionbank.service.StructuredTypes.normalizePair(text); if (pair != null) text = pair; }
+                    if (!texts.add(AiQuality.light(text)) && type != QuestionType.FILL_BLANK) flags.add(Flag.DUPLICATE_OPTION);
+                    // Gap answers and matching pairs are all part of the key.
+                    boolean structured = type == QuestionType.FILL_BLANK || type == QuestionType.MATCHING;
+                    options.add(new ImportParser.Option(text, structured || Boolean.TRUE.equals(o.correct()), order++));
                 }
                 long correct = options.stream().filter(ImportParser.Option::correct).count();
                 if (correct == 0 && type != QuestionType.TRUE_FALSE_GROUP) flags.add(Flag.MISSING_CORRECT_ANSWER);

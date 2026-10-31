@@ -20,16 +20,20 @@ public final class ImportTemplates {
             List.of("Viết đoạn văn 150 chữ về bảo vệ môi trường.", "Tự luận", "Khó", "", "", "", "", "Có mở bài, 2 ý chính, kết bài", ""),
             List.of("Introduce yourself in one minute.", "Nói", "Trung bình", "", "", "", "", "", "Chấm phát âm, độ trôi chảy, từ vựng."),
             List.of("Những số nào là số nguyên tố?", "Nhiều đáp án", "Trung bình", "2", "4", "7", "9", "A, C", "Số nguyên tố chỉ có hai ước là 1 và chính nó."),
-            List.of("Cho hàm số y = x² − 4x + 3. Mỗi nhận định sau đúng hay sai?", "Đúng/Sai nhiều ý", "Khó", "Đồ thị cắt trục tung tại điểm (0; 3).", "Hàm số đạt giá trị nhỏ nhất bằng −1.", "Hàm số đồng biến trên (−∞; 2).", "Phương trình y = 0 có hai nghiệm x = 1 và x = 3.", "Đ, Đ, S, Đ", "Đỉnh I(2; −1), hàm số nghịch biến trên (−∞; 2)."));
+            List.of("Cho hàm số y = x² − 4x + 3. Mỗi nhận định sau đúng hay sai?", "Đúng/Sai nhiều ý", "Khó", "Đồ thị cắt trục tung tại điểm (0; 3).", "Hàm số đạt giá trị nhỏ nhất bằng −1.", "Hàm số đồng biến trên (−∞; 2).", "Phương trình y = 0 có hai nghiệm x = 1 và x = 3.", "Đ, Đ, S, Đ", "Đỉnh I(2; −1), hàm số nghịch biến trên (−∞; 2)."),
+            List.of("Thủ đô của Việt Nam là ___, Cách mạng tháng Tám thành công năm ___.", "Điền vào chỗ trống", "Dễ", "", "", "", "", "Hà Nội; 1945", "Nhiều đáp án được chấp nhận cho một chỗ trống: viết cách nhau bằng dấu |, ví dụ TP.HCM | Sài Gòn."),
+            List.of("Nối mỗi nước với thủ đô của nước đó.", "Nối cột", "Trung bình", "Việt Nam => Hà Nội", "Nhật Bản => Tokyo", "Pháp => Paris", "Ai Cập => Cairo", "", "Mỗi cặp nối đúng được một phần điểm."));
     static final List<String> GUIDE = List.of(
             "HƯỚNG DẪN NHẬP CÂU HỎI TỪ EXCEL",
             "1. Mỗi dòng ở trang \"Câu hỏi\" là một câu. Giữ nguyên dòng tiêu đề; xóa các dòng ví dụ trước khi nhập.",
-            "2. Cột Loại: Trắc nghiệm, Nhiều đáp án, Đúng/Sai, Đúng/Sai nhiều ý, Trả lời ngắn, Tự luận, Nói. Để trống thì hệ thống tự đoán (có phương án → trắc nghiệm).",
+            "2. Cột Loại: Trắc nghiệm, Nhiều đáp án, Đúng/Sai, Đúng/Sai nhiều ý, Trả lời ngắn, Điền vào chỗ trống, Nối cột, Tự luận, Nói. Để trống thì hệ thống tự đoán (có phương án → trắc nghiệm).",
             "3. Cột Độ khó: Dễ (Nhận biết), Trung bình (Thông hiểu), Khó (Vận dụng). Để trống dùng độ khó mặc định khi tải lên.",
             "4. Trắc nghiệm: điền phương án vào cột A, B, C, D (thêm cột E, F… nếu cần); cột Đáp án ghi chữ cái đúng, ví dụ B.",
             "5. Đúng/Sai: cột Đáp án ghi Đúng hoặc Sai (không cần cột A–D).",
             "5b. Nhiều đáp án: điền phương án vào A, B, C…; cột Đáp án ghi mọi chữ cái đúng, ví dụ A, C. Thí sinh phải chọn đủ và đúng mới được điểm.",
             "5c. Đúng/Sai nhiều ý (kiểu đề THPT 2025): cột A–D là các ý a), b), c), d); cột Đáp án ghi Đ/S theo thứ tự, ví dụ Đ, S, Đ, Đ. Điểm theo số ý đúng: 1 ý 10%, 2 ý 25%, 3 ý 50%, 4 ý 100%.",
+            "5d. Điền vào chỗ trống: trong câu hỏi đánh dấu mỗi chỗ trống bằng ___ (ba dấu gạch dưới); cột Đáp án ghi đáp án từng chỗ theo thứ tự, cách nhau bằng dấu ; (ví dụ Hà Nội; 1945). Một chỗ trống chấp nhận nhiều cách viết thì ngăn bằng dấu |. Điểm chia đều cho các chỗ trống.",
+            "5e. Nối cột: mỗi cột A, B, C… là một cặp đúng viết dạng vế trái => vế phải (ví dụ Việt Nam => Hà Nội). Khi thi, vế phải được xáo trộn; điểm chia đều cho các cặp.",
             "6. Trả lời ngắn: cột Đáp án ghi đáp án chính xác. Tự luận/Nói: cột Đáp án (nếu có) là gợi ý chấm.",
             "7. Ảnh, file nghe và bài đọc dùng chung thêm sau khi nhập, ở màn hình sửa câu hỏi.",
             "8. Sau khi tải lên, mọi câu được đưa vào màn hình duyệt: kiểm tra, sửa rồi mới nhập vào kho.");
@@ -50,7 +54,7 @@ public final class ImportTemplates {
             for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
             sheet.createFreezePane(0, 1);
             var dv = sheet.getDataValidationHelper();
-            var types = dv.createValidation(dv.createExplicitListConstraint(new String[]{"Trắc nghiệm", "Nhiều đáp án", "Đúng/Sai", "Đúng/Sai nhiều ý", "Trả lời ngắn", "Tự luận", "Nói"}), new CellRangeAddressList(1, 1000, 1, 1));
+            var types = dv.createValidation(dv.createExplicitListConstraint(new String[]{"Trắc nghiệm", "Nhiều đáp án", "Đúng/Sai", "Đúng/Sai nhiều ý", "Trả lời ngắn", "Điền vào chỗ trống", "Nối cột", "Tự luận", "Nói"}), new CellRangeAddressList(1, 1000, 1, 1));
             types.setShowErrorBox(false); sheet.addValidationData(types);
             var levels = dv.createValidation(dv.createExplicitListConstraint(new String[]{"Dễ", "Trung bình", "Khó"}), new CellRangeAddressList(1, 1000, 2, 2));
             levels.setShowErrorBox(false); sheet.addValidationData(levels);
@@ -69,6 +73,8 @@ public final class ImportTemplates {
             "Tùy chọn: \"Giải thích:\", \"Mức độ: Dễ / Trung bình / Khó\", \"Loại: Nói\" (câu nói) hoặc \"Loại: Tự luận\".",
             "Nhiều đáp án: thêm dòng \"Loại: Nhiều đáp án\" và ghi mọi chữ cái đúng, ví dụ \"Đáp án: A, C\".",
             "Đúng/Sai nhiều ý (kiểu THPT 2025): các ý viết a) b) c) d), đáp án \"Đáp án: a) Đ, b) S, c) Đ, d) Đ\".",
+            "Điền vào chỗ trống: đánh dấu chỗ trống bằng ___, thêm \"Loại: Điền vào chỗ trống\" và ghi \"Đáp án: Hà Nội; 1945\" (dấu | cho nhiều cách viết).",
+            "Nối cột: thêm \"Loại: Nối cột\", mỗi phương án là một cặp đúng \"A. Việt Nam => Hà Nội\".",
             "Có thể lưu file này thành PDF rồi tải lên; PDF scan/ảnh chụp cũng được (hệ thống nhận chữ bằng OCR, cần duyệt kỹ hơn).");
 
     public static byte[] word() {
@@ -85,7 +91,9 @@ public final class ImportTemplates {
                     {"Câu 5: Introduce yourself in one minute.", "Loại: Nói", "Giải thích: Chấm phát âm, độ trôi chảy, từ vựng.", "Mức độ: Trung bình"},
                     {"Câu 6: Những số nào là số nguyên tố?", "Loại: Nhiều đáp án", "A. 2", "B. 4", "C. 7", "D. 9", "Đáp án: A, C", "Mức độ: Trung bình"},
                     {"Câu 7: Cho hàm số y = x² − 4x + 3. Mỗi nhận định sau đúng hay sai?", "a) Đồ thị cắt trục tung tại điểm (0; 3).", "b) Hàm số đạt giá trị nhỏ nhất bằng −1.",
-                            "c) Hàm số đồng biến trên (−∞; 2).", "d) Phương trình y = 0 có hai nghiệm x = 1 và x = 3.", "Đáp án: a) Đ, b) Đ, c) S, d) Đ", "Mức độ: Khó"}};
+                            "c) Hàm số đồng biến trên (−∞; 2).", "d) Phương trình y = 0 có hai nghiệm x = 1 và x = 3.", "Đáp án: a) Đ, b) Đ, c) S, d) Đ", "Mức độ: Khó"},
+                    {"Câu 8: Thủ đô của Việt Nam là ___, Cách mạng tháng Tám thành công năm ___.", "Loại: Điền vào chỗ trống", "Đáp án: Hà Nội; 1945", "Mức độ: Dễ"},
+                    {"Câu 9: Nối mỗi nước với thủ đô của nước đó.", "Loại: Nối cột", "A. Việt Nam => Hà Nội", "B. Nhật Bản => Tokyo", "C. Pháp => Paris", "D. Ai Cập => Cairo", "Mức độ: Trung bình"}};
             for (var b : blocks) {
                 for (int i = 0; i < b.length; i++) { var p = doc.createParagraph(); var r = p.createRun(); r.setText(b[i]); if (i == 0) r.setBold(true); }
                 doc.createParagraph();

@@ -6,7 +6,7 @@ have none.
 
 ## Question types
 
-`MULTIPLE_CHOICE | TRUE_FALSE | SHORT_ANSWER | ESSAY | SPEAKING | MULTIPLE_RESPONSE | TRUE_FALSE_GROUP`.
+`MULTIPLE_CHOICE | TRUE_FALSE | SHORT_ANSWER | ESSAY | SPEAKING | MULTIPLE_RESPONSE | TRUE_FALSE_GROUP | FILL_BLANK | MATCHING`.
 
 - `MULTIPLE_RESPONSE`: 2–26 options, at least one correct. Answer = JSON array of option ids (`["id1","id3"]`).
   All or nothing: full points only for exactly the correct set.
@@ -16,6 +16,22 @@ have none.
   Statements keep their order (never shuffled) and are labelled a), b), c), d).
 - Imports: type words `Nhiều đáp án`, `Đúng/Sai nhiều ý`; keys `A, C` and `Đ, S, Đ, Đ` / `a) Đ b) S …`
   (Word/PDF statements may be written `a) …`).
+- `FILL_BLANK` (điền vào chỗ trống): the stem marks 1–20 gaps with runs of three or more underscores (`___`).
+  Option *i* (display order) holds the accepted answers of gap *i*, alternatives separated by `|`
+  (`"Hà Nội | Ha Noi"`); every option is `correct=true`; no `expectedAnswer`. Answer = JSON object option id → typed
+  text (≤ 500 chars each). A gap is right when the text equals one alternative ignoring case, extra spaces and Unicode
+  form. Score = points × gaps right / gaps. Gaps are never shuffled; the safe (student) snapshot sends each option with
+  empty `content`.
+- `MATCHING` (nối cột): 2–10 options, each one correct pair written `"left => right"`; lefts are distinct and rights
+  are distinct (case-insensitive). The safe snapshot sends each option with only its left item as `content` and adds
+  `presentation.matchTargets`: the right items sorted alphabetically. Answer = JSON object option id → one of
+  `matchTargets` (the same target may be chosen twice; it only scores where it belongs). Score = points × pairs right
+  / pairs.
+- Imports: type words `Điền vào chỗ trống` / `Điền khuyết`, `Nối cột`; gap answers in the answer cell or line
+  `Hà Nội; 1945` (or one option per gap); pairs as options `A. Việt Nam => Hà Nội` (`→`, `->` accepted).
+  Without a type word, all-pair options mean MATCHING and a stem with *n* > 1 gaps plus *n* answers means FILL_BLANK.
+- Grading `ItemResponse.selectedOptionContent` is readable: FILL_BLANK `"(1) Hà Nội; (2) 1954"`, MATCHING
+  `"Việt Nam → Hà Nội; Pháp → —"`; the revealed key reads `"(1) Hà Nội / Ha Noi"` and `"Việt Nam → Hà Nội"`.
 - Grading `ItemResponse.selectedOptionContent` is readable ("2; 7", "a) Đúng; b) Sai; …"); grading items and student
   result items now carry the question `presentation`.
  `SPEAKING` has no options; the student records a

@@ -113,7 +113,7 @@ class QuestionImportPersistenceTest {
         var sheet=run("mau.xlsx",ImportTemplates.excel(),category);
         assertEquals(Status.READY,sheet.status());assertEquals(FileKind.XLSX,sheet.fileKind());
         var rows=items(sheet.id(),ItemFilter.ALL);
-        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP),
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP,QuestionType.FILL_BLANK,QuestionType.MATCHING),
                 rows.stream().map(ImportItemResponse::questionType).toList());
         assertTrue(rows.get(0).options().get(0).correct());assertEquals(4,rows.get(0).options().size());
         assertTrue(rows.get(1).options().get(0).correct());assertEquals("Đúng",rows.get(1).options().get(0).content());
@@ -122,7 +122,9 @@ class QuestionImportPersistenceTest {
         assertTrue(rows.stream().allMatch(ImportItemResponse::valid));
         var mr=rows.get(5).options();assertEquals(List.of(true,false,true,false),mr.stream().map(ImportOption::correct).toList());
         var tfg=rows.get(6).options();assertEquals(List.of(true,true,false,true),tfg.stream().map(ImportOption::correct).toList());
-        var result=imports.importItems(sheet.id(),null,owner);assertEquals(7,result.imported().size());
+        var result=imports.importItems(sheet.id(),null,owner);assertEquals(9,result.imported().size());
+        var matching=questionRepo.findById(result.imported().get(8).questionId()).orElseThrow();
+        assertEquals("Việt Nam => Hà Nội",matching.getOptions().get(0).getContent());
         var speaking=questionRepo.findById(result.imported().get(4).questionId()).orElseThrow();
         assertEquals(QuestionType.SPEAKING,speaking.getQuestionType());assertEquals(120,speaking.getPresentation().maxRecordSeconds());
 
@@ -134,7 +136,7 @@ class QuestionImportPersistenceTest {
                 wordRows.get(6).options().stream().map(ImportOption::content).toList());
         assertEquals(List.of(true,true,false,true),wordRows.get(6).options().stream().map(ImportOption::correct).toList());
         assertTrue(wordRows.stream().allMatch(ImportItemResponse::valid),()->wordRows.toString());
-        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP),
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP,QuestionType.FILL_BLANK,QuestionType.MATCHING),
                 items(word.id(),ItemFilter.ALL).stream().map(ImportItemResponse::questionType).toList());
 
         String csv="\uFEFFCâu hỏi;Loại;Độ khó;A;B;Đáp án\nMặt trời mọc ở hướng nào?;trắc nghiệm;dễ;Đông;Tây;A\nThiếu đáp án;Trắc nghiệm;;X;Y;\n";

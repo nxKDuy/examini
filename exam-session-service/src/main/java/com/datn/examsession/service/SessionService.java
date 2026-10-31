@@ -67,7 +67,7 @@ public class SessionService {
         if(questions.isEmpty())throw error(409,"Published snapshot unavailable");
         if(exam.shuffleQuestions()){var mixed=shuffleKeepingPassages(questions,new Random());questions.clear();questions.addAll(mixed);}
         // True/false statements keep their a), b), c), d) order, like the printed exam.
-        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);if("TRUE_FALSE_GROUP".equals(q.questionType()))continue;var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position(),q.presentation()));}
+        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);if(Set.of("TRUE_FALSE_GROUP","FILL_BLANK").contains(q.questionType()))continue;var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position(),q.presentation()));}
         var admission=exams.claimStart(examId,reservation.admissionId(),user,token);
         Instant now=admission.startedAt();
         var s=ExamSession.builder().examId(examId).userId(user).startTime(LocalDateTime.ofInstant(now,ZoneOffset.UTC))
@@ -147,9 +147,13 @@ public class SessionService {
     /**
      * MULTIPLE_RESPONSE: a JSON array of distinct option ids, e.g. ["id1","id3"].
      * TRUE_FALSE_GROUP: a JSON object option id -> true/false; statements left out are unanswered.
+     * FILL_BLANK: a JSON object gap (option) id -> typed text, each at most 500 characters.
+     * MATCHING: a JSON object left item (option) id -> one of presentation.matchTargets.
      */
     static void checkStructured(com.fasterxml.jackson.databind.ObjectMapper json,ExamClient.Question q,String content){
         boolean multi="MULTIPLE_RESPONSE".equals(q.questionType()),group="TRUE_FALSE_GROUP".equals(q.questionType());
+        boolean blanks="FILL_BLANK".equals(q.questionType()),matching="MATCHING".equals(q.questionType());
+        if(blanks||matching){checkKeyed(json,q,content,matching);return;}
         if(!multi&&!group)return;
         var ids=new HashSet<String>();q.options().forEach(o->ids.add(o.id().toString()));
         com.fasterxml.jackson.databind.JsonNode node;
@@ -162,6 +166,22 @@ public class SessionService {
             if(node==null||!node.isObject())throw error(400,"Answer must map statements to true/false");
             var fields=node.fields();
             while(fields.hasNext()){var f=fields.next();if(!ids.contains(f.getKey())||!f.getValue().isBoolean())throw error(400,"Option outside this question");}
+        }
+    }
+
+    private static void checkKeyed(com.fasterxml.jackson.databind.ObjectMapper json,ExamClient.Question q,String content,boolean matching){
+        var ids=new HashSet<String>();q.options().forEach(o->ids.add(o.id().toString()));
+        var targets=new HashSet<String>();
+        if(matching&&q.presentation()!=null&&q.presentation().get("matchTargets") instanceof java.util.Collection<?> list)list.forEach(v->targets.add(String.valueOf(v)));
+        com.fasterxml.jackson.databind.JsonNode node;
+        try{node=json.readTree(content);}catch(Exception e){throw error(400,"Answer must be JSON for this question type");}
+        if(node==null||!node.isObject())throw error(400,matching?"Answer must map items to their match":"Answer must map gaps to text");
+        var fields=node.fields();
+        while(fields.hasNext()){
+            var f=fields.next();
+            if(!ids.contains(f.getKey())||!f.getValue().isTextual())throw error(400,"Option outside this question");
+            if(matching&&!targets.contains(f.getValue().asText()))throw error(400,"Match outside this question");
+            if(!matching&&f.getValue().asText().length()>500)throw error(400,"Gap answer too long");
         }
     }
 

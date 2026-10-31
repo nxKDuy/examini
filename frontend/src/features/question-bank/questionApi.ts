@@ -1,6 +1,6 @@
 import api from '../../lib/api'
 
-export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP'
+export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP' | 'FILL_BLANK' | 'MATCHING'
 export type MediaKind = 'IMAGE' | 'AUDIO'
 export interface MediaRef { id: string; kind: MediaKind; name?: string | null }
 export interface Passage { key: string; title?: string | null; content: string; media?: MediaRef[] | null }
@@ -14,6 +14,8 @@ export interface Presentation {
   minWords?: number | null
   maxWords?: number | null
   maxRecordSeconds?: number | null
+  /** MATCHING in an exam: the right-hand items, alphabetical (added by exam-service, never stored in the bank). */
+  matchTargets?: string[] | null
 }
 export interface UploadedMedia { id: string; kind: MediaKind; contentType: string; size: number; name: string }
 export type QuestionStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'

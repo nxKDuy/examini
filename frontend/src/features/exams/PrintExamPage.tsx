@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { examApi } from './examApi'
-import { compactOptions, makeVersions, passageRanges, type PaperVersion } from './paperModel'
+import { LETTERS, compactOptions, makeVersions, passageRanges, type PaperItem, type PaperVersion } from './paperModel'
 import { MediaImage } from '../question-bank/media/QuestionMedia'
 import { ErrorState, LoadingState, Notice } from '../../components/ui'
 import { formatScore } from '../../lib/format'
@@ -109,7 +109,7 @@ function Sheet({ v, h, duration, showPoints }: { v: PaperVersion; h: Header; dur
             <p className="prewrap">{p.passage.content}</p>
           </li>}
           <li className="paper-q">
-          <p><strong>Câu {item.number}.</strong>{showPoints && <em> ({pts(item.question.points)})</em>} <span className="prewrap">{item.question.content}</span></p>
+          <p><strong>Câu {item.number}.</strong>{showPoints && <em> ({pts(item.question.points)})</em>} <span className="prewrap">{item.question.questionType === 'FILL_BLANK' ? numberedGaps(item.question.content) : item.question.content}</span></p>
           {listening && <p><em>(Câu nghe: giáo viên phát âm thanh{p?.maxPlays ? ` ${p.maxPlays} lần` : ''}.)</em></p>}
           {images.map(m => <MediaImage key={m.id} id={m.id} alt={m.name ?? 'Hình'} maxHeight={260} />)}
           {item.question.questionType === 'MULTIPLE_CHOICE' && <div className={compactOptions(item.options) && !item.options.some(optionImage) ? 'paper-options paper-options-row' : 'paper-options'}>
@@ -121,6 +121,10 @@ function Sheet({ v, h, duration, showPoints }: { v: PaperVersion; h: Header; dur
           {item.question.questionType === 'TRUE_FALSE_GROUP' && <div className="paper-statements">
             {item.options.map(o => <div key={o.letter} className="paper-statement"><span><strong>{o.letter})</strong> {o.content}</span><span className="paper-ds">Đ ☐ &nbsp; S ☐</span></div>)}</div>}
           {item.question.questionType === 'TRUE_FALSE' && <div className="paper-options paper-options-row">{item.options.map(o => <span key={o.letter}>☐ {o.content}</span>)}</div>}
+          {item.match && <><p><em>(Nối mỗi ý ở cột A với một ý ở cột B.)</em></p>
+            <table className="paper-match"><thead><tr><th>Cột A</th><th>Cột B</th></tr></thead>
+              <tbody>{item.match.lefts.map((l, k) => <tr key={k}><td><strong>{k + 1}.</strong> {l}</td><td>{item.match!.rights[k] !== undefined && <><strong>{LETTERS[k].toLowerCase()}.</strong> {item.match!.rights[k]}</>}</td></tr>)}</tbody></table>
+            <p>Trả lời: {item.match.lefts.map((_, k) => `${k + 1}-…`).join('  ')}</p></>}
           {item.question.questionType === 'SHORT_ANSWER' && <div className="paper-lines"><span>Trả lời: ……………………………………………………………………</span></div>}
           {item.question.questionType === 'ESSAY' && <>
             {(p?.minWords || p?.maxWords) && <p><em>(Yêu cầu: {p.minWords && p.maxWords ? `${p.minWords}–${p.maxWords} từ` : p.minWords ? `ít nhất ${p.minWords} từ` : `tối đa ${p.maxWords} từ`}.)</em></p>}
@@ -133,11 +137,18 @@ function Sheet({ v, h, duration, showPoints }: { v: PaperVersion; h: Header; dur
   )
 }
 
+/** "___" gaps printed as numbered dotted lines: (1)………… */
+function numberedGaps(content: string) {
+  let n = 0
+  return content.replace(/_{3,}/g, () => `(${++n})…………`)
+}
+
 /** Answer key per code, 20 questions per row block; long short-answer keys are listed under the grid. */
 function AnswerKey({ versions, title }: { versions: PaperVersion[]; title: string }) {
   const n = versions[0].items.length
   const blocks = Array.from({ length: Math.ceil(n / 20) }, (_, b) => Array.from({ length: Math.min(20, n - b * 20) }, (_, i) => b * 20 + i))
-  const long = versions.flatMap(v => v.items.filter(i => i.question.questionType === 'SHORT_ANSWER' && i.key.length > 6).map(i => ({ code: v.code, item: i })))
+  const isLong = (i: PaperItem) => (i.question.questionType === 'SHORT_ANSWER' && i.key.length > 6) || i.question.questionType === 'FILL_BLANK' || i.question.questionType === 'MATCHING'
+  const long = versions.flatMap(v => v.items.filter(isLong).map(i => ({ code: v.code, item: i })))
   return (
     <article className="paper-sheet paper-key">
       <h2>ĐÁP ÁN – {title}</h2>
@@ -145,10 +156,10 @@ function AnswerKey({ versions, title }: { versions: PaperVersion[]; title: strin
         <thead><tr><th>Mã đề</th>{cols.map(c => <th key={c}>{c + 1}</th>)}</tr></thead>
         <tbody>{versions.map(v => <tr key={v.code}><th>{v.code}</th>{cols.map(c => {
           const it = v.items[c]
-          return <td key={c}>{it.question.questionType === 'SHORT_ANSWER' && it.key.length > 6 ? '*' : it.question.questionType === 'TRUE_FALSE' ? it.key.slice(0, 1) : it.key}</td>
+          return <td key={c}>{isLong(it) ? '*' : it.question.questionType === 'TRUE_FALSE' ? it.key.slice(0, 1) : it.key}</td>
         })}</tr>)}</tbody>
       </table>)}
-      <p className="paper-note">TL: câu tự luận, chấm theo hướng dẫn riêng. Đ/S: Đúng/Sai; câu nhiều ý ghi Đ/S theo thứ tự a, b, c, d.{long.length > 0 && ' (*) đáp án trả lời ngắn ghi bên dưới.'}</p>
+      <p className="paper-note">TL: câu tự luận, chấm theo hướng dẫn riêng. Đ/S: Đúng/Sai; câu nhiều ý ghi Đ/S theo thứ tự a, b, c, d.{long.length > 0 && ' (*) đáp án trả lời ngắn, điền chỗ trống và nối cột ghi bên dưới.'}</p>
       {long.length > 0 && <dl className="paper-long">{long.map(({ code, item }) => <Fragment key={`${code}-${item.number}`}><dt>Mã {code} – Câu {item.number}</dt><dd>{item.key}</dd></Fragment>)}</dl>}
     </article>
   )

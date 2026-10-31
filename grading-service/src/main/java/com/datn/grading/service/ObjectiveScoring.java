@@ -10,7 +10,7 @@ public final class ObjectiveScoring {
     /** THPT 2025 scale for a 4-statement true/false question: share of the points by number of statements judged right. */
     private static final float[] GROUP_OF_FOUR={0f,0.1f,0.25f,0.5f,1f};
     public static String normalize(String text){return Normalizer.normalize(text == null ? "" : text,Normalizer.Form.NFC).replaceAll("(?U)\\s+"," ").trim();}
-    public static boolean isObjective(String type){return Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","MULTIPLE_RESPONSE","TRUE_FALSE_GROUP").contains(type);}
+    public static boolean isObjective(String type){return Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","MULTIPLE_RESPONSE","TRUE_FALSE_GROUP","FILL_BLANK","MATCHING").contains(type);}
     public static float score(ExamClient.Question q,String answer){
         if(answer==null || answer.isBlank())return 0;
         float points=q.points().floatValue();
@@ -28,8 +28,34 @@ public final class ObjectiveScoring {
                 float share=n==4?GROUP_OF_FOUR[right]:(float)right/n;
                 yield Math.round(points*share*1000f)/1000f;
             }
+            // Points shared equally between gaps / pairs; unanswered parts count as wrong.
+            case "FILL_BLANK","MATCHING" -> {
+                int n=q.options().size();if(n==0)yield 0f;
+                yield Math.round(points*partsRight(q,answer)/n*1000f)/1000f;
+            }
             default -> throw new IllegalArgumentException("Not an objective question");
         };
+    }
+    /** Gaps filled with an accepted answer (case-, space- and Unicode-form-insensitive) or pairs matched to their own right item. */
+    public static int partsRight(ExamClient.Question q,String answer){
+        var given=texts(answer);if(given==null)return 0;
+        boolean matching="MATCHING".equals(q.questionType());int right=0;
+        for(var o:q.options()){
+            String v=given.get(o.id().toString());if(v==null||v.isBlank())continue;
+            if(matching){var p=pair(o.content());if(p!=null&&fold(p[1]).equals(fold(v)))right++;}
+            else if(alternatives(o.content()).stream().anyMatch(a->fold(a).equals(fold(v))))right++;
+        }
+        return right;
+    }
+    static String fold(String s){return normalize(s).toLowerCase(Locale.ROOT);}
+    static List<String> alternatives(String option){return Arrays.stream((option==null?"":option).split("\\|")).map(String::strip).filter(x->!x.isEmpty()).toList();}
+    /** {left, right} of a MATCHING option "left => right", or null. */
+    static String[] pair(String option){
+        if(option==null)return null;int i=option.indexOf("=>");if(i<0)return null;
+        return new String[]{option.substring(0,i).strip(),option.substring(i+2).strip()};
+    }
+    static Map<String,String> texts(String answer){
+        try{JsonNode n=JSON.readTree(answer);if(n==null||!n.isObject())return null;var out=new HashMap<String,String>();n.fields().forEachRemaining(f->{if(f.getValue().isTextual())out.put(f.getKey(),f.getValue().asText());});return out;}catch(Exception e){return null;}
     }
     /** Statements whose true/false judgement matches the key; unanswered statements count as wrong. */
     public static int statementsRight(ExamClient.Question q,String answer){
@@ -53,6 +79,12 @@ public final class ObjectiveScoring {
             case "TRUE_FALSE_GROUP" -> {var j=judgements(answer);if(j==null)return null;var parts=new ArrayList<String>();
                 for(int i=0;i<options.size();i++){Boolean v=j.get(options.get(i).id().toString());parts.add(label(i)+" "+(v==null?"—":v?"Đúng":"Sai"));}
                 return String.join("; ",parts);}
+            case "FILL_BLANK" -> {var t=texts(answer);if(t==null)return null;var parts=new ArrayList<String>();
+                for(int i=0;i<options.size();i++){String v=t.get(options.get(i).id().toString());parts.add("("+(i+1)+") "+(v==null||v.isBlank()?"—":v.strip()));}
+                return String.join("; ",parts);}
+            case "MATCHING" -> {var t=texts(answer);if(t==null)return null;var parts=new ArrayList<String>();
+                for(var o:options){var p=pair(o.content());String v=t.get(o.id().toString());parts.add((p==null?o.content():p[0])+" → "+(v==null||v.isBlank()?"—":v));}
+                return String.join("; ",parts);}
             case "MULTIPLE_CHOICE","TRUE_FALSE" -> {return q.options().stream().filter(o->o.id().toString().equals(answer)).map(ExamClient.Option::content).findFirst().orElse(null);}
             default -> {return answer;}
         }
@@ -64,6 +96,15 @@ public final class ObjectiveScoring {
         if("TRUE_FALSE_GROUP".equals(q.questionType())){
             var options=q.options().stream().sorted(Comparator.comparingInt(ExamClient.Option::displayOrder)).toList();var out=new ArrayList<String>();
             for(int i=0;i<options.size();i++)out.add(label(i)+" "+options.get(i).content()+" — "+(options.get(i).correct()?"Đúng":"Sai"));
+            return out;
+        }
+        if("FILL_BLANK".equals(q.questionType())||"MATCHING".equals(q.questionType())){
+            var options=q.options().stream().sorted(Comparator.comparingInt(ExamClient.Option::displayOrder)).toList();var out=new ArrayList<String>();
+            for(int i=0;i<options.size();i++){
+                String c=options.get(i).content();
+                if("FILL_BLANK".equals(q.questionType()))out.add("("+(i+1)+") "+String.join(" / ",alternatives(c)));
+                else{var p=pair(c);out.add(p==null?c:p[0]+" → "+p[1]);}
+            }
             return out;
         }
         return q.options().stream().filter(ExamClient.Option::correct).map(ExamClient.Option::content).toList();

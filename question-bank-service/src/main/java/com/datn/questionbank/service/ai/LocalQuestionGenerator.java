@@ -79,6 +79,8 @@ public class LocalQuestionGenerator implements AiProvider {
                 case ESSAY -> essay(f, vi, p);
                 case SPEAKING -> null; // speaking prompts come from AI providers, not the rule-based generator
                 case TRUE_FALSE_GROUP, MULTIPLE_RESPONSE -> statements(type, f, facts, usedSentences, pools, rnd, vi, p);
+                case FILL_BLANK -> cloze(f, facts, usedSentences, vi, p);
+                case MATCHING -> matching(f, facts, usedSentences, rnd, vi, p);
             };
             if (c == null) c = type == QuestionType.MULTIPLE_CHOICE && types.contains(QuestionType.TRUE_FALSE) ? trueFalse(f, pools, rnd, vi, p) : fillIn(f, vi, p);
             if (c == null || !types.contains(QuestionType.valueOf(c.type()))) { usedSentences.remove(f.sentence()); continue; }
@@ -286,6 +288,46 @@ public class LocalQuestionGenerator implements AiProvider {
                 ? (vi ? "Mỗi nhận định sau về «" + p.topic() + "» đúng hay sai?" : "Is each statement about «" + p.topic() + "» true or false?")
                 : (vi ? "Chọn tất cả các nhận định đúng về «" + p.topic() + "»." : "Choose all the true statements about «" + p.topic() + "».");
         return new Candidate(type.name(), content, options, null, why.toString().strip(), level(p.difficulty(), DifficultyLevel.MEDIUM), raw(type.name(), first));
+    }
+
+    /** Up to three facts from different sentences, chained into one passage with a gap per key term (FILL_BLANK). */
+    static Candidate cloze(Fact first, List<Fact> facts, Set<String> used, boolean vi, Prompt p) {
+        var picked = others(first, facts, used, 3);
+        var text = new StringBuilder();
+        var options = new ArrayList<CandidateOption>();
+        for (Fact f : picked) {
+            text.append(text.isEmpty() ? "" : " ").append(blanked(f));
+            options.add(new CandidateOption(f.term(), true));
+            used.add(f.sentence());
+        }
+        String content = (vi ? "Điền vào chỗ trống: «" : "Fill in the blanks: «") + text + "»";
+        String why = picked.stream().map(f -> explain(f, vi)).reduce((a, b) -> a + " " + b).orElse("");
+        return new Candidate("FILL_BLANK", content, options, null, why, level(p.difficulty(), DifficultyLevel.MEDIUM), raw("FILL_BLANK", first));
+    }
+
+    /** Sentences with their key term removed, matched to the terms (MATCHING); needs 3+ facts with distinct terms. */
+    static Candidate matching(Fact first, List<Fact> facts, Set<String> used, Random rnd, boolean vi, Prompt p) {
+        var picked = others(first, facts, used, 4);
+        if (picked.size() < 3) return null;
+        var options = new ArrayList<CandidateOption>();
+        for (Fact f : picked) { options.add(new CandidateOption(blanked(f) + " => " + f.term(), true)); used.add(f.sentence()); }
+        String content = vi ? "Nối mỗi câu ở cột trái với từ/cụm từ còn thiếu ở cột phải (chủ đề: " + p.topic() + ")."
+                : "Match each sentence on the left with its missing word or phrase on the right (topic: " + p.topic() + ").";
+        String why = picked.stream().map(f -> explain(f, vi)).reduce((a, b) -> a + " " + b).orElse("");
+        return new Candidate("MATCHING", content, options, null, why, level(p.difficulty(), DifficultyLevel.MEDIUM), raw("MATCHING", first));
+    }
+
+    /** The first fact plus unused facts from other sentences whose terms all differ (folded), up to max. */
+    private static List<Fact> others(Fact first, List<Fact> facts, Set<String> used, int max) {
+        var picked = new ArrayList<Fact>(List.of(first));
+        var terms = new HashSet<String>(Set.of(fold(first.term())));
+        for (Fact f : facts) {
+            if (picked.size() >= max) break;
+            if (used.contains(f.sentence()) || f.sentence().equals(first.sentence()) || f.sentence().contains("=>") || !terms.add(fold(f.term()))) continue;
+            if (picked.stream().anyMatch(x -> x.sentence().equals(f.sentence()))) continue;
+            picked.add(f);
+        }
+        return picked;
     }
 
     static Candidate fillIn(Fact f, boolean vi, Prompt p) {

@@ -35,7 +35,9 @@ class ExamCoreTest {
     @BeforeEach void setup(){when(sessions.eligibility(any(),any(),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Eligibility(0,false));owner=UUID.randomUUID();manager=UUID.randomUUID();proctor=UUID.randomUUID();student=UUID.randomUUID();qid=UUID.randomUUID();oid=UUID.randomUUID();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("ACTIVE",1L,true)));when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(question("ACTIVE",1L,true)));}
     QuestionBankClient.Question question(String status,long version,Boolean eligible){return new QuestionBankClient.Question(qid,version,status,"MULTIPLE_CHOICE","Original",List.of(new Snapshot.Option(oid,"Yes",0,true),new Snapshot.Option(UUID.randomUUID(),"No",1,false)),null,eligible,"PERSONAL",null,"Frozen author explanation");}
     String token(UUID id,String role){return "Bearer "+Jwts.builder().subject(id.toString()).claim("role",role).claim("type","access").expiration(new Date(System.currentTimeMillis()+60000)).signWith(Keys.hmacShaKeyFor("unit-test-only-signing-key-32-bytes-minimum".getBytes(StandardCharsets.UTF_8))).compact();}
-    UUID create()throws Exception {String body="{\"title\":\"Exam\",\"durationMinutes\":10,\"passingScore\":0,\"type\":\"EXAM\",\"questions\":[{\"questionId\":\""+qid+"\",\"weight\":2.5}]}";
+    UUID create()throws Exception {return create(List.of(qid));}
+    UUID create(List<UUID> ids)throws Exception {String items=String.join(",",ids.stream().map(q->"{\"questionId\":\""+q+"\",\"weight\":2.5}").toList());
+        String body="{\"title\":\"Exam\",\"durationMinutes\":10,\"passingScore\":0,\"type\":\"EXAM\",\"questions\":["+items+"]}";
         var response=mvc.perform(post("/exams/manual").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(body)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();return UUID.fromString(json.readTree(response).path("id").asText());}
     @Test void ownershipPermissionsLifecycleAndSafeSnapshot()throws Exception {
         UUID id=create();UUID second=create();assertNotEquals(id,second);
@@ -83,6 +85,26 @@ class ExamCoreTest {
         mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].questionType").value("TRUE_FALSE_GROUP")).andExpect(jsonPath("$[0].options.length()").value(3))
             .andExpect(jsonPath("$[0].options[0].correct").doesNotExist());
+    }
+    @Test void fillBlankAndMatchingHideTheirKeysFromStudents()throws Exception {
+        UUID q2=UUID.randomUUID();
+        var gaps=List.of(new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Hà Nội | Ha Noi",0,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"1945",1,true));
+        var pairs=List.of(new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Việt Nam => Hà Nội",0,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Pháp => Paris",1,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ai Cập => Cairo",2,true));
+        var fill=new QuestionBankClient.Question(qid,1L,"ACTIVE","FILL_BLANK","Thủ đô là ___, năm ___.",gaps,null,true,"PERSONAL",null,null,null);
+        var match=new QuestionBankClient.Question(q2,1L,"ACTIVE","MATCHING","Nối nước với thủ đô",pairs,null,true,"PERSONAL",null,null,null);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(fill,match));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(fill,match));
+        UUID id=create(List.of(qid,q2));core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].options[0].content").value("")).andExpect(jsonPath("$[0].options.length()").value(2))
+            .andExpect(jsonPath("$[1].options[0].content").value("Việt Nam"))
+            .andExpect(jsonPath("$[1].presentation.matchTargets[0]").value("Cairo")).andExpect(jsonPath("$[1].presentation.matchTargets[2]").value("Paris"));
+        // A gap count that does not match the stem is refused at publication.
+        var broken=new QuestionBankClient.Question(qid,1L,"ACTIVE","FILL_BLANK","Chỉ một chỗ ___.",gaps,null,true,"PERSONAL",null,null,null);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(broken));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(broken));
+        UUID other=create();
+        assertEquals(409,assertThrows(org.springframework.web.server.ResponseStatusException.class,()->core.transition(other,owner,Exam.Status.PUBLISHED)).getStatusCode().value());
     }
     @Test void adminStatsCountExamsAndResolveTitlesForAdministratorsOnly()throws Exception {
         UUID id=create();

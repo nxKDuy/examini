@@ -55,6 +55,14 @@ createServer(async (req, res) => {
     const nowIso = new Date().toISOString()
     if (url.pathname === '/exams/e1') data = exam
     else if (url.pathname === '/sessions/s-live') data = { sessionId: 's-live', examId: 'e1', title: exam.title, status: 'IN_PROGRESS', attemptNumber: 1, expiresAt: new Date(Date.now() + 36e5).toISOString(), serverNow: nowIso, questions: [{ questionId: 'q1', questionVersion: 1, questionType: 'ESSAY', content: 'Câu thử', points: 10, position: 0, options: [] }], answers: {} }
+    // Fill in the blanks and matching while answering (presentation.matchTargets comes from exam-service's safe view).
+    else if (url.pathname === '/sessions/s-structured') data = { sessionId: 's-structured', examId: 'e1', title: exam.title, status: 'IN_PROGRESS', attemptNumber: 1, expiresAt: new Date(Date.now() + 36e5).toISOString(), serverNow: nowIso,
+      questions: [{ questionId: 'qf', questionVersion: 1, questionType: 'FILL_BLANK', content: 'Thủ đô của Việt Nam là ___, Cách mạng tháng Tám thành công năm ___ và ngày Quốc khánh là ___.', points: 2, position: 0,
+          options: [{ id: 'g1', content: '', displayOrder: 0 }, { id: 'g2', content: '', displayOrder: 1 }, { id: 'g3', content: '', displayOrder: 2 }] },
+        { questionId: 'qm', questionVersion: 1, questionType: 'MATCHING', content: 'Nối mỗi nước với thủ đô của nước đó.', points: 2, position: 1,
+          options: [{ id: 'm1', content: 'Việt Nam', displayOrder: 0 }, { id: 'm2', content: 'Nhật Bản', displayOrder: 1 }, { id: 'm3', content: 'Pháp', displayOrder: 2 }, { id: 'm4', content: 'Ai Cập', displayOrder: 3 }],
+          presentation: { matchTargets: ['Cairo', 'Hà Nội', 'Paris', 'Tokyo'] } }],
+      answers: { qf: JSON.stringify({ g1: 'Hà Nội' }), qm: JSON.stringify({ m1: 'Hà Nội', m3: 'Paris' }) } }
     else if (parts[2] === 'members') data = {}
     else if (parts[2] === 'schedule') data = { examId: 'e1', startAt: null, endAt: null, timezone: 'UTC', deadlineRule: 'FULL_DURATION', autoOpen: false, autoClose: false, reminderOffsetsMinutes: [], scheduleRevision: 1, lifecycleRevision: 1, serverNow: nowIso }
     else if (parts[2] === 'lobby') data = exam
@@ -85,6 +93,11 @@ createServer(async (req, res) => {
     const id = url.pathname.split('/').pop()
     data = { id, examId: 'e1', examTitle: 'Fixture exam', studentId: `${id}-0000-aaaa`, ...(id === 'aaaa1111' ? { studentDisplayName: 'Học sinh Fixture' } : {}), attemptNumber: 1, status: 'NEEDS_REVIEW', score: null, totalScore: 10, publishedScore: null, pendingManualItemCount: 1, submittedAt: null, gradedAt: null, durationSeconds: null, feedback: null, resultRevision: 1, publishedRevision: null,
       items: [{ questionId: 'q1', questionVersion: 1, position: 1, questionContent: 'Viết đoạn văn', questionType: 'ESSAY', pointValue: 10, answerContent: 'Bài làm', selectedOptionContent: null, autoScore: null, manualScore: null, awardedPoints: null, needsReview: true, feedback: null, manualGradedBy: null, manualGradedAt: null }] }
+  } else if (url.pathname === '/grades/session/s-structured') {
+    data = { sessionId: 's-structured', examId: 'e1', title: 'Kỳ thi kết quả fixture', attemptNumber: 1, status: 'GRADED', resultRevision: 1, submittedAt: '2026-10-01T00:00:00Z', gradedAt: '2026-10-01T01:00:00Z', releasedAt: '2026-10-01T01:00:00Z',
+      score: 3, totalScore: 4, passed: true, policy: { showScore: true, showQuestionBreakdown: true, showFeedback: true, showCorrectAnswers: true, showExplanation: true },
+      questions: [{ questionId: 'qf', questionVersion: 1, position: 0, questionContent: 'Thủ đô của Việt Nam là ___, Cách mạng tháng Tám thành công năm ___.', questionType: 'FILL_BLANK', pointValue: 2, answer: '{"g1":"ha noi","g2":"1954"}', answerDisplay: '(1) ha noi; (2) 1954', awardedPoints: 1, correctAnswers: ['(1) Hà Nội / Ha Noi', '(2) 1945'] },
+        { questionId: 'qm', questionVersion: 1, position: 1, questionContent: 'Nối mỗi nước với thủ đô của nước đó.', questionType: 'MATCHING', pointValue: 2, answer: '{}', answerDisplay: 'Việt Nam → Hà Nội; Nhật Bản → Tokyo; Pháp → Paris; Ai Cập → —', awardedPoints: 1.5, correctAnswers: ['Việt Nam → Hà Nội', 'Nhật Bản → Tokyo', 'Pháp → Paris', 'Ai Cập → Cairo'] }], history: [] }
   } else if (/^\/grades\/session\//.test(url.pathname)) {
     const legacy = url.pathname.endsWith('/s-legacy')
     data = { sessionId: legacy ? 's-legacy' : 's-result', examId: 'e1', title: 'Kỳ thi kết quả fixture', attemptNumber: 1, status: 'GRADED', resultRevision: 2, submittedAt: '2026-10-01T00:00:00Z', gradedAt: '2026-10-01T01:00:00Z', releasedAt: '2026-10-01T02:00:00Z', score: 8, totalScore: 10,

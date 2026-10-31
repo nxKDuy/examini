@@ -138,6 +138,9 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
     onError: async e => { if (errorStatus(e) === 409) { setNotice({ tone: 'warning', text: t('Câu đã thay đổi ở nơi khác. Đã tải lại; kiểm tra rồi lưu lại.') }); await onSaved() } else setNotice({ tone: 'danger', text: errorText(e) }) },
   })
   const choice = d.questionType === 'MULTIPLE_CHOICE' || d.questionType === 'TRUE_FALSE' || d.questionType === 'MULTIPLE_RESPONSE' || d.questionType === 'TRUE_FALSE_GROUP'
+    || d.questionType === 'FILL_BLANK' || d.questionType === 'MATCHING'
+  // Gap answers and matching pairs are the key themselves: no "correct" mark, each one counts.
+  const structured = d.questionType === 'FILL_BLANK' || d.questionType === 'MATCHING'
   const group = d.questionType === 'TRUE_FALSE_GROUP'
   const setOpt = (n: number, p: Partial<Draft['options'][number]>) => setD(x => ({ ...x, options: x.options.map((o, i) => i === n ? { ...o, ...p } : o) }))
   const changed = dirty(item, d)
@@ -162,15 +165,17 @@ function ItemEditor({ jobId, item, editable, onClose, onSaved }: { jobId: string
           </div>
           <div className="grid-2"><SubjectCategoryFields subjectId={subjectId} categoryId={d.categoryId} onSubject={setSubjectId} onCategory={id => setD(x => ({ ...x, categoryId: id }))} required /></div>
           {choice && <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend className="field-label">{group ? t('Các ý (đánh dấu ý Đúng; ý không đánh dấu là Sai)') : t('Phương án (đánh dấu đáp án đúng)')}</legend>
+            <legend className="field-label">{d.questionType === 'FILL_BLANK' ? t('Đáp án từng chỗ trống ___ theo thứ tự (nhiều cách viết ngăn bằng |)')
+              : d.questionType === 'MATCHING' ? t('Các cặp nối đúng, mỗi dòng “vế trái => vế phải”')
+              : group ? t('Các ý (đánh dấu ý Đúng; ý không đánh dấu là Sai)') : t('Phương án (đánh dấu đáp án đúng)')}</legend>
             {d.options.map((o, n) => <div key={n} className="row imp-option" style={{ flexWrap: 'nowrap', gap: 8 }}>
-              <span className="option-key" aria-hidden>{group ? optionLetter(n).toLowerCase() : optionLetter(n)}</span>
-              <input className="input" aria-label={t('Phương án {0}', { 0: optionLetter(n) })} value={o.content} onChange={e => setOpt(n, { content: e.target.value })} />
-              <label className="check small" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={o.correct} onChange={e => setOpt(n, { correct: e.target.checked })} /> {t('Đúng')}</label>
+              <span className="option-key" aria-hidden>{structured ? n + 1 : group ? optionLetter(n).toLowerCase() : optionLetter(n)}</span>
+              <input className="input" aria-label={t('Phương án {0}', { 0: optionLetter(n) })} value={o.content} onChange={e => setOpt(n, structured ? { content: e.target.value, correct: true } : { content: e.target.value })} />
+              {!structured && <label className="check small" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={o.correct} onChange={e => setOpt(n, { correct: e.target.checked })} /> {t('Đúng')}</label>}
               <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label={t('Bỏ phương án {0}', { 0: optionLetter(n) })} onClick={() => setD(x => ({ ...x, options: x.options.filter((_, i) => i !== n) }))}><Trash2 size={14} /></button>
             </div>)}
-            {d.options.length < 8 && <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} onClick={() => setD(x => ({ ...x, options: [...x.options, { content: '', correct: false, displayOrder: x.options.length }] }))}><Plus size={14} aria-hidden /> {t('Thêm phương án')}</button>}
-            {!group && !d.options.some(o => o.correct) && <p className="field-error">{t('Chưa có đáp án đúng. Hệ thống không tự đoán; hãy chọn đáp án.')}</p>}
+            {d.options.length < (d.questionType === 'FILL_BLANK' ? 20 : d.questionType === 'MATCHING' ? 10 : 8) && <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', justifySelf: 'start' }} onClick={() => setD(x => ({ ...x, options: [...x.options, { content: d.questionType === 'MATCHING' ? ' => ' : '', correct: structured, displayOrder: x.options.length }] }))}><Plus size={14} aria-hidden /> {t('Thêm phương án')}</button>}
+            {!group && !structured && !d.options.some(o => o.correct) && <p className="field-error">{t('Chưa có đáp án đúng. Hệ thống không tự đoán; hãy chọn đáp án.')}</p>}
           </fieldset>}
           {!choice && <Field label={d.questionType === 'ESSAY' || d.questionType === 'SPEAKING' ? t('Hướng dẫn chấm') : t('Đáp án chuẩn')} htmlFor="imp-answer"><textarea id="imp-answer" className="input" rows={2} value={d.expectedAnswer} onChange={e => setD({ ...d, expectedAnswer: e.target.value })} /></Field>}
           <Field label={t('Giải thích')} htmlFor="imp-expl"><textarea id="imp-expl" className="input" rows={2} value={d.explanation} onChange={e => setD({ ...d, explanation: e.target.value })} /></Field>

@@ -20,6 +20,8 @@ final class AiPrompts {
                 - ESSAY: no options; expectedAnswer is a brief marking guide.
                 - MULTIPLE_RESPONSE: 4-6 options, two or more with correct=true; the stem says to choose all correct answers.
                 - TRUE_FALSE_GROUP: a stem (context, data or a short text) followed by exactly 4 statements as options, each a full claim about the stem; correct=true when the statement is true; mix true and false statements.
+                - FILL_BLANK: the stem marks each gap with ___ (three underscores), 1-4 gaps; one option per gap in the same order, correct=true, content = the exact missing word or number (several accepted spellings separated by " | ").
+                - MATCHING: 3-6 options, each one correct pair written "left => right" with correct=true (e.g. "Việt Nam => Hà Nội"); every left and every right is distinct; the stem says what to match.
                 - SPEAKING: no options; an oral task the student answers aloud in about 1-2 minutes; expectedAnswer is a brief marking guide (content, fluency, vocabulary).
                 - Write mathematics, chemistry and physics in plain Unicode text (x², x³, √x, ≤, ≥, ≠, π, Δ, H₂O, →), never LaTeX: no $…$, \\frac, ^{…} or _{…}.
                 - explanation: why the answer is correct, 1-3 sentences.

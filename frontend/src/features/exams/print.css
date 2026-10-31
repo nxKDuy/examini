@@ -55,6 +55,8 @@
 .paper-options .media-image { max-width: 200px; }
 .paper-statements { display: grid; gap: 2px; margin: 2px 0 2px 18px; }
 .paper-statement { display: flex; justify-content: space-between; gap: 16px; }
+.paper-match { width: 100%; border-collapse: collapse; margin: 4px 0; }
+.paper-match th, .paper-match td { border: 1px solid #000; padding: 4px 8px; text-align: left; vertical-align: top; width: 50%; }
 .paper-ds { white-space: nowrap; }
 .paper-part { font-size: 11pt; margin: 14px 0 4px; }
 .bubble-grid-tf { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }

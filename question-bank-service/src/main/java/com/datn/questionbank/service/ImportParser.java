@@ -225,7 +225,30 @@ public final class ImportParser {
         QuestionType type;
         QuestionType hinted = d.typeHint == null ? null : SheetImport.type(d.typeHint, !d.options.isEmpty());
         String guide = null;
+        List<Option> structured = null;
+        var optionTexts = d.options.stream().map(o -> o[1]).toList();
+        int blanks = StructuredTypes.blanks(content);
         if (d.options.isEmpty() && (hinted == QuestionType.SPEAKING || hinted == QuestionType.ESSAY)) { type = hinted; guide = answer; }
+        else if (hinted == QuestionType.MATCHING || (hinted == null && StructuredTypes.allPairs(optionTexts))) {
+            // "Nối cột": every option is "left => right" (→, -> are accepted).
+            type = QuestionType.MATCHING;
+            structured = new ArrayList<>();
+            for (int i = 0; i < optionTexts.size(); i++) {
+                String pair = StructuredTypes.normalizePair(optionTexts.get(i));
+                if (pair == null) { flags.add(Flag.LOW_CONFIDENCE); penalty += 0.3; pair = optionTexts.get(i); }
+                structured.add(new Option(pair, true, (short) i));
+            }
+            if (structured.size() < 2) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
+        }
+        else if (hinted == QuestionType.FILL_BLANK || (hinted == null && d.options.isEmpty() && blanks > 1
+                && StructuredTypes.gapAnswers(answer).size() == blanks)) {
+            // "Điền vào chỗ trống": gaps ___ in the stem; answers "Đáp án: Hà Nội; 1945" or one option per gap.
+            type = QuestionType.FILL_BLANK;
+            var gaps = d.options.isEmpty() ? StructuredTypes.gapAnswers(answer) : optionTexts;
+            structured = new ArrayList<>();
+            for (int i = 0; i < gaps.size(); i++) structured.add(new Option(gaps.get(i), true, (short) i));
+            if (structured.isEmpty() || structured.size() != blanks) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
+        }
         else if (!d.options.isEmpty() && (hinted == QuestionType.TRUE_FALSE_GROUP
                 || (hinted == null && answer != null && d.options.size() >= 2 && !isTrueFalse(d.options) && SheetImport.truths(answer) != null && SheetImport.truths(answer).size() == d.options.size()))) {
             // THPT 2025 "Đúng/Sai" part: statements a) b) c) d), key "a) Đ b) S …"
@@ -259,7 +282,8 @@ public final class ImportParser {
         else { type = QuestionType.ESSAY; flags.add(Flag.NO_ANSWER_ESSAY); penalty += 0.2; }
 
         var options = new ArrayList<Option>();
-        for (int i = 0; i < d.options.size(); i++) options.add(new Option(d.options.get(i)[1], correct.contains(i), (short) i));
+        if (structured != null) options.addAll(structured);
+        else for (int i = 0; i < d.options.size(); i++) options.add(new Option(d.options.get(i)[1], correct.contains(i), (short) i));
 
         boolean ocr = d.lines.stream().anyMatch(l -> l.method() == SourceMethod.OCR);
         if (ocr) flags.add(Flag.OCR);

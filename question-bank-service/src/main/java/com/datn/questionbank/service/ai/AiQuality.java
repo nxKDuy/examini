@@ -46,7 +46,7 @@ public final class AiQuality {
         String stem = AiDrafts.key(content);
         if (content.length() <= STEM_WITH_OWN_TEXT && SOURCE_REFERENCE.matcher(stem).find()) flags.add(Flag.SOURCE_REFERENCE);
         if (nearDuplicate(stem, earlierInBatch) || nearDuplicate(stem, existing)) flags.add(Flag.POSSIBLE_DUPLICATE);
-        if (options.isEmpty() || type == QuestionType.TRUE_FALSE_GROUP) return flags;
+        if (options.isEmpty() || type == QuestionType.TRUE_FALSE_GROUP || type == QuestionType.FILL_BLANK || type == QuestionType.MATCHING) return flags;
 
         var keys = options.stream().map(AiDrafts::key).toList();
         if (keys.stream().anyMatch(k -> CATCH_ALL.matcher(k).find())) flags.add(Flag.CATCH_ALL_OPTION);

@@ -19,6 +19,7 @@ import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '.
 import { MediaImage, MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 import { blockOf, countWords, wordState } from '../question-bank/media/mediaModel'
 import SpeakingRecorder from './SpeakingRecorder'
+import { ClozeText, MatchingAnswer } from './StructuredAnswer'
 import { isAnswered, judge, judgedCount, parseChosen, parseJudged, statementLabel, toggleChosen } from '../question-bank/choiceModel'
 
 type SaveState = 'pending' | 'saving' | 'saved' | 'error'
@@ -308,9 +309,12 @@ export default function StudentExamPage() {
             </div>
             {block && <PassageView presentation={q.presentation} sessionId={session.sessionId}
               range={tt('Dùng cho câu {0}–{1}', { 0: block.start + 1, 1: block.end + 1 })} />}
-            <p className="question-text">{q.content}</p>
+            {q.questionType === 'FILL_BLANK'
+              ? <ClozeText content={q.content} gapIds={[...q.options].sort((a, b) => a.displayOrder - b.displayOrder).map(o => o.id)} value={answers[q.questionId] ?? ''} disabled={locked}
+                  onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
+              : <p className="question-text">{q.content}</p>}
             <MediaList media={q.presentation?.media} maxPlays={q.presentation?.maxPlays} sessionId={session.sessionId} label={tt('Câu {0}', { 0: index + 1 })} />
-            {q.questionType === 'SPEAKING'
+            {q.questionType === 'FILL_BLANK' ? null : q.questionType === 'SPEAKING'
               ? <SpeakingRecorder key={q.questionId} sessionId={session.sessionId} questionId={q.questionId} value={answers[q.questionId] ?? ''} disabled={locked}
                   maxSeconds={q.presentation?.maxRecordSeconds ?? 120} onSaved={v => spoken(q.questionId, v)} />
               : <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
@@ -465,6 +469,9 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
         {Object.keys(judged).length > 0 && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Xóa lựa chọn')}</button></div>}
       </fieldset>
     )
+  }
+  if (question.questionType === 'MATCHING') {
+    return <MatchingAnswer items={question.options} targets={question.presentation?.matchTargets ?? []} value={value} disabled={disabled} onChange={onChange} />
   }
   if (question.questionType === 'SHORT_ANSWER') {
     return (

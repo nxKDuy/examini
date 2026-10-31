@@ -18,6 +18,7 @@ import { Badge, ErrorState, LoadingState, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime, shortId } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import { isStructured, keyLines } from './structuredModel'
 
 export function QuestionBody({ question }: { question: Question }) {
   useT()
@@ -30,7 +31,17 @@ export function QuestionBody({ question }: { question: Question }) {
         {question.presentation.minWords ? t('Tối thiểu {0} từ. ', { 0: question.presentation.minWords }) : ''}
         {question.presentation.maxWords ? t('Tối đa {0} từ. ', { 0: question.presentation.maxWords }) : ''}
         {question.presentation.maxRecordSeconds ? t('Ghi âm tối đa {0} giây.', { 0: question.presentation.maxRecordSeconds }) : ''}</p>}
-      {question.options.length > 0 && (
+      {isStructured(question.questionType) && question.options.length > 0 && (
+        <div className="stack-sm" style={{ gap: 4 }}>
+          <span className="field-label">{question.questionType === 'FILL_BLANK' ? t('Đáp án từng chỗ trống') : t('Các cặp nối đúng')}</span>
+          <ol className="stack-sm" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {keyLines(question.questionType, question.options).map((line, i) => (
+              <li key={i} className="prewrap small" style={{ padding: '8px 10px', background: 'var(--color-success-soft)' }}>{line}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {!isStructured(question.questionType) && question.options.length > 0 && (
         <ol className="stack-sm" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {question.options.map((o, i) => (
             <li key={o.id ?? i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start', padding: '8px 10px',

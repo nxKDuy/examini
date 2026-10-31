@@ -44,7 +44,9 @@ public final class SheetImport {
         if (k.matches("nhieu dap an|chon nhieu|chon nhieu dap an|nhieu dap an dung|multiple response|multiple answers|mr")) return QuestionType.MULTIPLE_RESPONSE;
         if (k.matches("trac nghiem|tn|mcq|multiple choice|nhieu lua chon|chon dap an")) return QuestionType.MULTIPLE_CHOICE;
         if (k.matches("dung sai|d s|ds|true false|tf|dung/sai")) return QuestionType.TRUE_FALSE;
-        if (k.matches("tra loi ngan|dien|dien khuyet|short answer|short|tln")) return QuestionType.SHORT_ANSWER;
+        if (k.matches("dien khuyet|dien vao cho trong|dien cho trong|dien tu|fill blank|fill in the blank|fill in the blanks|fill blanks|cloze|fb")) return QuestionType.FILL_BLANK;
+        if (k.matches("noi cot|ghep cot|ghep noi|ghep doi|matching|match|mt")) return QuestionType.MATCHING;
+        if (k.matches("tra loi ngan|dien|short answer|short|tln")) return QuestionType.SHORT_ANSWER;
         if (k.matches("tu luan|viet|essay|writing|tl")) return QuestionType.ESSAY;
         if (k.matches("noi|speaking|ghi am|van dap")) return QuestionType.SPEAKING;
         try { return QuestionType.valueOf(raw.strip().toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException e) { return null; }
@@ -114,13 +116,33 @@ public final class SheetImport {
             QuestionType t = type(cell(row, cols.get("type")), !options.isEmpty());
             if (t == null) {
                 if (!cell(row, cols.get("type")).isBlank()) { flags.add(ImportParser.Flag.LOW_CONFIDENCE); confidence -= 0.3; }
-                t = !options.isEmpty() ? QuestionType.MULTIPLE_CHOICE : answer.isBlank() ? QuestionType.ESSAY : QuestionType.SHORT_ANSWER;
+                int blanks = StructuredTypes.blanks(content);
+                t = StructuredTypes.allPairs(options.stream().map(ImportParser.Option::content).toList()) ? QuestionType.MATCHING
+                        : !options.isEmpty() ? QuestionType.MULTIPLE_CHOICE
+                        : blanks > 1 && StructuredTypes.gapAnswers(answer).size() == blanks ? QuestionType.FILL_BLANK
+                        : answer.isBlank() ? QuestionType.ESSAY : QuestionType.SHORT_ANSWER;
             }
             String expected = null;
             if (t == QuestionType.TRUE_FALSE && options.isEmpty()) {
                 options.add(new ImportParser.Option("Đúng", false, (short) 0)); options.add(new ImportParser.Option("Sai", false, (short) 1));
             }
-            if (t == QuestionType.TRUE_FALSE_GROUP) {
+            if (t == QuestionType.FILL_BLANK) {
+                // Gap answers: one option column per gap, or all of them in the answer cell ("Hà Nội; 1945").
+                var gaps = options.isEmpty() ? StructuredTypes.gapAnswers(answer) : options.stream().map(ImportParser.Option::content).toList();
+                options = new ArrayList<>();
+                short gap = 0;
+                for (var g : gaps) options.add(new ImportParser.Option(g, true, gap++));
+                if (options.isEmpty() || options.size() != StructuredTypes.blanks(content)) { flags.add(ImportParser.Flag.MISSING_CORRECT_ANSWER); confidence -= 0.4; }
+            } else if (t == QuestionType.MATCHING) {
+                var pairs = new ArrayList<ImportParser.Option>();
+                for (var o : options) {
+                    String pair = StructuredTypes.normalizePair(o.content());
+                    if (pair == null) { flags.add(ImportParser.Flag.LOW_CONFIDENCE); confidence -= 0.3; pair = o.content(); }
+                    pairs.add(new ImportParser.Option(pair, true, o.displayOrder()));
+                }
+                options = pairs;
+                if (options.size() < 2) { flags.add(ImportParser.Flag.MISSING_CORRECT_ANSWER); confidence -= 0.4; }
+            } else if (t == QuestionType.TRUE_FALSE_GROUP) {
                 var truths = truths(answer);
                 if (truths == null || truths.size() != options.size()) { flags.add(ImportParser.Flag.MISSING_CORRECT_ANSWER); confidence -= 0.4; }
                 else { var marked = new ArrayList<ImportParser.Option>(); for (var o : options) marked.add(new ImportParser.Option(o.content(), truths.get(o.displayOrder()), o.displayOrder())); options = marked; }

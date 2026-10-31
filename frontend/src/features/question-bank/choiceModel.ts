@@ -5,7 +5,9 @@
  *  TRUE_FALSE_GROUP: JSON object option id -> true/false (statements left out are unanswered).
  * Pure functions, safe to load in node tests.
  */
-export const OPTION_TYPES = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP'] as const
+import { parseTexts } from './structuredModel'
+
+export const OPTION_TYPES = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP', 'FILL_BLANK', 'MATCHING'] as const
 export const isOptionType = (t: string) => (OPTION_TYPES as readonly string[]).includes(t)
 /** Statements are labelled a), b), c) … like the printed THPT exam. */
 export const statementLabel = (i: number) => `${String.fromCharCode(97 + i)})`
@@ -39,6 +41,7 @@ export function isAnswered(type: string, value: string | null | undefined): bool
   if (!value || !value.trim()) return false
   if (type === 'MULTIPLE_RESPONSE') return parseChosen(value).length > 0
   if (type === 'TRUE_FALSE_GROUP') return Object.keys(parseJudged(value)).length > 0
+  if (type === 'FILL_BLANK' || type === 'MATCHING') return Object.values(parseTexts(value)).some(v => v.trim().length > 0)
   return true
 }
 /** "2/4 ý" progress of a true/false group. */

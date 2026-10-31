@@ -12,12 +12,15 @@ import { DIFFICULTY_LABEL } from '../../lib/format'
 import SubjectCategoryFields from './SubjectCategoryFields'
 import { t as tt, useT, i18nMap } from '../../lib/i18n'
 import Select from '../../components/Select'
+import { checkStructured, countBlanks, joinPair, MAX_BLANKS, MAX_PAIRS, pairOf } from './structuredModel'
 
 const TYPES: { value: QuestionType; label: string; hint: string }[] = i18nMap([
   { value: 'MULTIPLE_CHOICE', label: 'Trắc nghiệm', hint: '2 đến 26 lựa chọn, đúng một đáp án. Chấm tự động.' },
   { value: 'MULTIPLE_RESPONSE', label: 'Nhiều đáp án', hint: 'Có thể đúng nhiều lựa chọn; phải chọn đủ và đúng mới được điểm.' },
   { value: 'TRUE_FALSE', label: 'Đúng/Sai', hint: 'Chọn mệnh đề đúng hay sai. Chấm tự động.' },
   { value: 'TRUE_FALSE_GROUP', label: 'Đúng/Sai nhiều ý', hint: 'Kiểu đề THPT 2025: 2–8 ý a), b), c), d), mỗi ý chọn Đúng hoặc Sai; điểm theo số ý đúng.' },
+  { value: 'FILL_BLANK', label: 'Điền vào chỗ trống', hint: 'Đánh dấu chỗ trống bằng ___; mỗi chỗ một đáp án (có thể nhiều cách viết). Điểm chia đều cho các chỗ trống.' },
+  { value: 'MATCHING', label: 'Nối cột', hint: '2–10 cặp vế trái – vế phải; khi thi vế phải được xáo trộn. Điểm chia đều cho các cặp.' },
   { value: 'SHORT_ANSWER', label: 'Trả lời ngắn', hint: 'So khớp với đáp án chuẩn. Chấm tự động.' },
   { value: 'ESSAY', label: 'Tự luận', hint: 'Giáo viên chấm tay sau khi thí sinh nộp bài.' },
   { value: 'SPEAKING', label: 'Nói', hint: 'Thí sinh ghi âm câu trả lời; giáo viên nghe và chấm.' },
@@ -54,6 +57,21 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
   const [options, setOptions] = useState(initial && ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE_GROUP'].includes(initial.questionType)
     ? initial.options.map(o => ({ content: o.content, correct: !!o.correct }))
     : [{ content: '', correct: true }, { content: '', correct: false }, { content: '', correct: false }, { content: '', correct: false }])
+  const [gaps, setGaps] = useState<string[]>(initial?.questionType === 'FILL_BLANK' ? initial.options.map(o => o.content) : [])
+  const [pairs, setPairs] = useState<{ left: string; right: string }[]>(initial?.questionType === 'MATCHING'
+    ? initial.options.map(o => pairOf(o.content) ?? { left: o.content, right: '' })
+    : [{ left: '', right: '' }, { left: '', right: '' }, { left: '', right: '' }])
+  const contentRef = useRef<HTMLTextAreaElement>(null)
+  const blanks = countBlanks(content)
+  /** Inserts a gap at the cursor; the gap list follows the number of ___ in the text. */
+  const insertBlank = () => {
+    const el = contentRef.current
+    const at = el ? el.selectionStart : content.length
+    const before = content.slice(0, at), after = content.slice(el ? el.selectionEnd : at)
+    const pad = (before && !/\s$/.test(before) ? ' ' : '') + '___' + (after && !/^\s/.test(after) ? ' ' : '')
+    setContent(before + pad + after)
+    requestAnimationFrame(() => { el?.focus(); const pos = (before + pad).length; el?.setSelectionRange(pos, pos) })
+  }
   const [trueCorrect, setTrueCorrect] = useState(initialTrueIsCorrect(initial))
   const [expectedAnswer, setExpectedAnswer] = useState(initial?.expectedAnswer ?? '')
   const [explanation, setExplanation] = useState(initial?.explanation ?? '')
@@ -102,6 +120,15 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
       opts = options.map((o, i) => ({ content: o.content.trim(), correct: o.correct, displayOrder: i }))
     } else if (type === 'TRUE_FALSE') {
       opts = [{ content: tt('Đúng'), correct: trueCorrect, displayOrder: 0 }, { content: 'Sai', correct: !trueCorrect, displayOrder: 1 }]
+    } else if (type === 'FILL_BLANK') {
+      const list = Array.from({ length: blanks }, (_, i) => gaps[i] ?? '')
+      const problem = checkStructured(type, content, list)
+      if (problem) return setError(tt(problem))
+      opts = list.map((g, i) => ({ content: g.trim(), correct: true, displayOrder: i }))
+    } else if (type === 'MATCHING') {
+      const problem = checkStructured(type, content, pairs)
+      if (problem) return setError(tt(problem))
+      opts = pairs.map((p, i) => ({ content: joinPair(p.left, p.right), correct: true, displayOrder: i }))
     } else if (type === 'SHORT_ANSWER' && !expectedAnswer.trim()) {
       return setError(tt('Câu trả lời ngắn cần đáp án chuẩn.'))
     }
@@ -148,8 +175,12 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
           </Select>
         </Field>
         <Field label={tt('Nội dung câu hỏi')} htmlFor="q-content" required hint={tt('{0}/5000 ký tự', { 0: content.length })}>
-          <textarea id="q-content" className="input" rows={4} maxLength={5000} required value={content} onChange={e => setContent(e.target.value)} />
+          <textarea id="q-content" ref={contentRef} className="input" rows={4} maxLength={5000} required value={content} onChange={e => setContent(e.target.value)} />
         </Field>
+        {type === 'FILL_BLANK' && <div className="row" style={{ gap: 8, marginTop: -8 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={insertBlank} disabled={blanks >= MAX_BLANKS}><Plus size={14} aria-hidden /> {tt('Chèn chỗ trống ___')}</button>
+          <span className="xsmall muted">{tt('{0} chỗ trống', { 0: blanks })}</span>
+        </div>}
         <PresentationFields value={presentation} onChange={setPresentation} type={type} />
 
         {(type === 'MULTIPLE_CHOICE' || type === 'MULTIPLE_RESPONSE') && (
@@ -206,6 +237,42 @@ export default function QuestionEditor({ initial, onClose, onSaved, activateOnly
             ))}
             {options.length < 8 && <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => setOptions([...options, { content: '', correct: false }])}>
               <Plus size={14} aria-hidden /> {tt('Thêm ý')}</button></div>}
+          </fieldset>
+        )}
+
+        {type === 'FILL_BLANK' && (
+          <fieldset className="stack-sm">
+            <legend className="field-label" style={{ marginBottom: 4 }}>{tt('Đáp án từng chỗ trống')}</legend>
+            <p className="field-hint" style={{ marginBottom: 4 }}>{tt('Chấp nhận nhiều cách viết: ngăn bằng dấu |, ví dụ “TP.HCM | Sài Gòn”. Không phân biệt chữ hoa/thường và khoảng trắng thừa.')}</p>
+            {blanks === 0 && <Notice tone="info">{tt('Chưa có chỗ trống. Gõ ___ (ba dấu gạch dưới) vào nội dung hoặc bấm “Chèn chỗ trống ___”.')}</Notice>}
+            {Array.from({ length: blanks }, (_, i) => (
+              <div key={i} className="row" style={{ flexWrap: 'nowrap', alignItems: 'center', gap: 8 }}>
+                <span className="option-key" aria-hidden>{i + 1}</span>
+                <input className="input" aria-label={tt('Đáp án chỗ trống {0}', { 0: i + 1 })} maxLength={1000} value={gaps[i] ?? ''}
+                  onChange={e => { const next = Array.from({ length: Math.max(blanks, gaps.length) }, (_, n) => gaps[n] ?? ''); next[i] = e.target.value; setGaps(next) }} />
+              </div>
+            ))}
+          </fieldset>
+        )}
+
+        {type === 'MATCHING' && (
+          <fieldset className="stack-sm">
+            <legend className="field-label" style={{ marginBottom: 4 }}>{tt('Các cặp nối đúng')}</legend>
+            <p className="field-hint" style={{ marginBottom: 4 }}>{tt('Mỗi dòng là một cặp đúng. Khi thi, vế phải được xáo trộn và thí sinh chọn vế phải cho từng vế trái.')}</p>
+            {pairs.map((p, i) => (
+              <div key={i} className="match-edit-row">
+                <span className="option-key" aria-hidden>{i + 1}</span>
+                <input className="input" aria-label={tt('Vế trái cặp {0}', { 0: i + 1 })} placeholder={tt('Vế trái')} maxLength={480} value={p.left}
+                  onChange={e => setPairs(pairs.map((v, n) => n === i ? { ...v, left: e.target.value } : v))} />
+                <span className="muted" aria-hidden>→</span>
+                <input className="input" aria-label={tt('Vế phải cặp {0}', { 0: i + 1 })} placeholder={tt('Vế phải')} maxLength={480} value={p.right}
+                  onChange={e => setPairs(pairs.map((v, n) => n === i ? { ...v, right: e.target.value } : v))} />
+                <button type="button" className="btn btn-ghost btn-icon" aria-label={tt('Xóa cặp {0}', { 0: i + 1 })} disabled={pairs.length <= 2}
+                  onClick={() => setPairs(pairs.filter((_, n) => n !== i))}><Trash2 size={16} /></button>
+              </div>
+            ))}
+            {pairs.length < MAX_PAIRS && <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => setPairs([...pairs, { left: '', right: '' }])}>
+              <Plus size={14} aria-hidden /> {tt('Thêm cặp')}</button></div>}
           </fieldset>
         )}
 

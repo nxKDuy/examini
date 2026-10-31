@@ -1,4 +1,5 @@
 import type { PaperQuestion } from './examApi'
+import { alternatives, pairOf } from '../question-bank/structuredModel'
 
 /**
  * Paper exam with several exam codes (mã đề): each code reorders the questions and the multiple-choice options with a
@@ -11,6 +12,8 @@ export interface PaperItem {
   options: { letter: string; content: string; correct: boolean; displayOrder?: number }[]
   /** What the key shows for this item: letters, Đúng/Sai, the expected answer or "TL" for essays. */
   key: string
+  /** MATCHING: left items numbered 1…n in option order, right items lettered a…n in a seeded order. */
+  match?: { lefts: string[]; rights: string[] }
 }
 export interface PaperVersion { code: string; items: PaperItem[] }
 
@@ -48,6 +51,8 @@ function keyOf(q: PaperQuestion, options: PaperItem['options']): string {
   // THPT style key of a true/false group: one Đ/S per statement in order, e.g. "ĐSĐĐ".
   if (q.questionType === 'TRUE_FALSE_GROUP') return options.map(o => (o.correct ? 'Đ' : 'S')).join('')
   if (q.questionType === 'SHORT_ANSWER') return q.expectedAnswer?.trim() ?? ''
+  // Gaps: first accepted answer of each, "(1) Hà Nội; (2) 1945".
+  if (q.questionType === 'FILL_BLANK') return options.map((o, i) => `(${i + 1}) ${alternatives(o.content)[0] ?? ''}`).join('; ')
   return 'TL'
 }
 
@@ -68,6 +73,12 @@ export function makeVersion(examId: string, questions: PaperQuestion[], code: st
     const mixed = opts.shuffleOptions && (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'MULTIPLE_RESPONSE') ? shuffled(sorted, random) : sorted
     const group = q.questionType === 'TRUE_FALSE_GROUP'
     const options = mixed.map((o, k) => ({ letter: group ? (LETTERS[k] ?? String(k + 1)).toLowerCase() : LETTERS[k] ?? String(k + 1), content: o.content, correct: o.correct, displayOrder: o.displayOrder }))
+    if (q.questionType === 'MATCHING') {
+      const pairs = sorted.map(o => pairOf(o.content) ?? { left: o.content, right: '' })
+      const rights = shuffled(pairs.map(p => p.right), random)
+      const key = pairs.map((p, k) => `${k + 1}-${LETTERS[rights.indexOf(p.right)]?.toLowerCase() ?? '?'}`).join(', ')
+      return { number: i + 1, question: q, options, key, match: { lefts: pairs.map(p => p.left), rights } }
+    }
     return { number: i + 1, question: q, options, key: keyOf(q, options) }
   })
   return { code, items }

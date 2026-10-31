@@ -124,7 +124,7 @@ function QuestionResult({ q }: { q: ResultItem }) {
         <span className="xsmall muted">{t('Bài làm của bạn')}</span>
         <p className="prewrap">{mine ? (mine.unresolved ? <em>{mine.text}</em> : mine.text) : <em className="muted">{t('Không trả lời')}</em>}</p>
       </div>
-      {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(q.questionType === 'TRUE_FALSE_GROUP' ? '\n' : ' · ')}</p></div>}
+      {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(['TRUE_FALSE_GROUP', 'FILL_BLANK', 'MATCHING'].includes(q.questionType) ? '\n' : ' · ')}</p></div>}
       {q.explanation?.trim() && <div className="small" aria-label={t('Giải thích')}><span className="xsmall muted">{t('Giải thích')}</span><p className="prewrap">{q.explanation}</p></div>}
       {q.feedback && <div className="small"><span className="xsmall muted">{t('Nhận xét')}</span><p className="prewrap">{q.feedback}</p></div>}
     </li>

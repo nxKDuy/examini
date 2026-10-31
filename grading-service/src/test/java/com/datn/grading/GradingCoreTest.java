@@ -113,6 +113,30 @@ class GradingCoreTest {
         assertEquals(List.of("a) 2 — Đúng","b) 4 — Sai","c) 7 — Đúng","d) 9 — Sai"),ObjectiveScoring.key(group));
     }
 
+    @Test void fillBlankAndMatchingGivePartialCreditPerGapAndPair(){
+        var gaps=List.of(new ExamClient.Option(UUID.randomUUID(),"Hà Nội | Ha Noi",0,true),new ExamClient.Option(UUID.randomUUID(),"1945",1,true));
+        var fill=new ExamClient.Question(UUID.randomUUID(),1,"FILL_BLANK","Thủ đô là ___, năm ___.",gaps,new BigDecimal("2"),null,null,0);
+        var pairs=List.of(new ExamClient.Option(UUID.randomUUID(),"Việt Nam => Hà Nội",0,true),new ExamClient.Option(UUID.randomUUID(),"Pháp => Paris",1,true),
+                new ExamClient.Option(UUID.randomUUID(),"Nhật Bản => Tokyo",2,true),new ExamClient.Option(UUID.randomUUID(),"Ai Cập => Cairo",3,true));
+        var match=new ExamClient.Question(UUID.randomUUID(),1,"MATCHING","Nối nước với thủ đô",pairs,new BigDecimal("1"),null,null,1);
+        // Gap 1 with other case and spaces is right, gap 2 is wrong -> 1 of 2.
+        String filled="{\""+gaps.get(0).id()+"\":\"  ha   noi \",\""+gaps.get(1).id()+"\":\"1954\"}";
+        // Two pairs right, one swapped, one unanswered -> 2 of 4.
+        String matched="{\""+pairs.get(0).id()+"\":\"Hà Nội\",\""+pairs.get(1).id()+"\":\"Tokyo\",\""+pairs.get(2).id()+"\":\"Paris\",\""+pairs.get(3).id()+"\":\"Cairo\"}";
+        String twoOfFour="{\""+pairs.get(0).id()+"\":\"Hà Nội\",\""+pairs.get(1).id()+"\":\"Tokyo\",\""+pairs.get(3).id()+"\":\"Cairo\"}";
+        assertEquals(1f,ObjectiveScoring.score(fill,filled));
+        assertEquals(.5f,ObjectiveScoring.score(match,twoOfFour));
+        assertEquals(.5f,ObjectiveScoring.score(match,matched));
+        assertEquals(0f,ObjectiveScoring.score(match,"not json"));
+        submitted(List.of(fill,match),List.of(new ExamSessionClient.AnswerDto(fill.questionId(),filled),new ExamSessionClient.AnswerDto(match.questionId(),twoOfFour)));
+        var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
+        assertEquals(1f,items.get(0).autoScore());assertEquals("(1) ha   noi; (2) 1954",items.get(0).selectedOptionContent());
+        assertEquals(.5f,items.get(1).autoScore());assertEquals("Việt Nam → Hà Nội; Pháp → Tokyo; Nhật Bản → —; Ai Cập → Cairo",items.get(1).selectedOptionContent());
+        assertEquals(ExamResult.Status.GRADED,result.getStatus());assertEquals(1.5f,result.getTotalScore());
+        assertEquals(List.of("(1) Hà Nội / Ha Noi","(2) 1945"),ObjectiveScoring.key(fill));
+        assertEquals("Việt Nam → Hà Nội",ObjectiveScoring.key(match).getFirst());
+    }
+
     @Test void myProgressShowsOnlyWhatThePolicyAllowsAndGivesStudyTips(){
         var mc=question("MULTIPLE_CHOICE",null,0);var tf=question("TRUE_FALSE",null,1);
         submitted(List.of(mc,tf),List.of(new ExamSessionClient.AnswerDto(mc.questionId(),mc.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(tf.questionId(),tf.options().get(1).id().toString())));
