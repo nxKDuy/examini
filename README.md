@@ -106,6 +106,22 @@ mvn test                                  # toàn bộ backend (cần PostgreSQL
 cd frontend && npx tsc -b && npx oxlint && node --test tests/*.test.mjs && npm run build
 ```
 
+**Kiểm thử đầu-cuối (end-to-end)** chạy trên hệ thống thật đã seed, đi qua nginx như trình duyệt thật
+(`frontend/e2e/demo.e2e.mjs`): đăng nhập mọi tài khoản demo, phân quyền qua gateway, dữ liệu khớp giữa các service,
+sinh câu hỏi AI (kể cả khi không có mạng), học sinh xem kết quả/tiến bộ, vào đề bằng mã và luyện tập có báo đúng/sai,
+lịch thi + tệp .ics, giáo viên chấm tự luận, đổi lịch thi → học sinh nhận thông báo (kiểm tra cả màn hình điện thoại),
+xuất QTI 2.1 và trang thống kê của quản trị:
+
+```bash
+docker compose up -d && python3 scripts/seed_demo.py
+cd frontend && npx playwright install chromium         # lần đầu
+E2E_BASE_URL=http://localhost:${WEB_PORT:-80} npm run e2e
+# thêm E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD (tài khoản bootstrap) để chạy cả phần quản trị; E2E_HEADED=1 để xem trình duyệt
+```
+
+Bộ test chỉ thêm dữ liệu (một lượt làm bài, một bài được chấm, lịch thi lùi 15 phút) nên chạy lại được nhiều lần;
+phần nào đã dùng hết dữ liệu demo (hết lượt làm, hết bài chờ chấm) sẽ báo *bỏ qua* kèm lý do thay vì báo lỗi.
+
 CI (GitHub Actions) chạy test backend với PostgreSQL/Redis/Mailpit, kiểm tra kiểu + lint + test + build frontend, và build toàn bộ image Docker.
 
 ## Vận hành
