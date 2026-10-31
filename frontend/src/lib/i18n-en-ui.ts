@@ -2483,4 +2483,13 @@ export const EN_UI: Record<string, string> = {
   'Xem gợi ý ôn tập': 'See study tips',
   'Đáp án đúng dài hơn hẳn (dễ đoán)': 'The key is clearly the longest (easy to guess)',
   'Phương án nhiễu quá giống nhau hoặc chỉ khác do làm tròn': 'Distractors too alike or differing only by rounding',
+  'AI đang rà soát…': 'AI is reviewing…',
+  'Rà soát bằng AI': 'Review with AI',
+  'AI tự giải ra đáp án khác: hãy xem lại đáp án': 'AI solved it to a different answer: check the key',
+  'AI thấy {0} điểm nên xem lại': 'AI found {0} things to check',
+  'AI không thấy vấn đề': 'AI found no problem',
+  'Chưa có AI; chỉ kiểm tra theo quy tắc và không thấy vấn đề': 'No AI available; rule checks found no problem',
+  'Sửa câu': 'Edit question',
+  'AI giải độc lập và ra cùng đáp án với bạn.': 'AI solved it independently and reached your answer.',
+  'Gợi ý viết lại đề:': 'Suggested stem:',
 }

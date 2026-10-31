@@ -22,6 +22,7 @@ import java.util.*;
 public class QuestionController {
     private final QuestionService service;
     private final ExamEligibilityService eligibility;
+    private final com.datn.questionbank.service.ai.AiQuestionReview review;
 
     private QuestionActor actor(HttpServletRequest request) {
         Object actor = request.getAttribute(QuestionActor.class.getName());
@@ -63,6 +64,9 @@ public class QuestionController {
     public EligibleRandomResponse eligibleRandom(@Valid @RequestBody EligibleRandomRequest body, HttpServletRequest req) {
         return eligibility.pick(body, actor(req));
     }
+    /** AI review of one question (rule checks + independent solve + short critique); changes nothing. */
+    @PostMapping("/{id}/ai-review")
+    public com.datn.questionbank.service.ai.AiQuestionReview.Review aiReview(@PathVariable UUID id, HttpServletRequest req) { return review.review(id, actor(req)); }
     @GetMapping("/{id}")
     public QuestionProjection findById(@PathVariable UUID id, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) { return service.findById(id, includeAnswers, actor(req)); }
     @PostMapping

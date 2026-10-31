@@ -45,6 +45,8 @@ class RateLimitFilterTest {
                 "asking the AI tutor counts as an AI call");
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/submissions/s1/items/q1/ai-suggest").header("X-Forwarded-For", "10.0.0.9").build()),
                 "an on-demand essay suggestion counts as an AI call");
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/questions/q1/ai-review").header("X-Forwarded-For", "10.0.0.9").build()),
+                "an AI question review counts as an AI call");
     }
 
     @Test void disabledFilterPassesEverything() {

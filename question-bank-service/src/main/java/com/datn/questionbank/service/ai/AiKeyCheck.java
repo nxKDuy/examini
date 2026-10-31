@@ -28,7 +28,7 @@ import java.util.function.BiFunction;
 public class AiKeyCheck {
     static final int MAX_QUESTIONS = 40, MAX_MATERIAL = 6000;
     private static final double PENALTY = 0.2;
-    private static final Set<QuestionType> CHECKED = EnumSet.of(QuestionType.MULTIPLE_CHOICE, QuestionType.TRUE_FALSE,
+    static final Set<QuestionType> CHECKED = EnumSet.of(QuestionType.MULTIPLE_CHOICE, QuestionType.TRUE_FALSE,
             QuestionType.MULTIPLE_RESPONSE, QuestionType.TRUE_FALSE_GROUP);
 
     private final BiFunction<String, String, Optional<String>> model;

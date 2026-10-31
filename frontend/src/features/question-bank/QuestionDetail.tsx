@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, CheckCircle2, Pencil, Sparkles } from 'lucide-react'
+import { Archive, CheckCircle2, Pencil, ScanSearch, Sparkles } from 'lucide-react'
 import AiGenerateDialog from '../question-import/AiGenerateDialog'
 import { MediaImage, MediaList, PassageView } from './media/QuestionMedia'
 import { bankApi } from '../banks/bankApi'
@@ -8,7 +8,7 @@ import { canShare } from '../banks/bankModel'
 import ProvenanceBlock from '../banks/ProvenanceBlock'
 import { CopySyncEntry } from '../banks/CopySync'
 import { SubmitToOrgDialog } from '../banks/ShareDialogs'
-import { questionBankApi, type Question } from './questionApi'
+import { questionBankApi, type AiReview, type Question } from './questionApi'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { QuestionStatusBadge } from '../../components/status'
@@ -83,6 +83,7 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
   const canReadAnswers = audience !== 'STUDENT'
   const [sharing, setSharing] = useState(false)
   const [similar, setSimilar] = useState(false)
+  const review = useMutation({ mutationFn: () => questionBankApi.aiReview(id) })
   const [confirm, setConfirm] = useState<Action | null>(null)
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const detail = useQuery({ queryKey: ['question', id, canReadAnswers], queryFn: () => questionBankApi.getQuestion(id, canReadAnswers) })
@@ -135,7 +136,11 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
           {q.status !== 'ARCHIVED' && <button type="button" className="btn btn-danger-ghost" disabled={action.isPending} onClick={() => setConfirm('archive')}><Archive size={16} aria-hidden /> {t('Lưu trữ')}</button>}
           {personal && canShare(q) && <button type="button" className="btn btn-secondary" onClick={() => setSharing(true)}>{t('Gửi vào tổ chức')}</button>}
           <button type="button" className="btn btn-ghost" onClick={() => setSimilar(true)}><Sparkles size={16} aria-hidden /> {t('Tạo câu tương tự bằng AI')}</button>
+          <button type="button" className="btn btn-ghost" disabled={review.isPending} aria-busy={review.isPending} onClick={() => review.mutate()}>
+            <ScanSearch size={16} aria-hidden /> {review.isPending ? t('AI đang rà soát…') : t('Rà soát bằng AI')}</button>
         </div>
+        {review.isError && <Notice tone="danger" live>{errorText(review.error)}</Notice>}
+        {review.data && <AiReviewResult r={review.data} onEdit={canEdit ? () => onEdit(q) : undefined} />}
         {personal && <p className="xsmall muted">{t('Muốn đăng câu này lên cộng đồng? Dùng nút + ở Ngân hàng công khai.')}</p>}
       </div>}
       {similar && <AiGenerateDialog onClose={() => setSimilar(false)} prefill={{
@@ -177,5 +182,21 @@ export default function QuestionDetail({ id, onEdit }: { id: string; onEdit: (q:
       {confirm === 'archive' && <ConfirmDialog title={t('Lưu trữ câu hỏi?')} confirmLabel={t('Lưu trữ')} tone="danger" busy={action.isPending}
         description={t('Câu hỏi sẽ không còn dùng được cho đề thi mới. Đề thi đã xuất bản không bị ảnh hưởng.')} onConfirm={() => action.mutate('archive')} onCancel={() => setConfirm(null)} />}
     </div>
+  )
+}
+
+/** Result of "Rà soát bằng AI": key check verdict, problems found, an optional better stem. Nothing is changed automatically. */
+function AiReviewResult({ r, onEdit }: { r: AiReview; onEdit?: () => void }) {
+  useT()
+  const tone = r.keyCheck === 'DISPUTED' ? 'danger' : r.issues.length ? 'warning' : 'success'
+  const title = r.keyCheck === 'DISPUTED' ? t('AI tự giải ra đáp án khác: hãy xem lại đáp án')
+    : r.issues.length ? t('AI thấy {0} điểm nên xem lại', { 0: r.issues.length })
+    : r.aiAvailable ? t('AI không thấy vấn đề') : t('Chưa có AI; chỉ kiểm tra theo quy tắc và không thấy vấn đề')
+  return (
+    <Notice tone={tone} live title={title} action={onEdit && (r.issues.length > 0 || r.suggestion) ? <button type="button" className="btn btn-secondary btn-sm" onClick={onEdit}><Pencil size={14} aria-hidden /> {t('Sửa câu')}</button> : undefined}>
+      {r.keyCheck === 'AGREES' && <p className="small" style={{ margin: '0 0 6px' }}>{t('AI giải độc lập và ra cùng đáp án với bạn.')}</p>}
+      {r.issues.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{r.issues.map(i => <li key={i}>{i}</li>)}</ul>}
+      {r.suggestion && <p className="small" style={{ margin: '8px 0 0' }}><span className="muted">{t('Gợi ý viết lại đề:')}</span> {r.suggestion}</p>}
+    </Notice>
   )
 }

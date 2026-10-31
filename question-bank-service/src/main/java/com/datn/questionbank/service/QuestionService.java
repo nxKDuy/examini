@@ -71,6 +71,21 @@ public class QuestionService {
         return projection(q, includeAnswers, actor);
     }
 
+    /** Readable copy of one question with its key, for the AI review (author roles who may read it). */
+    public record ReviewCopy(ImportParser.Parsed item, String passage) {}
+    @Transactional(readOnly = true)
+    public ReviewCopy reviewCopy(UUID id, QuestionActor actor) {
+        Question q = get(id);
+        policy.requireRead(q, actor);
+        policy.requireAuthor(actor);
+        var options = q.getOptions().stream().sorted(java.util.Comparator.comparingInt(o -> o.getDisplayOrder()))
+                .map(o -> new ImportParser.Option(o.getContent(), o.isCorrect(), o.getDisplayOrder())).toList();
+        var item = new ImportParser.Parsed(q.getContent(), q.getQuestionType(), q.getDifficultyLevel(), options, q.getExpectedAnswer(), q.getExplanation(),
+                null, null, 1, q.getContent(), List.of(), false);
+        var p = q.getPresentation() == null ? null : q.getPresentation().passage();
+        return new ReviewCopy(item, p == null || p.content() == null ? null : (p.title() == null ? "" : p.title() + "\n") + p.content());
+    }
+
     @Transactional
     public QuestionResponse create(CreateRequest req, QuestionActor actor) {
         policy.requireAuthor(actor);

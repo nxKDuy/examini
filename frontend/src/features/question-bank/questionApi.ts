@@ -50,7 +50,11 @@ export interface Filters {
 export interface Version { versionNumber: number; createdAt: string; changedBy: string; question: Question }
 export interface Review { id: string; questionVersion: number; reviewerId: string; decision: 'APPROVED' | 'REJECTED'; reviewNote: string | null; reviewedAt: string }
 export interface ImportResult { totalRows: number; imported: number; failed: number; errors: string[] }
+export interface AiReview { keyCheck: 'AGREES' | 'DISPUTED' | 'UNCHECKED'; issues: string[]; suggestion: string | null; aiAvailable: boolean }
+
 export const questionBankApi = {
+  /** AI review of one question; nothing is saved. */
+  aiReview: (id: string) => api.post<AiReview>(`/questions/${id}/ai-review`, undefined, { timeout: 90_000 }).then(r => r.data),
   getSubjects: () => api.get<Subject[]>('/subjects').then(r => r.data),
   createSubject: (data: { name: string; description?: string }) => api.post<Subject>('/subjects', data).then(r => r.data),
   deleteSubject: (id: string) => api.delete(`/subjects/${id}`),
