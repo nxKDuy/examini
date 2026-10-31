@@ -1,9 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
-import { progressApi } from '../progress/progressApi'
+import { progressApi, type ProgressItem } from '../progress/progressApi'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { BarChart3, BookOpenCheck, CalendarPlus, ClipboardCheck, FilePlus2, FileUp, PlayCircle, Sparkles } from 'lucide-react'
 import { analyticsApi } from '../exams/analyticsApi'
-import { formatScore } from '../../lib/format'
+import { QUESTION_TYPE_LABEL, formatScore } from '../../lib/format'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section, Stat } from '../../components/ui'
@@ -85,8 +85,41 @@ function StudentDashboard() {
             {publicNew.length > 0 && <p className="small muted">{t('Có')} {publicNew.length} {t('kỳ thi công khai bạn chưa tham gia.')} <Link to="/my-exams">{t('Xem và theo dõi')}</Link></p>}
           </div>
         </Section>
+        <RecentResults items={progress.data?.items ?? []} weakest={weakestType(progress.data?.overview.byType ?? [])} />
       </div>
     </>
+  )
+}
+
+/** The type of question the student scores lowest on (at least 2 questions seen), to suggest what to practise. */
+function weakestType(byType: { questionType: string; questions: number; percent: number | null }[]) {
+  return byType.filter(b => b.questions >= 2 && b.percent !== null).sort((a, b) => (a.percent ?? 0) - (b.percent ?? 0))[0]
+}
+
+/** Latest released results first, each one click from its review page (where the AI tutor explains mistakes). */
+function RecentResults({ items, weakest }: { items: ProgressItem[]; weakest?: { questionType: string; percent: number | null } }) {
+  useT()
+  const released = items.filter(i => i.phase === 'PUBLISHED' && !i.invalidated)
+    .sort((a, b) => Date.parse(b.releasedAt ?? b.submittedAt ?? '') - Date.parse(a.releasedAt ?? a.submittedAt ?? '')).slice(0, 4)
+  const waiting = items.filter(i => i.phase !== 'PUBLISHED').length
+  return (
+    <Section title={t('Kết quả gần đây')} description={waiting ? t('{0} bài đang chờ chấm hoặc công bố', { 0: waiting }) : undefined}
+      actions={<Link to="/progress" className="btn btn-ghost btn-sm"><BarChart3 size={14} aria-hidden /> {t('Tiến bộ')}</Link>} bodyClassName="">
+      {released.length === 0 ? <EmptyState title={t('Chưa có kết quả được công bố')} description={t('Điểm hiện ở đây ngay khi giáo viên công bố.')} />
+        : <ul className="result-bars">{released.map(i => {
+          const p = i.percent
+          return (
+            <li key={i.sessionId}><Link to={`/exam/result/${i.sessionId}`} className="result-bar result-bar-compact">
+              <span className="result-bar-title">{i.title}</span>
+              <span className="result-bar-track" aria-hidden><span style={{ width: `${Math.max(0, Math.min(100, p ?? 0))}%` }} data-level={p === null ? 'none' : p >= 80 ? 'high' : p >= 50 ? 'mid' : 'low'} /></span>
+              <span className="result-bar-value">{i.score === null ? '–' : `${formatScore(i.score)}/${formatScore(i.maxScore)}`}</span>
+            </Link></li>
+          )
+        })}</ul>}
+      {weakest && <p className="small" style={{ padding: '12px 20px', margin: 0, borderTop: '1px solid var(--color-hairline)' }}>
+        {t('Nên ôn thêm: dạng {0} ({1}% số điểm).', { 0: QUESTION_TYPE_LABEL[weakest.questionType] ?? weakest.questionType, 1: Math.round(weakest.percent ?? 0) })}{' '}
+        <Link to="/progress">{t('Xem gợi ý ôn tập')}</Link></p>}
+    </Section>
   )
 }
 

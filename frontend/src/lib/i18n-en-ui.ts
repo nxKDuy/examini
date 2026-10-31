@@ -2475,4 +2475,10 @@ export const EN_UI: Record<string, string> = {
   'Tìm trang, thao tác hoặc kỳ thi…': 'Find a page, an action or an exam…',
   'Không tìm thấy “{0}”': 'Nothing found for “{0}”',
   '↑ ↓ chọn · Enter mở · {0} hoặc / để mở lại': '↑ ↓ choose · Enter open · {0} or / to reopen',
+  'Kết quả gần đây': 'Recent results',
+  '{0} bài đang chờ chấm hoặc công bố': '{0} papers waiting to be graded or released',
+  'Chưa có kết quả được công bố': 'No released result yet',
+  'Điểm hiện ở đây ngay khi giáo viên công bố.': 'Scores appear here as soon as your teacher releases them.',
+  'Nên ôn thêm: dạng {0} ({1}% số điểm).': 'Practise more: {0} ({1}% of marks).',
+  'Xem gợi ý ôn tập': 'See study tips',
 }
