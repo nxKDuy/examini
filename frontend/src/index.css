@@ -679,3 +679,9 @@ a.stat:hover { background: var(--color-subtle); }
 .result-q[data-verdict="partial"] .result-verdict { color: #8a6500; }
 .result-q[data-verdict="wrong"] .result-verdict, .result-q[data-verdict="blank"] .result-verdict { color: #c2410c; }
 .tutor { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--color-accent); background: #f4f6ff; }
+
+/* Exam taking: review-later marks */
+.palette button[data-flagged="true"] { position: relative; }
+.palette button[data-flagged="true"]::after { content: ""; position: absolute; top: 2px; right: 2px; width: 0; height: 0; border-style: solid; border-width: 0 9px 9px 0; border-color: transparent #c2410c transparent transparent; }
+.flag-btn[aria-pressed="true"] { color: #c2410c; }
+.kbd-hint { margin: 0; border-top: 1px solid var(--color-hairline); padding-top: 8px; }

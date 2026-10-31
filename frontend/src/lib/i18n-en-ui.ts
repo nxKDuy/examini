@@ -2457,4 +2457,10 @@ export const EN_UI: Record<string, string> = {
   'Gia sư AI giải thích riêng cho bài làm của bạn': 'AI tutor, explained for your answer',
   'Giải thích từ đáp án và lời giải của giáo viên': 'Explanation from the key and the teacher’s solution',
   'Đáp án': 'Key',
+  'Phím F': 'Key F',
+  'Đã đánh dấu xem lại': 'Marked for review',
+  'Đánh dấu xem lại': 'Mark for review',
+  'Phím tắt: A–D chọn đáp án · ← → chuyển câu · F đánh dấu': 'Shortcuts: A–D pick · ← → move · F mark',
+  'Câu bạn đánh dấu để xem lại:': 'Questions you marked for review:',
+  '(đáp án đúng)': '(correct answer)',
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, Copy, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, Copy, Flag, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import BlockingOverlay from '../integrity/BlockingOverlay'
 import { exitFullscreen } from '../../lib/fullscreen'
 import { useT, t as tt, locale } from '../../lib/i18n'
@@ -45,6 +45,21 @@ export default function StudentExamPage() {
   const [now, setNow] = useState(() => Date.now())
   const [online, setOnline] = useState(() => navigator.onLine)
   const [confirming, setConfirming] = useState(false)
+  // "Review later" marks: a private note of this browser only (never sent to the server or the teacher).
+  const flagKey = `examini-flags:${id}`
+  const [flagged, setFlagged] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(flagKey) ?? '[]') as string[]) } catch { return new Set() } })
+  const toggleFlag = (qid: string) => setFlagged(prev => {
+    const next = new Set(prev); if (next.has(qid)) next.delete(qid); else next.add(qid)
+    try { localStorage.setItem(flagKey, JSON.stringify([...next])) } catch { /* private mode: marks stay for this visit */ }
+    return next
+  })
+  // Keyboard on a laptop: the handler is rebuilt every render (it needs the current question), the listener only once.
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {})
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => keyHandler.current(e)
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [])
   const [submitting, setSubmitting] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -290,6 +305,21 @@ export default function StudentExamPage() {
   const locked = expired || submitting || blocked
   const lastLine = signals?.stage === 'last' ? <p><strong>{t('Thêm một tín hiệu nữa, bài sẽ được tự động nộp.')}</strong></p> : null
   const countLine = signals ? <p><strong>{t('Đã ghi nhận {count}/{limit} tín hiệu rời khỏi bài.', { count: signals.count, limit: signals.limit })}</strong></p> : null
+  keyHandler.current = (e: KeyboardEvent) => {
+    const el = e.target as HTMLElement
+    if (locked || confirming || e.altKey || e.ctrlKey || e.metaKey || el.closest('input:not([type=radio]):not([type=checkbox]), textarea, select, [contenteditable=true], [role=dialog]')) return
+    const key = e.key.toLowerCase()
+    if (e.key === 'ArrowRight' && index < questions.length - 1) { e.preventDefault(); goTo(index + 1); return }
+    if (e.key === 'ArrowLeft' && index > 0) { e.preventDefault(); goTo(index - 1); return }
+    if (key === 'f') { e.preventDefault(); toggleFlag(q.questionId); return }
+    // A–H or 1–8 pick an option of a choice question (practice answers already checked stay locked).
+    const n = /^[a-h]$/.test(key) ? key.charCodeAt(0) - 97 : /^[1-8]$/.test(key) ? Number(key) - 1 : -1
+    if (n < 0 || checks[q.questionId] || n >= q.options.length) return
+    const opt = q.options[n]
+    if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'TRUE_FALSE') { e.preventDefault(); change(q.questionId, opt.id, true) }
+    else if (q.questionType === 'MULTIPLE_RESPONSE') { e.preventDefault(); const v = answers[q.questionId] ?? ''; change(q.questionId, toggleChosen(v, opt.id, !parseChosen(v).includes(opt.id)), true) }
+  }
+  const flaggedList = questions.map((qq, i) => (flagged.has(qq.questionId) ? i : -1)).filter(i => i >= 0)
   const neutral = <p className="small muted">{t('Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Đồng hồ vẫn chạy theo máy chủ; hết giờ bài được tự động nộp như bình thường.')}</p>
 
   return (
@@ -322,7 +352,11 @@ export default function StudentExamPage() {
           <section className="card card-body stack-lg" aria-labelledby="question-heading">
             <div className="spread">
               <h1 id="question-heading" ref={headingRef} tabIndex={-1} style={{ fontSize: '1rem' }}>{tt('Câu')} {index + 1} / {questions.length}</h1>
-              <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} {tt('điểm')}</span>
+              <span className="row" style={{ gap: 12 }}>
+                <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} {tt('điểm')}</span>
+                <button type="button" className="btn btn-ghost btn-sm flag-btn" aria-pressed={flagged.has(q.questionId)} onClick={() => toggleFlag(q.questionId)} title={tt('Phím F')}>
+                  <Flag size={14} aria-hidden /> {flagged.has(q.questionId) ? tt('Đã đánh dấu xem lại') : tt('Đánh dấu xem lại')}</button>
+              </span>
             </div>
             {block && <PassageView presentation={q.presentation} sessionId={session.sessionId}
               range={tt('Dùng cho câu {0}–{1}', { 0: block.start + 1, 1: block.end + 1 })} />}
@@ -363,15 +397,17 @@ export default function StudentExamPage() {
           <div className="spread"><h2 style={{ fontSize: '0.9375rem' }}>{tt('Câu hỏi')}</h2><span className="xsmall muted">{answeredCount}/{questions.length} {tt('đã trả lời')}</span></div>
           <div className="palette">
             {questions.map((qq, i) => (
-              <button key={qq.questionId} type="button" data-answered={answered(qq)} aria-current={i === index}
-                aria-label={tt('Câu {0}, {1}{2}', { 0: i + 1, 1: answered(qq) ? 'đã trả lời' : 'chưa trả lời', 2: saveState[qq.questionId] === 'error' ? ', chưa lưu được' : '' })}
+              <button key={qq.questionId} type="button" data-answered={answered(qq)} data-flagged={flagged.has(qq.questionId)} aria-current={i === index}
+                aria-label={tt('Câu {0}, {1}{2}', { 0: i + 1, 1: answered(qq) ? 'đã trả lời' : 'chưa trả lời', 2: (saveState[qq.questionId] === 'error' ? ', chưa lưu được' : '') + (flagged.has(qq.questionId) ? ', đã đánh dấu xem lại' : '') })}
                 onClick={() => goTo(i)}>{i + 1}</button>
             ))}
           </div>
           <div className="xsmall muted stack-sm" style={{ gap: 4 }}>
             <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, background: 'var(--color-accent)', border: '1px solid var(--color-accent)' }} /> {tt('Đã trả lời')}</span>
             <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, border: '1px solid #000' }} /> {tt('Chưa trả lời')}</span>
+            <span className="row" style={{ gap: 6 }}><Flag size={12} aria-hidden style={{ color: '#c2410c' }} /> {tt('Đánh dấu xem lại')}</span>
           </div>
+          <p className="xsmall muted hide-sm kbd-hint">{tt('Phím tắt: A–D chọn đáp án · ← → chuyển câu · F đánh dấu')}</p>
         </aside>
       </div>
       </>}
@@ -412,6 +448,12 @@ export default function StudentExamPage() {
               <div className="stack-sm">
                 <span className="small">{tt('Câu chưa trả lời:')}</span>
                 <div className="row">{unanswered.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}>{tt('Câu')} {i + 1}</button>)}</div>
+              </div>
+            )}
+            {flaggedList.length > 0 && (
+              <div className="stack-sm">
+                <span className="small">{tt('Câu bạn đánh dấu để xem lại:')}</span>
+                <div className="row">{flaggedList.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}><Flag size={12} aria-hidden /> {tt('Câu')} {i + 1}</button>)}</div>
               </div>
             )}
             {busy && <p className="small muted">{tt('Đang lưu các thay đổi cuối; hệ thống sẽ hoàn tất lưu trước khi nộp.')}</p>}
