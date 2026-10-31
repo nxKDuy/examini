@@ -39,7 +39,8 @@ public class LocalQuestionGenerator implements AiProvider {
     @Override public String model() { return MODEL; }
 
     record Fact(String sentence, String term, Kind kind, int start, int end) {}
-    enum Kind { NUMBER, NAME, KEYWORD }
+    /** PHRASE is never a fact kind: it is the reserve of distractors drawn from any phrase in the material. */
+    enum Kind { NUMBER, NAME, KEYWORD, PHRASE }
 
     @Override
     public Result generate(Prompt p) {
@@ -58,6 +59,7 @@ public class LocalQuestionGenerator implements AiProvider {
             facts.add(f);
         }
         for (String s : sentences) collect(s, keywords, pools);
+        pools.get(Kind.PHRASE).addAll(phrases(p.material()));
         if (facts.isEmpty()) throw new GenerationException("Tài liệu quá ngắn hoặc không có thông tin để hỏi (cần câu có số liệu, tên riêng hoặc thuật ngữ)");
 
         // Most relevant facts first: overlap with the topic, then numbers/names (more checkable) before keywords.
@@ -86,6 +88,9 @@ public class LocalQuestionGenerator implements AiProvider {
             if (c == null || !types.contains(QuestionType.valueOf(c.type()))) { usedSentences.remove(f.sentence()); continue; }
             out.add(c); t++;
         }
+        if (out.isEmpty()) throw new GenerationException(vi
+                ? "Tài liệu chưa đủ thông tin để bộ sinh nội bộ tạo dạng câu đã chọn: hãy dán tài liệu dài hơn hoặc chọn thêm dạng Trả lời ngắn / Đúng-Sai"
+                : "The material is too thin for the local generator to build the chosen question types: add more text or allow short-answer / true-false");
         var warnings = new ArrayList<String>();
         warnings.add(vi ? "Câu hỏi do bộ sinh nội bộ tạo theo mẫu từ tài liệu (không dùng AI); hãy kiểm tra cách diễn đạt."
                 : "Questions were built from the material by the local rule-based generator (no AI); check the wording.");
@@ -184,7 +189,47 @@ public class LocalQuestionGenerator implements AiProvider {
         var out = new ArrayList<String>();
         for (String x : pool) { if (out.size() >= n) break; if (out.stream().noneMatch(o -> fold(o).equals(fold(x)))) out.add(x); }
         if (f.kind() == Kind.NUMBER) for (String x : numberVariants(f.term())) { if (out.size() >= n) break; if (!fold(x).equals(key) && !out.contains(x)) out.add(x); }
+        else if (out.size() < n) {
+            // Short material: top up with other phrases of the material, same number of words as the answer first,
+            // so a two-word term gets two-word distractors (a lone short word next to a phrase gives the key away).
+            int words = f.term().split("\\s+").length;
+            var reserve = new ArrayList<String>();
+            for (String x : pools.getOrDefault(Kind.PHRASE, new LinkedHashSet<>()))
+                if (!fold(x).equals(key) && !sentence.contains(fold(x)) && !fold(x).contains(key) && !key.contains(fold(x))) reserve.add(x);
+            Collections.shuffle(reserve, rnd);
+            reserve.sort(Comparator.comparingInt(x -> Math.abs(x.split("\\s+").length - words)));
+            for (String x : reserve) { if (out.size() >= n) break; if (out.stream().noneMatch(o -> fold(o).equals(fold(x)))) out.add(x); }
+        }
         return out;
+    }
+
+    /** Words that do not start or end a distractor phrase (folded), beyond {@link #STOP}. */
+    private static final Set<String> EDGE = Set.of("bang", "tao", "thanh", "giua", "qua", "khac", "them", "it", "lam", "gom", "tung", "moi",
+            "khi", "neu", "thi", "nho", "phai", "can", "duoc", "of", "by", "to", "in", "on", "as", "at", "or", "is", "be", "an", "a");
+    private static final Pattern CLAUSE = Pattern.compile("[.,;:!?()\\[\\]{}\"«»“”…\\n–—-]+");
+
+    /** Lower case, except symbols and acronyms (OH, CO, DNA) that keep their capitals. */
+    private static String lower(String w) { return w.codePoints().filter(Character::isUpperCase).count() >= 2 ? w : w.toLowerCase(Locale.ROOT); }
+
+    /** Content-word phrases of the material (one or two words inside one clause, no function words at the edges). */
+    static List<String> phrases(String material) {
+        var out = new LinkedHashMap<String, String>();
+        for (String clause : CLAUSE.split(material)) {
+            var words = new ArrayList<String>();
+            Matcher m = WORD.matcher(clause);
+            while (m.find()) words.add(m.group());
+            for (int i = 0; i < words.size(); i++) {
+                String a = words.get(i), fa = fold(a);
+                if (STOP.contains(fa) || EDGE.contains(fa)) continue;
+                if (a.length() >= 4) out.putIfAbsent(fa, lower(a));
+                if (i + 1 < words.size()) {
+                    String b = words.get(i + 1), fb = fold(b);
+                    if (!STOP.contains(fb) && !EDGE.contains(fb) && a.length() + b.length() >= 6)
+                        out.putIfAbsent(fa + " " + fb, lower(a) + " " + lower(b));
+                }
+            }
+        }
+        return new ArrayList<>(out.values());
     }
 
     /** Numbers only replace numbers of the same kind: percentages, years, decimals or plain counts. */

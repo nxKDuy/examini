@@ -129,4 +129,28 @@ class LocalQuestionGeneratorTest {
             com.datn.questionbank.service.QuestionValidation.validate(q);
         }
     }
+
+    /** Found by the end-to-end suite: a short paragraph with only multiple choice requested gave nothing at all. */
+    @org.junit.jupiter.api.Test void shortMaterialStillGivesMultipleChoiceWithDistinctOptions() {
+        String este = "Este là hợp chất hữu cơ tạo thành khi thay nhóm OH của axit cacboxylic bằng nhóm OR. Chất béo là trieste của glixerol với axit béo. "
+                + "Phản ứng xà phòng hoá chất béo trong dung dịch kiềm tạo ra glixerol và muối của axit béo (xà phòng). Este có mùi thơm, nhẹ hơn nước và ít tan trong nước.";
+        var r = new LocalQuestionGenerator().generate(new Prompt("Este và chất béo", este, List.of(), 2, List.of(QuestionType.MULTIPLE_CHOICE), DifficultyLevel.EASY, "vi"));
+        org.junit.jupiter.api.Assertions.assertFalse(r.candidates().isEmpty());
+        for (var q : r.candidates()) {
+            org.junit.jupiter.api.Assertions.assertEquals("MULTIPLE_CHOICE", q.type());
+            org.junit.jupiter.api.Assertions.assertEquals(4, q.options().size());
+            org.junit.jupiter.api.Assertions.assertEquals(1, q.options().stream().filter(o -> Boolean.TRUE.equals(o.correct())).count());
+            var texts = q.options().stream().map(o -> LocalQuestionGenerator.fold(o.content())).distinct().count();
+            org.junit.jupiter.api.Assertions.assertEquals(4, texts, "options are distinct");
+            var key = q.options().stream().filter(o -> Boolean.TRUE.equals(o.correct())).findFirst().orElseThrow().content();
+            for (var o : q.options()) if (!Boolean.TRUE.equals(o.correct()))
+                org.junit.jupiter.api.Assertions.assertFalse(q.content().toLowerCase().contains(o.content().toLowerCase()), "a distractor already in the stem would be obviously wrong: " + o.content() + " / key " + key);
+        }
+    }
+
+    @org.junit.jupiter.api.Test void tooThinMaterialExplainsWhatToDo() {
+        var e = org.junit.jupiter.api.Assertions.assertThrows(AiQuestionGenerator.GenerationException.class, () -> new LocalQuestionGenerator().generate(
+                new Prompt("x", "Mèo kêu meo meo khi đói bụng vào buổi sáng sớm.", List.of(), 1, List.of(QuestionType.MULTIPLE_CHOICE), DifficultyLevel.EASY, "vi")));
+        org.junit.jupiter.api.Assertions.assertTrue(e.getMessage().contains("Tài liệu"), e.getMessage());
+    }
 }
