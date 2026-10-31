@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
 import { progressApi } from '../progress/progressApi'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { BarChart3, BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle } from 'lucide-react'
+import { BarChart3, BookOpenCheck, CalendarPlus, ClipboardCheck, FilePlus2, FileUp, PlayCircle, Sparkles } from 'lucide-react'
+import { analyticsApi } from '../exams/analyticsApi'
 import { formatScore } from '../../lib/format'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
@@ -123,7 +124,14 @@ function TeacherDashboard() {
     })),
   })
   const needsReview = gradable.map((e, i) => ({ exam: e, count: review[i]?.data ?? 0 })).filter(x => x.count > 0)
+  const waiting = review.some(r => r.isLoading) ? '…' : needsReview.reduce((n, x) => n + x.count, 0)
   const c = (i: number) => counts[i]?.data ?? '-'
+  // Results of the most recent closed exams (the list is newest first): average and how many took part.
+  const closed = list.filter(e => e.status === 'CLOSED').slice(0, 4)
+  const summaries = useQueries({ queries: closed.map(e => ({ queryKey: ['analytics', user?.id, e.id, 'summary'], queryFn: () => analyticsApi.summary(e.id), retry: false, staleTime: 120_000 })) })
+  const results = closed.map((exam, i) => ({ exam, s: summaries[i]?.data })).filter(x => x.s)
+  const pct = (s?: { published?: { averagePercent: number | null } | null; averagePercent: number | null }) => s?.published?.averagePercent ?? s?.averagePercent ?? null
+  const latest = results.find(r => pct(r.s) !== null)
 
   return (
     <>
@@ -134,10 +142,17 @@ function TeacherDashboard() {
         </Notice>
       )}
       <div className="grid-stats">
-        <Stat label={t('Câu hỏi bản nháp')} value={c(0)} to="/questions" />
-        <Stat label={t('Câu hỏi đang dùng')} value={c(1)} to="/questions" />
-        <Stat label={t('Câu hỏi đã lưu trữ')} value={c(2)} to="/questions" />
+        <Stat label={t('Kỳ thi đang mở')} value={exams.isLoading ? '…' : byStatus('OPEN')} hint={t('{0} đề đã xuất bản chờ mở', { 0: byStatus('PUBLISHED') })} to="/exams" />
+        <Stat label={t('Bài chờ chấm tay')} value={waiting} hint={needsReview.length ? t('ở {0} kỳ thi', { 0: needsReview.length }) : t('Không còn bài tồn')} to={needsReview[0] ? `/grading?examId=${needsReview[0].exam.id}&status=NEEDS_REVIEW` : '/grading'} />
+        <Stat label={t('Câu hỏi sẵn dùng')} value={c(1)} hint={t('{0} bản nháp · {1} lưu trữ', { 0: c(0), 1: c(2) })} to="/questions" />
+        <Stat label={t('Điểm TB kỳ gần nhất')} value={latest ? `${Math.round(pct(latest.s)! * 10) / 10}%` : '–'} hint={latest ? latest.exam.title : t('Chưa có kỳ thi đã đóng')} to={latest ? `/exams/${latest.exam.id}?tab=analytics` : undefined} />
       </div>
+      <nav className="quick-actions" aria-label={t('Thao tác nhanh')}>
+        <Link to="/questions/imports?new=ai" className="quick-action"><Sparkles size={20} aria-hidden /><span><strong>{t('Tạo câu hỏi bằng AI')}</strong><small>{t('Từ chủ đề, tài liệu hoặc link')}</small></span></Link>
+        <Link to="/questions/imports" className="quick-action"><FileUp size={20} aria-hidden /><span><strong>{t('Nhập đề có sẵn')}</strong><small>{t('Word, PDF, ảnh chụp, Excel')}</small></span></Link>
+        <Link to="/exams/create" className="quick-action"><FilePlus2 size={20} aria-hidden /><span><strong>{t('Tạo đề thi')}</strong><small>{t('Chọn tay hoặc theo ma trận')}</small></span></Link>
+        <Link to="/calendar" className="quick-action"><CalendarPlus size={20} aria-hidden /><span><strong>{t('Xếp lịch thi')}</strong><small>{t('Tự mở, tự đóng, nhắc học sinh')}</small></span></Link>
+      </nav>
       <TodayUpcoming />
       <div className="grid-2">
         <Section title={t('Đề thi của tôi')} description={exams.data ? t('{0} đề thi bạn sở hữu hoặc cộng tác', { 0: exams.data.totalElements }) : undefined}
@@ -166,6 +181,25 @@ function TeacherDashboard() {
             ))}
         </Section>
       </div>
+      {results.length > 0 && (
+        <Section title={t('Kết quả kỳ thi gần đây')} description={t('Điểm trung bình theo % điểm tối đa; bấm để xem phân tích từng câu.')} bodyClassName="">
+          <ul className="result-bars">
+            {results.map(({ exam, s }) => {
+              const p = pct(s)
+              return (
+                <li key={exam.id}>
+                  <Link to={`/exams/${exam.id}?tab=analytics`} className="result-bar">
+                    <span className="result-bar-title">{exam.title}</span>
+                    <span className="result-bar-track" aria-hidden><span style={{ width: `${Math.max(0, Math.min(100, p ?? 0))}%` }} data-level={p === null ? 'none' : p >= 80 ? 'high' : p >= 50 ? 'mid' : 'low'} /></span>
+                    <span className="result-bar-value">{p === null ? '–' : `${Math.round(p * 10) / 10}%`}</span>
+                    <span className="xsmall muted result-bar-meta">{t('{0} bài nộp', { 0: s!.submissions })}{s!.needsReview ? ' · ' + t('{0} chờ chấm', { 0: s!.needsReview }) : ''}</span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </Section>
+      )}
       <p className="xsmall muted">{t('Số liệu lấy trực tiếp từ hệ thống cho tài khoản')} {user?.email}.</p>
     </>
   )

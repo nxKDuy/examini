@@ -16,7 +16,7 @@ import { useLangStore, useT } from '../../lib/i18n'
 
 export function Brand() {
   const t = useT()
-  return <NavLink to="/dashboard" className="brand" aria-label={t('EXAMINI, về trang tổng quan')}><span>EXAMINI</span><small>Phase / 01</small></NavLink>
+  return <NavLink to="/dashboard" className="brand" aria-label={t('EXAMINI, về trang tổng quan')}><span>EXAMINI</span></NavLink>
 }
 
 export default function AppLayout() {

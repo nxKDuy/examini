@@ -58,6 +58,31 @@ export default function QuestionListPage() {
     onSuccess: async r => { setBulk(r); setChecked(new Set(r.failed.map(f => f.id))); await qc.invalidateQueries({ queryKey: ['questions'] }); await qc.invalidateQueries({ queryKey: ['question'] }) },
   })
 
+  // Laptop: the detail pane sits beside the list, so open the first question instead of an empty pane.
+  const firstId = list.data?.content[0]?.id
+  useEffect(() => {
+    if (!selectedId && firstId && window.matchMedia('(min-width: 1024px)').matches) setSelectedId(firstId)
+  }, [firstId, selectedId])
+
+  /** ↑/↓ (or j/k) move through the list when focus is not in a form field; Enter or E edits the open question. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      if (e.altKey || e.ctrlKey || e.metaKey || el.closest('input, textarea, select, [contenteditable=true], [role=dialog]')) return
+      const ids = list.data?.content.map(q => q.id) ?? []
+      if (!ids.length) return
+      const at = ids.indexOf(selectedId)
+      const step = e.key === 'ArrowDown' || e.key === 'j' ? 1 : e.key === 'ArrowUp' || e.key === 'k' ? -1 : 0
+      if (!step) return
+      e.preventDefault()
+      const next = ids[Math.min(ids.length - 1, Math.max(0, at < 0 ? 0 : at + step))]
+      setSelectedId(next)
+      document.querySelector<HTMLElement>(`[data-qid="${next}"]`)?.scrollIntoView({ block: 'nearest' })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [list.data, selectedId])
+
   function select(id: string) {
     setSelectedId(id)
     setTimeout(() => { const top = detailRef.current?.getBoundingClientRect().top ?? 0; if (top < 64 || top > window.innerHeight - 120) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 50)
@@ -115,6 +140,7 @@ export default function QuestionListPage() {
       <div className="split">
         <section className="card" aria-label={tt('Danh sách câu hỏi')} style={{ overflow: 'hidden' }}>
           <div className="card-header"><h2 className="small" style={{ fontSize: '0.9375rem' }}>{list.data ? tt('{0} câu hỏi', { 0: list.data.totalElements }) : tt('Câu hỏi')}</h2>
+            <span className="xsmall muted hide-sm" aria-hidden>{tt('↑ ↓ để duyệt')}</span>
             {list.isFetching && !list.isLoading && <span className="xsmall muted" role="status">{tt('Đang cập nhật…')}</span>}</div>
           {!admin && drafts.length > 0 && <div className="bulk-bar" role="group" aria-label={tt('Kích hoạt hàng loạt')}>
             <label className="check small"><input type="checkbox" checked={picked.length === drafts.length}
@@ -137,7 +163,7 @@ export default function QuestionListPage() {
                   {list.data!.content.map(item => (
                     <li key={item.id} className="list-row">{canActivate(item, user?.id) && !admin &&
                       <label className="check list-check"><input type="checkbox" aria-label={tt('Chọn để kích hoạt')} checked={checked.has(item.id)} onChange={e => toggle(item.id, e.target.checked)} /></label>}
-                      <button type="button" className="list-item" aria-current={selectedId === item.id} onClick={() => select(item.id)}>
+                      <button type="button" className="list-item" data-qid={item.id} aria-current={selectedId === item.id} onClick={() => select(item.id)}>
                       <div className="row" style={{ marginBottom: 6 }}>
                         <QuestionStatusBadge status={item.status} />
                         <span className="xsmall muted">{QUESTION_TYPE_LABEL[item.questionType]} · {DIFFICULTY_LABEL[item.difficultyLevel]} · v{item.questionVersion}</span>

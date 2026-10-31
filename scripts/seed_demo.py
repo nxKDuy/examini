@@ -116,13 +116,20 @@ def email(local):
 
 
 # ───────────────────────────── question content ─────────────────────────────
+def _arranged(content, pairs):
+    """Stable per-question order of (option, correct) pairs, so the key is not always A (same order on every run)."""
+    order = list(range(len(pairs)))
+    random.Random(zlib.crc32(content.encode())).shuffle(order)
+    return [pairs[i] for i in order]
+
+
 def mc(content, opts, correct=0, diff='EASY', explanation=None, **extra):
-    return dict(type='MULTIPLE_CHOICE', content=content, options=[(o, i == correct) for i, o in enumerate(opts)],
+    return dict(type='MULTIPLE_CHOICE', content=content, options=_arranged(content, [(o, i == correct) for i, o in enumerate(opts)]),
                 diff=diff, explanation=explanation, **extra)
 
 
 def mr(content, opts, correct, diff='MEDIUM', explanation=None):
-    return dict(type='MULTIPLE_RESPONSE', content=content, options=[(o, i in correct) for i, o in enumerate(opts)],
+    return dict(type='MULTIPLE_RESPONSE', content=content, options=_arranged(content, [(o, i in correct) for i, o in enumerate(opts)]),
                 diff=diff, explanation=explanation)
 
 
