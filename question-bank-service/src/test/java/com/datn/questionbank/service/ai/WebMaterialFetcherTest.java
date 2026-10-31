@@ -71,7 +71,7 @@ class WebMaterialFetcherTest {
     }
 
     @Test void urlShapeIsRestricted() {
-        for (String bad : List.of("ftp://example.com/a", "file:///etc/passwd", "http://user:pw@example.com/", 
+        for (String bad : List.of("ftp://example.com/a", "file:///etc/passwd", "http://user:pw@example.com/",
                 "gopher://example.com", "", "http://", "javascript:alert(1)"))
             assertThrows(WebMaterialFetcher.FetchException.class, () -> WebMaterialFetcher.parse(bad), bad);
         assertThrows(WebMaterialFetcher.FetchException.class, () -> new WebMaterialFetcher(1000, 1000).check(WebMaterialFetcher.parse("https://example.com:8443/")));
