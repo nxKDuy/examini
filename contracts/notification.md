@@ -89,7 +89,7 @@ nothing. ADMIN sees only their own inbox. A foreign or unknown ID returns 404.
 
 | Route | Response |
 | --- | --- |
-| `GET /notifications?page=0&size=20&read=true\|false` | Spring `Page<NotificationResponse>`; newest first (fixed, `sort` ignored); `size` max 50; `read` omitted = all |
+| `GET /notifications?page=0&size=20&read=true\|false&group=SCHEDULE\|RESULT\|OTHER` | Spring `Page<NotificationResponse>`; newest first (fixed, `sort` ignored); `size` max 50; `read`/`group` omitted = all. `SCHEDULE` = lịch/nhắc/mở/đóng kỳ thi, `RESULT` = điểm, chấm lại, bài nộp, cần chấm tay, `OTHER` = còn lại; nhóm khác → 400 |
 | `GET /notifications/unread-count` | `{ "count": 3 }` |
 | `PATCH /notifications/{id}/read` | `NotificationResponse`; idempotent, first `readAt` is kept |
 | `PATCH /notifications/read-all` | `{ "updated": 2 }`; repeat returns 0 |

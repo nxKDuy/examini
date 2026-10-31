@@ -14,7 +14,8 @@ export type PrefCategory = 'SCHEDULE' | 'REMINDER' | 'EXAM_STATUS' | 'RESULT' | 
 export interface PrefSetting { category: PrefCategory; email: boolean; push: boolean }
 
 export const notificationApi = {
-  list: (page = 0, size = 20, read?: boolean) => api.get<NotificationPage>('/notifications', { params: { page, size, ...(read === undefined ? {} : { read }) } }).then(r => r.data),
+  list: (page = 0, size = 20, read?: boolean, group?: 'SCHEDULE' | 'RESULT' | 'OTHER') =>
+    api.get<NotificationPage>('/notifications', { params: { page, size, ...(read === undefined ? {} : { read }), ...(group ? { group } : {}) } }).then(r => r.data),
   unreadCount: () => api.get<{ count: number }>('/notifications/unread-count').then(r => r.data.count),
   markRead: (id: string) => api.patch<AppNotification>(`/notifications/${id}/read`).then(r => r.data),
   markAllRead: () => api.patch<{ updated: number }>('/notifications/read-all').then(r => r.data),

@@ -2376,4 +2376,9 @@ export const EN_UI: Record<string, string> = {
   'Khi kỳ thi mở hoặc đóng': 'When an exam opens or closes',
   'Công bố điểm, chấm lại': 'Scores released or regraded',
   'Bài tự luận chờ giáo viên chấm': 'Essays waiting for a teacher',
+  'Lịch & kỳ thi': 'Schedule & exams',
+  'Kết quả & chấm': 'Results & grading',
+  'Lọc theo loại': 'Filter by type',
+  'Không có thông báo thuộc loại này': 'No notifications of this type',
+  'Hôm qua': 'Yesterday',
 }

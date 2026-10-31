@@ -10,7 +10,7 @@ import java.util.UUID;
 @RestController @RequiredArgsConstructor @RequestMapping("/notifications")
 public class NotificationController {
     private final NotificationService service;
-    @GetMapping public Page<NotificationResponse> list(@RequestParam(required=false) Boolean read,@PageableDefault(size=20) Pageable page,@RequestAttribute UUID actor){return service.list(actor,read,page);}
+    @GetMapping public Page<NotificationResponse> list(@RequestParam(required=false) Boolean read,@RequestParam(required=false) String group,@PageableDefault(size=20) Pageable page,@RequestAttribute UUID actor){return service.list(actor,read,group,page);}
     @GetMapping("/unread-count") public UnreadCount unread(@RequestAttribute UUID actor){return service.unread(actor);}
     @PatchMapping("/{id}/read") public NotificationResponse read(@PathVariable UUID id,@RequestAttribute UUID actor){return service.markRead(id,actor);}
     @PatchMapping("/read-all") public ReadAllResult readAll(@RequestAttribute UUID actor){return service.markAllRead(actor);}

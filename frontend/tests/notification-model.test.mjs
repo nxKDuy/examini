@@ -117,3 +117,14 @@ test('preference rows depend on role', async () => {
   assert.deepEqual(s, ['SCHEDULE', 'REMINDER', 'EXAM_STATUS', 'RESULT'])
   assert.deepEqual(staff, ['SCHEDULE', 'REMINDER', 'EXAM_STATUS', 'GRADING'])
 })
+
+test('inbox groups by local day, newest first, keeping order', async () => {
+  const { groupByDay } = await import('../src/features/notifications/notificationModel.ts')
+  const now = new Date(2026, 9, 31, 15, 0).getTime()
+  const at = (d, h) => ({ createdAt: new Date(2026, 9, d, h).toISOString() })
+  const days = groupByDay([at(31, 14), at(31, 1), at(30, 23), at(28, 9)], now)
+  assert.equal(days.length, 3)
+  assert.deepEqual(days.map(d => d.items.length), [2, 1, 1])
+  assert.equal(days[0].label, 'Hôm nay'); assert.equal(days[1].label, 'Hôm qua')
+  assert.match(days[2].label, /28/)
+})
