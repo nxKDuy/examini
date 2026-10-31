@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { navigationItems, type Audience } from '../../components/layout/navigation'
-import { examApi, type Exam } from '../exams/examApi'
+import { examApi } from '../exams/examApi'
 import { rank, shortcutLabel, type Command } from './commandModel'
 import { t, useT } from '../../lib/i18n'
 import './command.css'
@@ -49,10 +49,10 @@ export default function CommandPalette({ audience }: { audience: Audience }) {
   }, [])
   useEffect(() => { if (open) { setQuery(''); setActive(0) } else back.current?.focus?.() }, [open])
 
-  const exams = useQuery({
-    queryKey: ['command', 'exams', audience], enabled: open && audience !== 'ADMIN', staleTime: 60_000,
-    queryFn: async (): Promise<Exam[]> => (audience === 'TEACHER' ? (await examApi.list(0)).content : await examApi.my()),
-  })
+  // Same cache entries as the dashboards, so the list is usually already there when the palette opens.
+  const teacherExams = useQuery({ queryKey: ['exams', 'list', 0], queryFn: () => examApi.list(0), enabled: audience === 'TEACHER', staleTime: 60_000 })
+  const studentExams = useQuery({ queryKey: ['my-exams'], queryFn: examApi.my, enabled: audience === 'STUDENT', staleTime: 60_000 })
+  const exams = { data: audience === 'TEACHER' ? teacherExams.data?.content : studentExams.data, isLoading: teacherExams.isLoading || studentExams.isLoading }
   const commands = useMemo<Command[]>(() => [
     ...navigationItems(audience).map(n => ({ id: 'n' + n.to, group: t('Trang'), label: n.label, to: n.to })),
     ...actions(audience),

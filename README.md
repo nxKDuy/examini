@@ -109,8 +109,9 @@ cd frontend && npx tsc -b && npx oxlint && node --test tests/*.test.mjs && npm r
 **Kiểm thử đầu-cuối (end-to-end)** chạy trên hệ thống thật đã seed, đi qua nginx như trình duyệt thật
 (`frontend/e2e/demo.e2e.mjs`): đăng nhập mọi tài khoản demo, phân quyền qua gateway, dữ liệu khớp giữa các service,
 sinh câu hỏi AI (kể cả khi không có mạng), học sinh xem kết quả/tiến bộ, vào đề bằng mã và luyện tập có báo đúng/sai,
-lịch thi + tệp .ics, giáo viên chấm tự luận, đổi lịch thi → học sinh nhận thông báo (kiểm tra cả màn hình điện thoại),
-xuất QTI 2.1 và trang thống kê của quản trị:
+lịch thi + tệp .ics, xem lại bài với gia sư AI, làm bài bằng phím tắt và đánh dấu câu, giáo viên chấm tự luận, đổi lịch
+thi → học sinh nhận thông báo (kiểm tra cả màn hình điện thoại), tìm nhanh Ctrl+K, rà soát câu hỏi bằng AI, xuất QTI 2.1
+và trang thống kê của quản trị:
 
 ```bash
 docker compose up -d && python3 scripts/seed_demo.py

@@ -193,6 +193,54 @@ test('calendar lists the scheduled exam and exports it as .ics', async () => {
   await done(page)
 })
 
+test('student reviews a released result: mistakes filter and AI tutor', async () => {
+  const items = (await get('/grades/my', 'hs13')).items
+  const mock = items.find(i => i.title.startsWith('Thi thử THPT') && i.phase === 'PUBLISHED')
+  assert.ok(mock, 'seeded released English result')
+  const page = await session('hs13')
+  await page.goto(`${BASE}/exam/result/${mock.sessionId}`)
+  await page.locator('.result-q').first().waitFor({ timeout: 20_000 })
+  const all = await page.locator('.result-q').count()
+  await page.getByLabel('Chỉ xem câu sai').check()
+  const wrong = await page.locator('.result-q').count()
+  assert.ok(wrong > 0 && wrong < all, `filter keeps only mistakes (${wrong}/${all})`)
+  const ask = page.getByRole('button', { name: /Vì sao mình sai/ }).first()
+  if (await ask.count()) { // the English mock reveals keys, so the tutor is offered on its mistakes
+    await ask.click()
+    await page.locator('.tutor').first().waitFor({ timeout: 90_000 })
+    assert.ok((await page.locator('.tutor').first().innerText()).length > 40, 'an explanation is shown (AI or key + teacher note)')
+  }
+  await done(page)
+})
+
+test('exam taking on a laptop: keyboard answers and review marks', async t => {
+  const hoa = (await get('/exams?size=50', 'gv.hoa')).content
+  const practice = byTitle(hoa, 'Ôn tập Este')
+  for (const who of ['hs22', 'hs23', 'hs24', 'hs19', 'hs20', 'hs21']) {
+    await call(`/exams/${practice.id}/join`, who, { method: 'POST', ok: [200, 201, 204, 409] })
+    const page = await session(who)
+    await page.goto(`${BASE}/exam/lobby/${practice.id}`)
+    await page.getByText('Lượt làm bài của bạn').waitFor({ timeout: 20_000 })
+    const ready = page.getByLabel('Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.')
+    if (!(await ready.count())) { await done(page); continue }
+    await ready.check()
+    await page.getByRole('button', { name: /Bắt đầu|Làm lại|Tiếp tục/ }).first().click()
+    await page.waitForURL(/\/exam\/take\//, { timeout: 30_000 })
+    await page.locator('#question-heading').waitFor()
+    await page.keyboard.press('b')
+    assert.equal(await page.locator('input[type=radio]:checked').count(), 1, 'B picks an option')
+    await page.keyboard.press('f')
+    await page.keyboard.press('ArrowRight')
+    assert.match(await page.locator('#question-heading').innerText(), /^Câu 2/)
+    assert.equal(await page.locator('.palette button[data-flagged=true]').count(), 1, 'F marks question 1 for review')
+    await page.getByRole('button', { name: 'Nộp bài' }).first().click()
+    await page.getByText('Câu bạn đánh dấu để xem lại:').waitFor()
+    await done(page)
+    return
+  }
+  t.skip('các học sinh thử đã dùng hết lượt làm đề luyện tập (seed lại để chạy)')
+})
+
 // ───────────────────────────── Browser: teacher ─────────────────────────────
 
 test('teacher grades a waiting essay and the queue shrinks', async t => {
@@ -250,6 +298,39 @@ test('moving an exam notifies the student in the bell', async () => {
   await page.getByText('Lịch thi đã thay đổi').first().waitFor({ timeout: 15_000 })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no sideways scroll on a phone')
   await done(page)
+})
+
+test('quick find (Ctrl+K) jumps to an exam typed without accents', async () => {
+  const page = await session('gv.toan')
+  await page.locator('.cmd-open').waitFor()
+  await page.keyboard.press('Control+k')
+  await page.getByPlaceholder('Tìm trang, thao tác hoặc kỳ thi…').fill('giua ky')
+  await page.getByRole('option', { name: /giữa kỳ I/ }).waitFor({ timeout: 15_000 })
+  await page.keyboard.press('Enter')
+  await page.waitForURL(/\/exams\/[0-9a-f-]{36}$/, { timeout: 15_000 })
+  await page.getByRole('heading', { level: 1, name: /giữa kỳ/ }).waitFor()
+  // The published exam shows its frozen questions, not ids.
+  await page.getByText('Tập xác định của hàm số').first().waitFor({ timeout: 15_000 })
+  await done(page)
+})
+
+test('teacher reviews a question with AI; a wrong key is caught', async () => {
+  const qs = (await get('/questions?size=50', 'gv.toan')).content
+  const any = qs.find(q => q.questionType === 'MULTIPLE_CHOICE')
+  const created = (await call('/questions', 'gv.toan', { method: 'POST', body: { categoryId: any.categoryId, content: 'Kiểm thử tự động: 7 × 8 bằng bao nhiêu?', questionType: 'MULTIPLE_CHOICE', difficultyLevel: 'EASY',
+    options: [{ content: '54', correct: true, displayOrder: 0 }, { content: '56', correct: false, displayOrder: 1 }, { content: '64', correct: false, displayOrder: 2 }, { content: '48', correct: false, displayOrder: 3 }] } })).body
+  try {
+    const r = (await call(`/questions/${created.id}/ai-review`, 'gv.toan', { method: 'POST' })).body
+    if (r.aiAvailable) assert.equal(r.keyCheck, 'DISPUTED', 'AI solves 7 × 8 = 56, not the stored 54')
+    else assert.equal(r.keyCheck, 'UNCHECKED')
+    const page = await session('gv.toan')
+    await page.goto(`${BASE}/questions?q=${created.id}`)
+    await page.getByRole('button', { name: 'Rà soát bằng AI' }).click()
+    await page.getByText(r.aiAvailable ? /AI tự giải ra đáp án khác/ : /Chưa có AI/).first().waitFor({ timeout: 90_000 })
+    await done(page)
+  } finally {
+    await call(`/questions/${created.id}`, 'gv.toan', { method: 'DELETE', ok: null })
+  }
 })
 
 test('teacher exports the question bank as QTI 2.1', async () => {
