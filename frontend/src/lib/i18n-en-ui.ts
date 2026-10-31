@@ -2463,4 +2463,9 @@ export const EN_UI: Record<string, string> = {
   'Phím tắt: A–D chọn đáp án · ← → chuyển câu · F đánh dấu': 'Shortcuts: A–D pick · ← → move · F mark',
   'Câu bạn đánh dấu để xem lại:': 'Questions you marked for review:',
   '(đáp án đúng)': '(correct answer)',
+  'Gợi ý của AI (chỉ tham khảo)': 'AI suggestion (for reference)',
+  'Dùng gợi ý này': 'Use this suggestion',
+  'Điểm được làm tròn 0,25; bạn vẫn sửa được trước khi lưu.': 'Rounded to 0.25; you can still change it before saving.',
+  'AI đang đọc bài…': 'AI is reading…',
+  'Hỏi AI gợi ý điểm': 'Ask AI for a score',
 }

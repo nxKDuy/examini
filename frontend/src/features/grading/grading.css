@@ -35,3 +35,6 @@
 .grade-actions { display: grid; gap: 8px; }
 @media (max-width: 899px) { .grade-actions { position: sticky; bottom: 0; background: #fff; padding: 10px 0; border-top: 1px solid #000; z-index: 5; } }
 .grade-id { font-family: var(--font-mono, monospace); }
+/* Laptop: the queue keeps its own scroll so the workspace stays in view while moving between papers. */
+@media (min-width: 900px) { .grade-queue { position: sticky; top: 124px; max-height: calc(100dvh - 140px); overflow-y: auto; } }
+.ai-suggest { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--color-accent); background: #f4f6ff; }

@@ -98,6 +98,23 @@ public class GradingService {
     public SubmissionDto.Overview overview(UUID exam,UUID actor){manage(exam,actor);return new SubmissionDto.Overview(results.countByExamIdAndInvalidatedAtIsNull(exam),results.countByExamIdAndStatusAndInvalidatedAtIsNull(exam,ExamResult.Status.NEEDS_REVIEW),results.countByExamIdAndStatusAndInvalidatedAtIsNull(exam,ExamResult.Status.PENDING),results.countByExamIdAndStatusAndInvalidatedAtIsNull(exam,ExamResult.Status.GRADED),results.countByExamIdAndReleasedRevisionIsNotNullAndInvalidatedAtIsNull(exam),results.sumPendingManualItems(exam),results.countByExamIdAndInvalidatedAtIsNotNull(exam));}
     public SubmissionDto.DetailResponse detail(UUID id,UUID actor){var r=load(id,false);manage(r.getExamId(),actor);return detail(r);}
 
+    /** On-demand AI score suggestion for one essay item (nothing is saved: the teacher applies it in the draft). */
+    public record AiSuggestion(float score,String feedback,String model){}
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public AiSuggestion suggestEssay(UUID id,UUID questionId,UUID actor){
+        var r=load(id,false);manage(r.getExamId(),actor);
+        var item=r.getQuestionGrades().stream().filter(q->q.getQuestionId().equals(questionId)).findFirst().orElseThrow(()->error(404,"Question not in this submission"));
+        if(!"ESSAY".equals(item.getQuestionType()))throw error(400,"AI suggestions are for essay questions");
+        if(item.getAnswerContent()==null||item.getAnswerContent().isBlank())throw error(409,"Thí sinh không trả lời câu này");
+        if(!ai.available())throw error(503,"Chưa cấu hình AI");
+        String guide=exams.key(r.getExamId(),configured()).stream().filter(q->q.questionId().equals(questionId)).map(ExamClient.Question::expectedAnswer).findFirst().orElse(null);
+        try{
+            var g=ai.gradeEssay(AnswerTutor.withPassage(item.getPresentation(),item.getQuestionContent()),guide,item.getAnswerContent(),item.getPointValue());
+            float score=Math.round(g.score()*item.getPointValue()*4)/4f;
+            return new AiSuggestion(Math.min(item.getPointValue(),Math.max(0,score)),g.feedback(),g.model());
+        }catch(IllegalStateException e){throw error(503,"AI tạm thời không phản hồi, hãy thử lại sau");}
+    }
+
     public SubmissionDto.DetailResponse saveDraft(UUID id,SubmissionDto.SaveDraftRequest request,UUID actor){
         var result=load(id,true);manage(result.getExamId(),actor);expected(result,request.expectedRevision());
         notInvalidated(result);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Copy, PenLine } from 'lucide-react'
+import { ArrowLeft, Copy, PenLine, Sparkles } from 'lucide-react'
 import { gradingApi, type GradeItem, type ResultPolicy, type SubmissionDetail } from './gradingApi'
 import {
   canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isInvalidated, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, studentName,
@@ -149,7 +149,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
         {!editable && !attemptInvalid && <Notice tone="info">{t('Bài đã hoàn tất chấm nên chỉ xem. Muốn sửa điểm, dùng Chấm lại ở khung bên cạnh (bắt buộc có lý do).')}</Notice>}
         <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {d.items.map(i => (
-            <ItemCard key={i.questionId} sessionId={d.sessionId ?? null} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}
+            <ItemCard key={i.questionId} submissionId={d.id} sessionId={d.sessionId ?? null} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}
               initial={loaded.initial.items[i.questionId]} onChange={patch => setItem(i.questionId, patch)} />
           ))}
         </ol>
@@ -221,8 +221,8 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
   )
 }
 
-function ItemCard({ sessionId, item, form, initial, problem, editable, onChange }: {
-  sessionId: string | null; item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
+function ItemCard({ submissionId, sessionId, item, form, initial, problem, editable, onChange }: {
+  submissionId: string; sessionId: string | null; item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
   problem?: { score?: string; reason?: string }; editable: boolean; onChange: (patch: Partial<GradeForm['items'][string]>) => void
 }) {
   useT()
@@ -247,6 +247,7 @@ function ItemCard({ sessionId, item, form, initial, problem, editable, onChange 
           ? <SpokenResponse sessionId={sessionId} questionId={item.questionId} value={item.answerContent} />
           : <p className="prewrap">{response?.trim() ? response : <em className="muted">{t('Không trả lời')}</em>}</p>}
       </div>
+      {item.questionType === 'ESSAY' && editable && !!response?.trim() && <AiSuggest submissionId={submissionId} item={item} form={form} onChange={onChange} />}
       <p className="xsmall muted">
         {item.questionType === 'ESSAY' || item.questionType === 'SPEAKING' ? t('Gợi ý tự động (chỉ tham khảo): {0}', { 0: formatScore(item.autoScore) }) : t('Điểm tự động: {0}', { 0: formatScore(item.autoScore) })}
         {item.manualScore !== null && t(' · Đã chấm tay: {0}', { 0: formatScore(item.manualScore) })}
@@ -267,6 +268,33 @@ function ItemCard({ sessionId, item, form, initial, problem, editable, onChange 
         </Field>
       )}
     </li>
+  )
+}
+
+/** AI score suggestion for an essay: the one made at submission, or asked now (when AI was down then). Applying fills the form only. */
+function AiSuggest({ submissionId, item, form, onChange }: {
+  submissionId: string; item: GradeItem; form: GradeForm['items'][string]; onChange: (patch: Partial<GradeForm['items'][string]>) => void
+}) {
+  useT()
+  const ask = useMutation({ mutationFn: () => gradingApi.aiSuggest(submissionId, item.questionId) })
+  const s = ask.data ? { score: ask.data.score, feedback: ask.data.feedback } : item.autoScore !== null ? { score: item.autoScore, feedback: item.feedback ?? '' } : null
+  if (!s) return (
+    <div className="row" style={{ gap: 8 }}>
+      <button type="button" className="btn btn-secondary btn-sm" disabled={ask.isPending} aria-busy={ask.isPending} onClick={() => ask.mutate()}>
+        <Sparkles size={14} aria-hidden /> {ask.isPending ? t('AI đang đọc bài…') : t('Hỏi AI gợi ý điểm')}</button>
+      {ask.isError && <span className="field-error">{errorText(ask.error)}</span>}
+    </div>
+  )
+  const score = String(Math.round(s.score * 4) / 4)
+  return (
+    <div className="ai-suggest">
+      <div className="spread"><span className="xsmall row" style={{ gap: 6 }}><Sparkles size={13} aria-hidden /> {t('Gợi ý của AI (chỉ tham khảo)')}</span>
+        <strong className="mono">{formatScore(Number(score))}/{formatScore(item.pointValue)}</strong></div>
+      {s.feedback && <p className="prewrap small">{s.feedback}</p>}
+      <div><button type="button" className="btn btn-secondary btn-sm" disabled={form.score === score && form.feedback === s.feedback}
+        onClick={() => onChange({ score, feedback: s.feedback || form.feedback })}>{t('Dùng gợi ý này')}</button>
+        <span className="xsmall muted" style={{ marginLeft: 8 }}>{t('Điểm được làm tròn 0,25; bạn vẫn sửa được trước khi lưu.')}</span></div>
+    </div>
   )
 }
 

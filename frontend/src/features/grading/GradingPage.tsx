@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useBlocker, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardCheck, Settings2 } from 'lucide-react'
@@ -66,6 +66,13 @@ export default function GradingPage() {
   const askingToLeave = blocker.state === 'blocked' || pageGuard.waiting
   const stay = () => { if (blocker.state === 'blocked') blocker.reset(); pageGuard.cancel(); rerender(n => n + 1) }
   const leave = () => { dirty.current = false; if (blocker.state === 'blocked') blocker.proceed(); pageGuard.confirm(); rerender(n => n + 1) }
+
+  // Laptop: open the first submission that still needs a teacher (else the first one) instead of an empty workspace.
+  const firstId = list.data?.content.find(x => x.status === 'NEEDS_REVIEW')?.id ?? list.data?.content[0]?.id
+  useEffect(() => {
+    if (narrow || selected || !examId || !firstId) return
+    const next = new URLSearchParams(params); next.set('r', firstId); setParams(next, { replace: true })
+  }, [narrow, selected, examId, firstId, params, setParams])
 
   const o = overview.data
   const showQueue = !narrow || !selected

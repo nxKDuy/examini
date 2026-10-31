@@ -39,6 +39,8 @@ export const gradingApi = {
   release: (id: string, expectedRevision: number) => api.post<SubmissionDetail>(`/submissions/${id}/release`, { expectedRevision }).then(r => r.data),
   regrade: (id: string, body: { expectedRevision: number; publicReason: string; privateAuditNote?: string }) =>
     api.post<SubmissionDetail>(`/submissions/${id}/regrade`, body).then(r => r.data),
+  /** On-demand AI score suggestion for one essay item; nothing is saved. */
+  aiSuggest: (id: string, questionId: string) => api.post<{ score: number; feedback: string; model: string }>(`/submissions/${id}/items/${questionId}/ai-suggest`, undefined, { timeout: 90_000 }).then(r => r.data),
   policy: (examId: string) => api.get<ResultPolicy>(`/exams/${examId}/result-policy`).then(r => r.data),
   savePolicy: (examId: string, body: ResultPolicy) => api.put<ResultPolicy>(`/exams/${examId}/result-policy`, body).then(r => r.data),
 }
