@@ -63,6 +63,7 @@ public class ImportDto {
     /** providers: the fallback chain in order; webKnowledge: automatic encyclopedic retrieval is enabled on the server. */
     public record AiStatus(boolean available, String model, int maxQuestions, int maxMaterialChars, List<ProviderInfo> providers, boolean webKnowledge) {}
     /** Text extracted from a file for the AI material box. */
+    public record MaterialUrl(@jakarta.validation.constraints.NotBlank @Size(max = 2000) String url) {}
     public record MaterialText(String fileName, String text, int pageCount, int ocrPageCount, boolean truncated, List<String> warnings) {}
     public record ProviderInfo(String name, String model, boolean available, boolean coolingDown) {}
 }

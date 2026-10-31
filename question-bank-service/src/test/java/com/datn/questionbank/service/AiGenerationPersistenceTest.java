@@ -156,6 +156,17 @@ class AiGenerationPersistenceTest {
         assertEquals(DifficultyLevel.MEDIUM,imports.get(job.id(),owner).defaultDifficulty());
     }
 
+    @Test void webMaterialRouteIsAuthorOnlyAndRefusesInternalAddresses() throws Exception {
+        var student=new QuestionActor(UUID.randomUUID(),"STUDENT",false);
+        http.perform(post("/question-imports/ai/material-url").contentType("application/json").content("{\"url\":\"https://example.com\"}").header("Authorization",jwt(student)))
+                .andExpect(status().isForbidden());
+        for(String url:List.of("http://localhost:8082/actuator/health","http://question-bank-service/questions","http://169.254.169.254/latest/meta-data","file:///etc/passwd"))
+            http.perform(post("/question-imports/ai/material-url").contentType("application/json").content("{\"url\":\""+url+"\"}").header("Authorization",jwt(owner)))
+                    .andExpect(status().isBadRequest());
+        http.perform(post("/question-imports/ai/material-url").contentType("application/json").content("{\"url\":\"\"}").header("Authorization",jwt(owner)))
+                .andExpect(status().isBadRequest());
+    }
+
     String jwt(QuestionActor actor){
         return "Bearer "+io.jsonwebtoken.Jwts.builder().subject(actor.userId().toString()).claim("type","access").claim("role",actor.role())
                 .expiration(new Date(System.currentTimeMillis()+60000)).signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(

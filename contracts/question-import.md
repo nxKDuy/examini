@@ -165,3 +165,14 @@ ImportJob.generation (null on document jobs) = AiGeneration { topic, model, requ
 
 `FileKind` adds `XLSX` and `CSV`. See `question-media-and-skills.md` for `GET /question-imports/templates/{excel|word}`,
 `POST /question-imports/ai/material` and `AiGenerateRequest.cognitiveLevel`.
+
+## AI material from a web link (additive, 2026-10-31)
+
+`POST /question-imports/ai/material-url` body `{ "url": "https://…" }` (author roles only, AI rate limit at the gateway)
+returns the same `MaterialText` as the file route: `fileName` = page title, `text` = readable article text (scripts, menus,
+banners, footnotes and edit links removed; formulas kept once as TeX) or the text of an online PDF, `warnings` ends with
+`Nguồn: <final URL>`. Nothing is stored. 400 with a Vietnamese reason for: non-http(s) scheme, credentials in the URL,
+a port other than 80/443, a name without a dot or ending in `.local`/`.internal`, any address that resolves to loopback,
+private, link-local (cloud metadata), CGNAT, multicast or unique-local ranges, more than 3 redirects (each hop re-checked),
+a body over 3 MB, a type other than HTML/text/PDF, or a page with almost no text. Timeouts: connect 5 s, read 10 s
+(properties `question-bank.ai.web-connect-ms` / `question-bank.ai.web-read-ms`).

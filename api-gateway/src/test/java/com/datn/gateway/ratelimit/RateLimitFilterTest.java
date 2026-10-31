@@ -39,6 +39,8 @@ class RateLimitFilterTest {
         for (int i = 0; i < 30; i++) assertNull(call(MockServerHttpRequest.get("/analytics/exams/e1/insights?ai=false").header("X-Forwarded-For", "10.0.0.9").build()));
         for (int i = 0; i < 10; i++) assertNull(call(MockServerHttpRequest.get("/analytics/exams/e1/insights?ai=true").header("X-Forwarded-For", "10.0.0.9").build()));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/question-imports/ai").header("X-Forwarded-For", "10.0.0.9").build()));
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/question-imports/ai/material-url").header("X-Forwarded-For", "10.0.0.9").build()),
+                "fetching a web page for AI material counts as an AI call");
     }
 
     @Test void disabledFilterPassesEverything() {

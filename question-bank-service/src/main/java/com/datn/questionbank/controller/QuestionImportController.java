@@ -49,6 +49,9 @@ public class QuestionImportController {
     /** Text of a Word/PDF/image to use as AI material (not stored). */
     @PostMapping(value = "/ai/material", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public MaterialText material(@RequestParam MultipartFile file, HttpServletRequest req) { return service.material(file, actor(req)); }
+    /** Text of a public web page or online PDF to use as AI material (not stored; SSRF-guarded). */
+    @PostMapping(value = "/ai/material-url", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public MaterialText materialUrl(@Valid @RequestBody MaterialUrl body, HttpServletRequest req) { return service.materialFromUrl(body.url(), actor(req)); }
     /** AI generation (contracts/question-import.md "AI generation"): a JSON request instead of a file. */
     @GetMapping("/ai/status")
     public AiStatus aiStatus(HttpServletRequest req) { return service.aiStatus(actor(req)); }

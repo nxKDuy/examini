@@ -43,7 +43,7 @@ Giao kèo API và sự kiện giữa các service nằm trong [`contracts/`](con
 trang **Tiến bộ** với biểu đồ điểm theo thời gian và gợi ý ôn tập do AI viết.
 
 **Giáo viên** — ngân hàng câu hỏi nhiều kho, chia sẻ/đồng bộ; nhập từ Word/PDF/ảnh/Excel theo mẫu; sinh câu hỏi bằng AI theo
-mức Bloom từ tài liệu; tạo đề từ ma trận/blueprint; in đề + phiếu trả lời; lịch thi, thông báo email/push; giám sát
+mức Bloom từ tài liệu (dán chữ, tải Word/PDF/ảnh hoặc dán link trang web/PDF trực tuyến); tạo đề từ ma trận/blueprint; in đề + phiếu trả lời; lịch thi, thông báo email/push; giám sát
 (chống chuyển tab, camera); chấm tay có AI gợi ý; thống kê đề (độ khó, độ phân biệt) kèm nhận xét AI; xuất CSV/Moodle/Aiken.
 
 **Tổ chức** — lớp/khoa/trường: mời thành viên, phân vai OWNER/ADMIN/MEMBER, quyền chấm, nhật ký; thêm cả tổ chức vào kỳ thi một lần.

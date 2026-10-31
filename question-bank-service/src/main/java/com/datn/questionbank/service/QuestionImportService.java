@@ -44,6 +44,7 @@ public class QuestionImportService {
     private final QuestionImportItemRepository items;
     private final CategoryRepository categories;
     private final DocumentExtractor extractor;
+    private final com.datn.questionbank.service.ai.WebMaterialFetcher web;
     private final QuestionService questions;
     private final BankRegistry banks;
     private final QuestionPolicy policy;
@@ -108,6 +109,29 @@ public class QuestionImportService {
         String full = text.toString().replaceAll("\n{3,}", "\n\n").strip();
         boolean truncated = full.length() > AI_MAX_MATERIAL;
         return new MaterialText(name, truncated ? full.substring(0, AI_MAX_MATERIAL) : full, ex.pageCount(), ex.ocrPageCount(), truncated, ex.warnings());
+    }
+
+    /** Readable text of a public web page or online PDF, used as AI material (not stored). */
+    public MaterialText materialFromUrl(String url, QuestionActor actor) {
+        policy.requireAuthor(actor);
+        com.datn.questionbank.service.ai.WebMaterialFetcher.Fetched page;
+        try { page = web.fetch(url); }
+        catch (com.datn.questionbank.service.ai.WebMaterialFetcher.FetchException e) { throw bad(e.getMessage()); }
+        String full; int pages = 1, ocr = 0; var warnings = new java.util.ArrayList<String>();
+        if (page.text() == null) { // PDF: the same extractor as uploaded files
+            DocumentExtractor.Extraction ex;
+            try { ex = extractor.extract(page.body(), QuestionImportJob.FileKind.PDF); }
+            catch (DocumentExtractor.ExtractionException e) { throw bad(e.getMessage()); }
+            var text = new StringBuilder();
+            for (var line : ex.lines()) { if (text.length() > 0) text.append('\n'); text.append(line.text()); }
+            full = text.toString(); pages = ex.pageCount(); ocr = ex.ocrPageCount(); warnings.addAll(ex.warnings());
+        } else full = page.text();
+        full = full.replaceAll("\n{3,}", "\n\n").strip();
+        if (full.length() < 80) throw bad("Trang gần như không có nội dung chữ (có thể cần đăng nhập hoặc nội dung tải bằng JavaScript)");
+        boolean truncated = full.length() > AI_MAX_MATERIAL;
+        if (truncated) warnings.add("Trang dài, chỉ dùng phần đầu làm tài liệu");
+        warnings.add("Nguồn: " + page.url());
+        return new MaterialText(page.title(), truncated ? full.substring(0, AI_MAX_MATERIAL) : full, pages, ocr, truncated, warnings);
     }
 
     /** Extract outside any transaction, then persist the parsed items atomically. */

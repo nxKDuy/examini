@@ -59,6 +59,8 @@ export const importApi = {
     const form = new FormData(); form.append('file', file)
     return api.post<MaterialText>('/question-imports/ai/material', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
   },
+  /** Text of a public web page or online PDF (the server refuses internal addresses); nothing is stored. */
+  materialFromUrl: (url: string) => api.post<MaterialText>('/question-imports/ai/material-url', { url }).then(r => r.data),
   aiStatus: () => api.get<AiStatus>('/question-imports/ai/status').then(r => r.data),
   /** Starts an AI job (PROCESSING); poll it like an uploaded document. */
   generate: (req: AiGenerateRequest) => api.post<ImportJob>('/question-imports/ai', req).then(r => r.data),

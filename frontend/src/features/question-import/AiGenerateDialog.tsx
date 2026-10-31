@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FileUp } from 'lucide-react'
+import { FileUp, Link2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { importApi, type CognitiveLevel, type Difficulty } from './importApi'
@@ -12,6 +12,7 @@ import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
 import Select from '../../components/Select'
+import './import.css'
 
 const TYPES: QuestionType[] = ['MULTIPLE_CHOICE', 'MULTIPLE_RESPONSE', 'TRUE_FALSE', 'TRUE_FALSE_GROUP', 'SHORT_ANSWER', 'ESSAY', 'SPEAKING']
 /** Bloom's taxonomy as Vietnamese teachers name it (mức độ nhận thức). */
@@ -45,7 +46,14 @@ export default function AiGenerateDialog({ onClose, prefill }: { onClose: () => 
   const [difficulty, setDifficulty] = useState<Difficulty>(prefill?.difficulty ?? 'MEDIUM')
   const [bloom, setBloom] = useState<CognitiveLevel | ''>('')
   const fileInput = useRef<HTMLInputElement>(null)
-  const extract = useMutation({ mutationFn: importApi.material, onSuccess: m => setMaterial(m.text) })
+  const extract = useMutation({ mutationFn: importApi.material, onSuccess: m => { setMaterial(m.text); fromUrl.reset() } })
+  const [url, setUrl] = useState('')
+  const fromUrl = useMutation({ mutationFn: importApi.materialFromUrl, onSuccess: m => {
+    setMaterial(m.text); extract.reset()
+    // An empty topic takes the page title, without the site name ("Quang hợp – Wikipedia tiếng Việt" → "Quang hợp").
+    setTopic(cur => cur.trim() ? cur : m.fileName.split(/\s+[–—|·-]\s+/)[0].slice(0, 200))
+  } })
+  const fetchUrl = () => { if (url.trim() && !fromUrl.isPending) fromUrl.mutate(url.trim()) }
   const [language, setLanguage] = useState<'vi' | 'en'>('vi')
   const [useBank, setUseBank] = useState(true)
   const [useWeb, setUseWeb] = useState(true)
@@ -96,6 +104,16 @@ export default function AiGenerateDialog({ onClose, prefill }: { onClose: () => 
               {extract.data.truncated && ' ' + t('Tài liệu dài nên chỉ giữ phần đầu.')}</span>}
             {extract.isError && <span className="field-error">{errorText(extract.error)}</span>}
           </div>
+          <div className="ai-url-row">
+            <label htmlFor="ai-url" className="sr-only">{t('Đường dẫn trang web làm tài liệu')}</label>
+            <input id="ai-url" className="input" type="url" inputMode="url" placeholder={t('Hoặc dán link bài học, bài báo, PDF trực tuyến…')} value={url}
+              onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); fetchUrl() } }} />
+            <button type="button" className="btn btn-secondary btn-sm" disabled={!url.trim() || fromUrl.isPending} aria-busy={fromUrl.isPending} onClick={fetchUrl}>
+              <Link2 size={14} aria-hidden /> {fromUrl.isPending ? t('Đang đọc trang…') : t('Lấy nội dung từ link')}</button>
+          </div>
+          {fromUrl.data && <p className="xsmall muted" role="status" style={{ marginTop: -6 }}>{t('Đã lấy chữ từ trang “{0}”.', { 0: fromUrl.data.fileName })}
+            {fromUrl.data.truncated && ' ' + t('Tài liệu dài nên chỉ giữ phần đầu.')} {t('Hãy đọc lại và xoá phần không liên quan trước khi sinh câu hỏi.')}</p>}
+          {fromUrl.isError && <p className="field-error" style={{ marginTop: -6 }}>{errorText(fromUrl.error)}</p>}
           <div className="grid-2">
             <SubjectCategoryFields subjectId={subjectId} categoryId={categoryId} onSubject={id => { setSubjectId(id); setCategoryId('') }} onCategory={setCategoryId} required />
           </div>

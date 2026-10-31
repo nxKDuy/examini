@@ -2381,4 +2381,10 @@ export const EN_UI: Record<string, string> = {
   'Lọc theo loại': 'Filter by type',
   'Không có thông báo thuộc loại này': 'No notifications of this type',
   'Hôm qua': 'Yesterday',
+  'Đường dẫn trang web làm tài liệu': 'Web page link to use as material',
+  'Hoặc dán link bài học, bài báo, PDF trực tuyến…': 'Or paste a link to a lesson, article or online PDF…',
+  'Đang đọc trang…': 'Reading page…',
+  'Lấy nội dung từ link': 'Get text from link',
+  'Đã lấy chữ từ trang “{0}”.': 'Got the text from “{0}”.',
+  'Hãy đọc lại và xoá phần không liên quan trước khi sinh câu hỏi.': 'Review it and remove unrelated parts before generating questions.',
 }
