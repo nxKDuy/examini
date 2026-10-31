@@ -107,8 +107,8 @@ class JwtAuthFilterTest {
 
     @Test
     void publicAuthRequestsRemainAvailableButIdentityHeadersAreStripped() {
-        for (String path : new String[]{"/auth/login", "/auth/register", "/auth/refresh",
-                "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh"}) {
+        for (String path : new String[]{"/auth/login", "/auth/register", "/auth/refresh", "/auth/google", "/auth/password/forgot", "/auth/password/reset",
+                "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh", "/auth-service/auth/google"}) {
             ServerWebExchange forwarded = forward(MockServerHttpRequest.post(path)
                     .header("X-User-Id", "spoof")
                     .header("X-User-Role", "ADMIN")
@@ -118,7 +118,8 @@ class JwtAuthFilterTest {
             assertNull(forwarded.getRequest().getHeaders().getFirst("X-User-Role"));
             assertNull(forwarded.getRequest().getHeaders().getFirst("X-System-Privilege"));
         }
-
+        for (String path : new String[]{"/auth/providers", "/auth-service/auth/providers"})
+            assertNull(forward(MockServerHttpRequest.get(path).header("X-User-Id", "spoof").build()).getRequest().getHeaders().getFirst("X-User-Id"));
     }
 
     @Test
@@ -145,6 +146,12 @@ class JwtAuthFilterTest {
         assertRejected(MockServerHttpRequest.get("/auth/me").build());
         assertRejected(MockServerHttpRequest.post("/auth/login/anything").build());
         assertRejected(MockServerHttpRequest.get("/auth/login").build());
+        // Only the read-only providers route is public for GET; POST to it and GET elsewhere still need a token.
+        assertRejected(MockServerHttpRequest.post("/auth/providers").build());
+        assertRejected(MockServerHttpRequest.get("/auth/google").build());
+        // Account routes always need a token.
+        assertRejected(MockServerHttpRequest.get("/auth/account").build());
+        assertRejected(MockServerHttpRequest.get("/auth/admin/users").build());
     }
 
     @Test
@@ -181,6 +188,16 @@ class JwtAuthFilterTest {
                 assertEquals("NONE", forwarded.getRequest().getHeaders().getFirst("X-System-Privilege"));
             }
         }
+    }
+
+    @Test
+    void calendarFeedIsTheOnlyAnonymousExamRoute() {
+        var feed = forward(MockServerHttpRequest.get("/exams/calendar/feed/AbCdEfGhIjKlMnOpQrStUvWxYz12.ics").header("X-User-Id", "spoofed").build());
+        assertNull(feed.getRequest().getHeaders().getFirst("X-User-Id"), "identity headers are still stripped");
+        assertRejected(MockServerHttpRequest.get("/exams/calendar/feed").build());
+        assertRejected(MockServerHttpRequest.get("/exams/calendar/feed/short.ics").build());
+        assertRejected(MockServerHttpRequest.post("/exams/calendar/feed/AbCdEfGhIjKlMnOpQrStUvWxYz12.ics").build());
+        assertRejected(MockServerHttpRequest.get("/exams/calendar/feed/AbCdEfGhIjKlMnOpQrStUvWxYz12.ics/../../exams").build());
     }
 
     private ServerWebExchange forward(MockServerHttpRequest request) {

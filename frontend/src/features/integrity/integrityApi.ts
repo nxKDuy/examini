@@ -5,6 +5,8 @@ export type WarningPolicy = 'LOG_ONLY' | 'WARN_ONLY'
 export interface IntegrityPolicy {
   monitorTabSwitch: boolean; monitorWindowBlur: boolean; requireFullscreen: boolean; monitorCopy: boolean; monitorPaste: boolean
   monitorNetwork: boolean; warningPolicy: WarningPolicy; warningEventLimit: number
+  /** Camera proctoring (video, face checks, snapshots for proctors). Absent on older exams = off. */
+  requireCamera?: boolean
 }
 export type SignalType = 'TAB_SWITCH' | 'WINDOW_BLUR' | 'EXIT_FULLSCREEN' | 'COPY' | 'PASTE' | 'NETWORK_DISCONNECT' | 'NETWORK_RECONNECT'
   | 'FULLSCREEN_ENTER' | 'WINDOW_FOCUS' | 'PAGE_RELOAD' | 'SESSION_RESUME'

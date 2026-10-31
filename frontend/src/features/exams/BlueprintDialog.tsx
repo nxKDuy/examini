@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, RefreshCw, Shuffle, Trash2, X } from 'lucide-react'
 import { examApi } from './examApi'
@@ -12,6 +12,7 @@ import { Badge, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatScore } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 let rowSeq = 0
 const newRow = (): BlueprintRowCfg => ({ key: `row-${++rowSeq}`, count: 5, pointsPerQuestion: 1 })
@@ -20,11 +21,13 @@ const newRow = (): BlueprintRowCfg => ({ key: `row-${++rowSeq}`, count: 5, point
  * Exam blueprint (scope lock B): rows of filters + count + points → server preview with per-row shortfall,
  * then regenerate all, one row, swap or remove single questions. Nothing is saved until the editor saves.
  */
-export default function BlueprintDialog({ inExam, onApply, onClose }: {
+export default function BlueprintDialog({ inExam, onApply, onClose, initialRows, title }: {
   inExam: string[]; onApply: (items: { question: Question; weight: number }[]) => void; onClose: () => void
+  /** Rows prepared elsewhere (the exam matrix): previewed right away. */
+  initialRows?: (BlueprintRowCfg & { label?: string })[]; title?: string
 }) {
   useT()
-  const [rows, setRows] = useState<BlueprintRowCfg[]>(() => [newRow()])
+  const [rows, setRows] = useState<(BlueprintRowCfg & { label?: string })[]>(() => initialRows?.length ? initialRows : [newRow()])
   const [shuffle, setShuffle] = useState(false)
   const [preview, setPreview] = useState<BlueprintPreview | null>(null)
   const [excluded, setExcluded] = useState<string[]>([])
@@ -54,10 +57,18 @@ export default function BlueprintDialog({ inExam, onApply, onClose }: {
     } catch (e) { setFailure(errorText(e)); setBusy(false) }
   }
 
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current || !initialRows?.length) return
+    started.current = true
+    void run(initialRows)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- preview the prepared rows once, on open
+  }, [])
+
   const patch = (i: number, p: Partial<BlueprintRowCfg>) => setRows(list => list.map((r, n) => n === i ? { ...r, ...p } : r))
 
   return (
-    <Dialog size="lg" title={t('Tạo đề theo khung')} onClose={onClose} busy={busy}
+    <Dialog size="lg" title={title ?? t('Tạo đề theo khung')} onClose={onClose} busy={busy}
       description={t('Mỗi dòng chọn ngẫu nhiên trong đúng bộ lọc của dòng đó. Thiếu câu thì báo thiếu, không lấy bù từ dòng khác. Chưa lưu gì cho đến khi bạn thêm vào đề và bấm Lưu.')}
       footer={<>
         {preview && <span className="small muted" style={{ marginRight: 'auto' }} role="status">{t('{n}/{requested} câu · {points} điểm', { n: preview.totalQuestions, requested: preview.requestedQuestions, points: formatScore(preview.totalPoints) })}</span>}
@@ -66,7 +77,8 @@ export default function BlueprintDialog({ inExam, onApply, onClose }: {
         <button type="button" className="btn btn-primary" disabled={!preview || !preview.totalQuestions || stale || busy} onClick={() => void apply()}>{t('Thêm {n} câu vào đề', { n: preview?.totalQuestions ?? '' })}</button>
       </>}>
       <div className="stack">
-        <section className="stack-sm" aria-label={t('Khung đề')}>
+        {initialRows?.length ? <p className="small muted">{t('{n} ô của ma trận, mỗi ô là một dòng bên dưới. Muốn đổi số câu, đóng lại và sửa ma trận.', { n: rows.length })}</p>
+        : <section className="stack-sm" aria-label={t('Khung đề')}>
           {rows.map((r, i) => <BlueprintRowEditor key={r.key} index={i} row={r} onChange={p => patch(i, p)} canRemove={rows.length > 1}
             onRemove={() => { setRows(list => list.filter((_, n) => n !== i)); setPreview(null) }} />)}
           <div className="row">
@@ -75,7 +87,7 @@ export default function BlueprintDialog({ inExam, onApply, onClose }: {
           </div>
           {problem && <p className="field-error">{problem}</p>}
           {inExam.length > 0 && <p className="xsmall muted">{t('{n} câu đã có trong đề sẽ không bị chọn lại.', { n: inExam.length })}</p>}
-        </section>
+        </section>}
         {failure && <Notice tone="danger" live>{failure}</Notice>}
         {stale && <Notice tone="warning">{t('Khung đề đã đổi số dòng. Bấm “Tạo lại toàn bộ” để xem trước theo khung mới.')}</Notice>}
         {preview && !stale && <section className="stack" aria-label={t('Bản xem trước')}>
@@ -85,7 +97,7 @@ export default function BlueprintDialog({ inExam, onApply, onClose }: {
           </Notice>
           {preview.rows.map(row => <article key={row.rowIndex} className="bp-row" data-short={row.shortfall > 0 || undefined}>
             <header className="row" style={{ justifyContent: 'space-between' }}>
-              <strong className="small">{t('Dòng {n}', { n: row.rowIndex + 1 })}: {rowLabel(row)}</strong>
+              <strong className="small">{t('Dòng {n}', { n: row.rowIndex + 1 })}: {rows[row.rowIndex]?.label ? `${rows[row.rowIndex].label} · ${t('{points} điểm/câu', { points: formatScore(row.pointsPerQuestion) })}` : rowLabel(row)}</strong>
               <span className="row" style={{ gap: 8 }}>
                 {row.shortfall > 0 ? <Badge tone="warning">{t('Thiếu {n} · có {available}', { n: row.shortfall, available: row.available })}</Badge> : <Badge>{t('{n}/{requested} câu', { n: row.picked, requested: row.requested })}</Badge>}
                 <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void run(rows, pinsFrom(preview, { skipRow: row.rowIndex }))}><RefreshCw size={13} aria-hidden /> {t('Tạo lại dòng')}</button>
@@ -120,20 +132,20 @@ function BlueprintRowEditor({ index, row, onChange, onRemove, canRemove }: { ind
       <legend className="field-label">{t('Dòng {n}', { n: index + 1 })}</legend>
       <div className="bp-grid">
         <div className="field"><label className="field-label" htmlFor={`bp-bank-${row.key}`}>{t('Ngân hàng')}</label>
-          <select id={`bp-bank-${row.key}`} className="input" value={row.bankId ?? ''} onChange={e => onChange({ bankId: e.target.value || undefined })}>
+          <Select id={`bp-bank-${row.key}`} className="input" value={row.bankId ?? ''} onChange={e => onChange({ bankId: e.target.value || undefined })}>
             <option value="">{t('Tất cả ngân hàng dùng được')}</option>
             {(banks.data ?? []).map(b => <option key={b.id} value={b.id}>{BANK_TYPE_LABEL[b.type]} · {b.name}</option>)}
-          </select></div>
+          </Select></div>
         <SubjectCategoryFields subjectId={subjectId} categoryId={row.categoryId ?? ''} allowAll
           onSubject={id => { setSubjectId(id); onChange({ categoryId: undefined }) }} onCategory={id => onChange({ categoryId: id || undefined })} />
         <div className="field"><label className="field-label" htmlFor={`bp-type-${row.key}`}>{t('Loại')}</label>
-          <select id={`bp-type-${row.key}`} className="input" value={row.questionType ?? ''} onChange={e => onChange({ questionType: e.target.value || undefined })}>
+          <Select id={`bp-type-${row.key}`} className="input" value={row.questionType ?? ''} onChange={e => onChange({ questionType: e.target.value || undefined })}>
             <option value="">{t('Mọi loại')}</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-          </select></div>
+          </Select></div>
         <div className="field"><label className="field-label" htmlFor={`bp-diff-${row.key}`}>{t('Độ khó')}</label>
-          <select id={`bp-diff-${row.key}`} className="input" value={row.difficulty ?? ''} onChange={e => onChange({ difficulty: e.target.value || undefined })}>
+          <Select id={`bp-diff-${row.key}`} className="input" value={row.difficulty ?? ''} onChange={e => onChange({ difficulty: e.target.value || undefined })}>
             <option value="">{t('Mọi độ khó')}</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-          </select></div>
+          </Select></div>
         <div className="field"><label className="field-label" htmlFor={`bp-count-${row.key}`}>{t('Số câu')}</label>
           <input id={`bp-count-${row.key}`} type="number" min={1} max={200} step={1} className="input" value={Number.isFinite(row.count) ? row.count : ''} onChange={e => onChange({ count: Math.floor(Number(e.target.value)) })} /></div>
         <div className="field"><label className="field-label" htmlFor={`bp-pts-${row.key}`}>{t('Điểm mỗi câu')}</label>

@@ -1,12 +1,17 @@
 package com.datn.questionbank.service;
 
 import com.datn.questionbank.dto.ImportDto.*;
+import static com.datn.questionbank.dto.ImportDto.AI_MAX_MATERIAL;
+import static com.datn.questionbank.dto.ImportDto.AI_MAX_QUESTIONS;
 import com.datn.questionbank.dto.QuestionDto.*;
 import com.datn.questionbank.entity.*;
 import com.datn.questionbank.entity.Question.*;
 import com.datn.questionbank.entity.QuestionImportJob.Status;
 import com.datn.questionbank.repository.*;
 import com.datn.questionbank.security.*;
+import com.datn.questionbank.service.ai.AiDrafts;
+import com.datn.questionbank.service.ai.AiQuestionGenerator;
+import com.datn.questionbank.service.ai.KnowledgeRetriever;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +32,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
-/** Staged document import: Upload → Extract → Parse (async) → Review/Edit → Validate → Import as Personal DRAFT. */
+/**
+ * Staged document import: Upload → Extract → Parse (async) → Review/Edit → Validate → Import as Personal DRAFT.
+ * AI generation uses the same lane: Request → Generate (async) → Review/Edit → Validate → Import as AI_GENERATED DRAFT.
+ */
 @Service @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class QuestionImportService {
@@ -36,6 +44,7 @@ public class QuestionImportService {
     private final QuestionImportItemRepository items;
     private final CategoryRepository categories;
     private final DocumentExtractor extractor;
+    private final com.datn.questionbank.service.ai.WebMaterialFetcher web;
     private final QuestionService questions;
     private final BankRegistry banks;
     private final QuestionPolicy policy;
@@ -43,6 +52,13 @@ public class QuestionImportService {
     private final NamedParameterJdbcTemplate jdbc;
     private final TaskExecutor executor;
     private final TransactionTemplate tx;
+    private final AiQuestionGenerator ai;
+    private final KnowledgeRetriever knowledge;
+    private final com.datn.questionbank.service.ai.AiKeyCheck keyCheck;
+    /** Bank context sent to the AI: at most this many of the actor's own questions in the category. */
+    static final int AI_EXAMPLES = 15;
+    /** Duplicate check scope: at most this many of the actor's own questions in the category. */
+    static final int AI_DUPLICATE_SCOPE = 2000;
 
     @Transactional
     public ImportJobResponse upload(MultipartFile file, UUID categoryId, DifficultyLevel defaultDifficulty, QuestionActor actor) {
@@ -53,7 +69,7 @@ public class QuestionImportService {
         try { bytes = file.getBytes(); } catch (IOException e) { throw bad("Không đọc được tệp"); }
         String name = fileName(file.getOriginalFilename());
         var kind = DocumentExtractor.detect(bytes, name);
-        if (kind == null) throw bad("Chỉ hỗ trợ DOCX, PDF, PNG, JPG");
+        if (kind == null) throw bad("Chỉ hỗ trợ Excel (.xlsx), CSV, Word (.docx), PDF, PNG, JPG");
         if (categoryId != null && !categories.existsById(categoryId)) throw bad("Danh mục không tồn tại");
         var now = LocalDateTime.now();
         var job = jobs.saveAndFlush(QuestionImportJob.builder().ownerUserId(actor.userId()).fileName(name).fileKind(kind)
@@ -70,10 +86,66 @@ public class QuestionImportService {
         return response(job);
     }
 
+    /**
+     * AI material from a file (Word, PDF, image via OCR): the text only, nothing stored. The teacher sees and can edit
+     * it before generating, so OCR mistakes are visible. Long text is cut at the AI material limit.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
+    public MaterialText material(MultipartFile file, QuestionActor actor) {
+        policy.requireAuthor(actor);
+        if (file == null || file.isEmpty()) throw bad("Tệp rỗng");
+        if (file.getSize() > MAX_BYTES) throw bad("Tệp vượt giới hạn 20MB");
+        byte[] bytes;
+        try { bytes = file.getBytes(); } catch (IOException e) { throw bad("Không đọc được tệp"); }
+        String name = fileName(file.getOriginalFilename());
+        var kind = DocumentExtractor.detect(bytes, name);
+        if (kind == null || kind == QuestionImportJob.FileKind.XLSX || kind == QuestionImportJob.FileKind.CSV)
+            throw bad("Tài liệu cho AI nhận Word (.docx), PDF, PNG hoặc JPG");
+        DocumentExtractor.Extraction ex;
+        try { ex = extractor.extract(bytes, kind); }
+        catch (DocumentExtractor.ExtractionException e) { throw bad(e.getMessage()); }
+        var text = new StringBuilder();
+        for (var line : ex.lines()) { if (text.length() > 0) text.append('\n'); text.append(line.text()); }
+        String full = text.toString().replaceAll("\n{3,}", "\n\n").strip();
+        boolean truncated = full.length() > AI_MAX_MATERIAL;
+        return new MaterialText(name, truncated ? full.substring(0, AI_MAX_MATERIAL) : full, ex.pageCount(), ex.ocrPageCount(), truncated, ex.warnings());
+    }
+
+    /** Readable text of a public web page or online PDF, used as AI material (not stored). */
+    public MaterialText materialFromUrl(String url, QuestionActor actor) {
+        policy.requireAuthor(actor);
+        com.datn.questionbank.service.ai.WebMaterialFetcher.Fetched page;
+        try { page = web.fetch(url); }
+        catch (com.datn.questionbank.service.ai.WebMaterialFetcher.FetchException e) { throw bad(e.getMessage()); }
+        String full; int pages = 1, ocr = 0; var warnings = new java.util.ArrayList<String>();
+        if (page.text() == null) { // PDF: the same extractor as uploaded files
+            DocumentExtractor.Extraction ex;
+            try { ex = extractor.extract(page.body(), QuestionImportJob.FileKind.PDF); }
+            catch (DocumentExtractor.ExtractionException e) { throw bad(e.getMessage()); }
+            var text = new StringBuilder();
+            for (var line : ex.lines()) { if (text.length() > 0) text.append('\n'); text.append(line.text()); }
+            full = text.toString(); pages = ex.pageCount(); ocr = ex.ocrPageCount(); warnings.addAll(ex.warnings());
+        } else full = page.text();
+        full = full.replaceAll("\n{3,}", "\n\n").strip();
+        if (full.length() < 80) throw bad("Trang gần như không có nội dung chữ (có thể cần đăng nhập hoặc nội dung tải bằng JavaScript)");
+        boolean truncated = full.length() > AI_MAX_MATERIAL;
+        if (truncated) warnings.add("Trang dài, chỉ dùng phần đầu làm tài liệu");
+        warnings.add("Nguồn: " + page.url());
+        return new MaterialText(page.title(), truncated ? full.substring(0, AI_MAX_MATERIAL) : full, pages, ocr, truncated, warnings);
+    }
+
     /** Extract outside any transaction, then persist the parsed items atomically. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
     public void process(UUID jobId, byte[] bytes, UUID actor) {
         var job = jobs.findById(jobId).orElseThrow();
+        if (job.getFileKind() == QuestionImportJob.FileKind.XLSX || job.getFileKind() == QuestionImportJob.FileKind.CSV) {
+            List<ImportParser.Parsed> rows;
+            try { rows = SheetImport.parse(bytes, job.getFileKind() == QuestionImportJob.FileKind.CSV, job.getDefaultDifficulty()); }
+            catch (DocumentExtractor.ExtractionException e) { finish(jobId, actor, e.getMessage(), null); return; }
+            catch (RuntimeException e) { finish(jobId, actor, "Không đọc được bảng tính", null); return; }
+            finishRows(jobId, actor, rows);
+            return;
+        }
         DocumentExtractor.Extraction extraction;
         try { extraction = extractor.extract(bytes, job.getFileKind()); }
         catch (DocumentExtractor.ExtractionException e) { finish(jobId, actor, e.getMessage(), null); return; }
@@ -100,21 +172,143 @@ public class QuestionImportService {
                 event(jobId, null, actor, "FAILED", Map.of("reason", reason));
                 return;
             }
-            int position = 0;
-            for (var p : parsed) {
-                var item = QuestionImportItem.builder().jobId(jobId).position(position++).content(p.content())
-                        .questionType(p.type()).difficultyLevel(p.difficulty()).categoryId(job.getCategoryId())
-                        .options(write(p.options().stream().map(o -> new ImportOption(o.content(), o.correct(), o.displayOrder())).toList()))
-                        .expectedAnswer(p.expectedAnswer()).explanation(p.explanation()).sourcePage(p.page()).sourceMethod(p.method())
-                        .confidence(BigDecimal.valueOf(p.confidence()).setScale(2, java.math.RoundingMode.HALF_UP)).rawText(p.rawText())
-                        .flags(write(p.flags().stream().map(Enum::name).toList())).reviewRequired(p.reviewRequired()).build();
-                validate(item);
-                items.save(item);
-            }
+            stage(job, parsed);
             job.setStatus(Status.READY);
             event(jobId, null, actor, "EXTRACTED", Map.of("items", parsed.size(), "pages", extraction.pageCount(), "ocrPages", extraction.ocrPageCount()));
         });
     }
+
+    /** Spreadsheet rows are already structured: stage them directly (no OCR, no text splitting). */
+    private void finishRows(UUID jobId, UUID actor, List<ImportParser.Parsed> parsed) {
+        tx.executeWithoutResult(status -> {
+            var job = jobs.findByIdForUpdate(jobId).orElseThrow();
+            if (job.getStatus() != Status.PROCESSING) return;
+            job.setPageCount(1); job.setOcrPageCount(0); job.setWarnings("[]"); job.setUpdatedAt(LocalDateTime.now());
+            if (parsed.isEmpty()) {
+                job.setStatus(Status.FAILED); job.setFailureReason("Bảng tính không có câu hỏi nào dưới dòng tiêu đề");
+                event(jobId, null, actor, "FAILED", Map.of("reason", job.getFailureReason()));
+                return;
+            }
+            stage(job, parsed);
+            job.setStatus(Status.READY);
+            event(jobId, null, actor, "EXTRACTED", Map.of("items", parsed.size(), "rows", parsed.size()));
+        });
+    }
+
+    private void stage(QuestionImportJob job, List<ImportParser.Parsed> parsed) {
+        int position = 0;
+        for (var p : parsed) {
+            var item = QuestionImportItem.builder().jobId(job.getId()).position(position++).content(p.content())
+                    .questionType(p.type()).difficultyLevel(p.difficulty()).categoryId(job.getCategoryId())
+                    .options(write(p.options().stream().map(o -> new ImportOption(o.content(), o.correct(), o.displayOrder())).toList()))
+                    .expectedAnswer(p.expectedAnswer()).explanation(p.explanation()).sourcePage(p.page()).sourceMethod(p.method())
+                    .confidence(BigDecimal.valueOf(p.confidence()).setScale(2, java.math.RoundingMode.HALF_UP)).rawText(p.rawText())
+                    .flags(write(p.flags().stream().map(Enum::name).toList())).reviewRequired(p.reviewRequired()).build();
+            validate(item);
+            items.save(item);
+        }
+    }
+
+    // ── AI generation ──────────────────────────────────────────────────────────────
+
+    public AiStatus aiStatus(QuestionActor actor) {
+        policy.requireAuthor(actor);
+        return new AiStatus(ai.available(), ai.available() ? ai.model() : null, AI_MAX_QUESTIONS, AI_MAX_MATERIAL,
+                ai.providers().stream().map(p -> new ProviderInfo(p.name(), p.model(), p.available(), p.coolingDown())).toList(), knowledge.webEnabled());
+    }
+
+    /** Creates an AI job (PROCESSING) and generates after commit; the teacher reviews items like a document import. */
+    @Transactional
+    public ImportJobResponse generate(AiGenerateRequest request, QuestionActor actor) {
+        policy.requireAuthor(actor);
+        if (!ai.available()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Chưa cấu hình nguồn sinh câu hỏi nào");
+        if (request == null || request.topic() == null || request.topic().isBlank()) throw bad("Nhập chủ đề");
+        if (request.categoryId() == null || !categories.existsById(request.categoryId())) throw bad("Danh mục không tồn tại");
+        if (jobs.existsByOwnerUserIdAndFileKindAndStatus(actor.userId(), QuestionImportJob.FileKind.AI, Status.PROCESSING))
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Đang có một yêu cầu AI chưa xong; vui lòng đợi");
+        int count = request.count() == null ? 5 : request.count();
+        if (count < 1 || count > AI_MAX_QUESTIONS) throw bad("Số câu từ 1 đến " + AI_MAX_QUESTIONS);
+        var types = request.questionTypes() == null || request.questionTypes().isEmpty()
+                ? List.of(QuestionType.MULTIPLE_CHOICE) : List.copyOf(new LinkedHashSet<>(request.questionTypes()));
+        var difficulty = request.difficulty() == null ? DifficultyLevel.MEDIUM : request.difficulty();
+        String language = request.language() == null ? "vi" : request.language();
+        String topic = request.topic().strip();
+        String material = request.material() == null || request.material().isBlank() ? null : request.material().strip();
+        if (material != null && material.length() > AI_MAX_MATERIAL) throw bad("Tài liệu tối đa " + AI_MAX_MATERIAL + " ký tự");
+        var examples = Boolean.FALSE.equals(request.useBankExamples()) ? List.<String>of() : ownContents(actor.userId(), request.categoryId(), AI_EXAMPLES);
+        var existing = ownContents(actor.userId(), request.categoryId(), AI_DUPLICATE_SCOPE);
+        boolean useWeb = material == null && !Boolean.FALSE.equals(request.useWebKnowledge()) && knowledge.webEnabled();
+        var generation = new AiGeneration(topic, ai.model(), count, types, difficulty, language, material != null,
+                material == null ? 0 : material.length(), examples.size(), useWeb, List.of());
+        var now = LocalDateTime.now();
+        var job = jobs.saveAndFlush(QuestionImportJob.builder().ownerUserId(actor.userId()).fileName(fileName("AI · " + truncate(topic, 200)))
+                .fileKind(QuestionImportJob.FileKind.AI).fileSize(material == null ? 0 : material.length()).status(Status.PROCESSING)
+                .warnings("[]").categoryId(request.categoryId()).defaultDifficulty(difficulty).generation(write(generation))
+                .createdAt(now).updatedAt(now).build());
+        event(job.getId(), null, actor.userId(), "AI_REQUESTED", generation);
+        var prompt = new AiQuestionGenerator.Prompt(topic, material, examples, count, types, difficulty, language, request.cognitiveLevel());
+        UUID id = job.getId(), owner = actor.userId();
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { executor.execute(() -> runGeneration(id, prompt, existing, owner, useWeb)); }
+            });
+        return response(job);
+    }
+
+    public void runGeneration(UUID jobId, AiQuestionGenerator.Prompt prompt, List<String> existing, UUID actor) {
+        runGeneration(jobId, prompt, existing, actor, false);
+    }
+
+    /**
+     * Retrieval, then generation through the provider chain, all outside any transaction; the drafts are staged
+     * atomically. The job records which provider answered and which knowledge sources were used.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.SUPPORTS)
+    public void runGeneration(UUID jobId, AiQuestionGenerator.Prompt prompt, List<String> existing, UUID actor, boolean useWeb) {
+        AiDrafts.Drafts drafts = null; String failure = null, model = null;
+        var notes = new ArrayList<String>();
+        List<KnowledgeSource> sources = List.of();
+        try {
+            var k = knowledge.retrieve(prompt.topic(), prompt.material(), prompt.language(), useWeb);
+            notes.addAll(k.warnings());
+            sources = k.sources().stream().map(s -> new KnowledgeSource(s.title(), s.url())).toList();
+            var grounded = prompt.withMaterial(k.text());
+            var result = ai.generate(grounded);
+            model = result.model();
+            drafts = AiDrafts.build(result.candidates(), prompt.count(), prompt.difficulty(), existing);
+            // Rule-based drafts are built from the material itself; only model output gets the cross-check.
+            if (!drafts.items().isEmpty() && model != null && !model.startsWith("local")) drafts = keyCheck.verify(drafts, k.text(), prompt.language());
+            if (drafts.items().isEmpty()) failure = "AI không tạo được câu hỏi hợp lệ; thử đổi chủ đề hoặc tài liệu";
+            else drafts = new AiDrafts.Drafts(drafts.items(), concat(concat(notes, result.warnings()), drafts.warnings()));
+        } catch (AiQuestionGenerator.GenerationException e) { failure = e.getMessage(); }
+        catch (RuntimeException e) { failure = "Không tạo được câu hỏi bằng AI"; }
+        String reason = failure == null ? null : truncate(failure + (notes.isEmpty() ? "" : " (" + String.join("; ", notes) + ")"), 1000);
+        var staged = drafts; String usedModel = model; var usedSources = sources;
+        tx.executeWithoutResult(status -> {
+            var job = jobs.findByIdForUpdate(jobId).orElseThrow();
+            if (job.getStatus() != Status.PROCESSING) return;
+            job.setUpdatedAt(LocalDateTime.now());
+            var g = generation(job);
+            if (g != null) job.setGeneration(write(g.withResult(usedModel == null ? g.model() : usedModel, usedSources)));
+            if (reason != null) {
+                job.setStatus(Status.FAILED); job.setFailureReason(reason);
+                event(jobId, null, actor, "FAILED", Map.of("reason", reason));
+                return;
+            }
+            job.setWarnings(write(staged.warnings()));
+            stage(job, staged.items());
+            job.setStatus(Status.READY);
+            event(jobId, null, actor, "AI_GENERATED", Map.of("items", staged.items().size(), "model", String.valueOf(usedModel), "sources", usedSources.size()));
+        });
+    }
+
+    /** The actor's own non-archived questions in a category, newest first (bank context and duplicate check). */
+    private List<String> ownContents(UUID owner, UUID category, int limit) {
+        return jdbc.queryForList("SELECT content FROM questions WHERE created_by=:owner AND category_id=:category AND status<>'ARCHIVED' "
+                + "ORDER BY updated_at DESC NULLS LAST, id LIMIT :limit",
+                new MapSqlParameterSource().addValue("owner", owner).addValue("category", category).addValue("limit", limit), String.class);
+    }
+    private static List<String> concat(List<String> a, List<String> b) { var all = new ArrayList<>(a); all.addAll(b); return all; }
 
     @EventListener(ApplicationReadyEvent.class) @Transactional
     public void failInterruptedJobs() {
@@ -189,6 +383,7 @@ public class QuestionImportService {
         var byId = new LinkedHashMap<UUID, QuestionImportItem>(); all.forEach(i -> byId.put(i.getId(), i));
         var wanted = request == null || request.itemIds() == null ? new ArrayList<>(byId.keySet()) : new ArrayList<>(new LinkedHashSet<>(request.itemIds()));
         var imported = new ArrayList<ImportedItem>(); var skipped = new ArrayList<SkippedItem>();
+        boolean activate = request != null && Boolean.TRUE.equals(request.activate());
         var now = LocalDateTime.now();
         for (UUID itemId : wanted) {
             var item = byId.get(itemId);
@@ -197,17 +392,27 @@ public class QuestionImportService {
             validate(item);
             String reason = item.isExcluded() ? "EXCLUDED" : !item.isValid() ? "INVALID" : item.isReviewRequired() && !item.isReviewed() ? "NEEDS_REVIEW" : null;
             if (reason != null) { skipped.add(new SkippedItem(itemId, reason)); continue; }
-            String label = job.getFileName() + (item.getSourcePage() == null ? "" : " · trang " + item.getSourcePage());
+            boolean aiJob = job.getFileKind() == QuestionImportJob.FileKind.AI;
+            var generation = aiJob ? generation(job) : null;
+            String label = aiJob ? job.getFileName() + " · " + (generation == null ? "AI" : generation.model())
+                    : job.getFileName() + (item.getSourcePage() == null ? "" : " · trang " + item.getSourcePage());
+            // AI questions keep their origin: AI_GENERATED, sourced from the teacher's material or the web page used.
+            String webUrl = generation == null || generation.sources() == null ? null
+                    : generation.sources().stream().map(KnowledgeSource::url).filter(Objects::nonNull).findFirst().orElse(null);
+            var sourceType = !aiJob || generation != null && generation.hasMaterial() ? SourceType.USER_DOCUMENT
+                    : webUrl != null ? SourceType.EXTERNAL_WEB : SourceType.NONE;
             var created = questions.importDraft(new CreateRequest(item.getCategoryId(), item.getContent(), item.getQuestionType(),
                     item.getDifficultyLevel(), truncate(label, 500), options(item).stream().map(o -> new OptionRequest(o.content(), o.correct(), o.displayOrder())).toList(),
-                    item.getExpectedAnswer(), QuestionScope.PERSONAL, SourceType.USER_DOCUMENT, "import:" + job.getId() + ":" + item.getId(),
-                    truncate(label, 500), null, item.getRawText(), item.getExplanation()), bankId, actor);
+                    item.getExpectedAnswer(), QuestionScope.PERSONAL, sourceType, (aiJob ? "ai:" : "import:") + job.getId() + ":" + item.getId(),
+                    truncate(label, 500), sourceType == SourceType.EXTERNAL_WEB ? webUrl : null, item.getRawText(), item.getExplanation()), bankId, actor,
+                    aiJob ? CreationMethod.AI_GENERATED : CreationMethod.IMPORT);
+            if (activate) created = questions.activate(created.id(), created.questionVersion(), actor);
             item.setImportedQuestionId(created.id()); item.setImportedAt(now);
             imported.add(new ImportedItem(item.getId(), created.id()));
         }
         items.flush();
         job.setUpdatedAt(now);
-        event(job.getId(), null, actor.userId(), "IMPORTED", Map.of("bankId", bankId, "imported", imported, "skipped", skipped));
+        event(job.getId(), null, actor.userId(), "IMPORTED", Map.of("bankId", bankId, "imported", imported, "skipped", skipped, "activated", activate));
         return new ImportJobResult(imported, skipped, summary(all));
     }
 
@@ -227,7 +432,8 @@ public class QuestionImportService {
         if (item.getCategoryId() == null) errors.add(new ItemError("CATEGORY_REQUIRED", "Chọn danh mục"));
         else if ((category = categories.findById(item.getCategoryId()).orElse(null)) == null) errors.add(new ItemError("CATEGORY_NOT_FOUND", "Danh mục không tồn tại"));
         var options = options(item);
-        boolean choice = item.getQuestionType() == QuestionType.MULTIPLE_CHOICE || item.getQuestionType() == QuestionType.TRUE_FALSE;
+        boolean choice = item.getQuestionType() == QuestionType.MULTIPLE_CHOICE || item.getQuestionType() == QuestionType.TRUE_FALSE
+                || item.getQuestionType() == QuestionType.MULTIPLE_RESPONSE;
         if (choice && options.stream().noneMatch(ImportOption::correct))
             errors.add(new ItemError("MISSING_CORRECT_ANSWER", "Chưa có đáp án đúng; hệ thống không tự đoán"));
         else {
@@ -253,7 +459,10 @@ public class QuestionImportService {
         return new ImportJobResponse(job.getId(), job.getFileName(), job.getFileKind(), job.getFileSize(), job.getPageCount(),
                 job.getOcrPageCount(), job.getStatus(), job.getFailureReason(), read(job.getWarnings(), new TypeReference<List<String>>() {}),
                 job.getCategoryId(), job.getDefaultDifficulty(), job.getCreatedAt(), job.getUpdatedAt(),
-                summary(items.findByJobIdOrderByPosition(job.getId())));
+                summary(items.findByJobIdOrderByPosition(job.getId())), generation(job));
+    }
+    private AiGeneration generation(QuestionImportJob job) {
+        return job.getGeneration() == null ? null : read(job.getGeneration(), new TypeReference<AiGeneration>() {});
     }
     private static ImportSummary summary(List<QuestionImportItem> all) {
         long valid = 0, invalid = 0, review = 0, importable = 0, imported = 0, excluded = 0;

@@ -1,0 +1,2 @@
+# Bản mã hoá base64 một dòng: không đổi xuống dòng kiểu Windows
+.env.enc -text

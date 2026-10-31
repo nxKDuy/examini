@@ -1,3 +1,4 @@
+import type { Presentation } from '../question-bank/questionApi'
 import api from '../../lib/api'
 import type { IntegrityPolicy } from '../integrity/integrityApi'
 import type { BlueprintPreview, BlueprintRequest } from './builderModel'
@@ -22,15 +23,22 @@ export interface ExamInput {
 }
 export interface Policy { accessMode: AccessMode; maxParticipants: number; maxConcurrentSessions: number; attemptLimit: number; joinCode?: string }
 export interface SafeOption { id: string; content: string; displayOrder: number }
-export interface SafeQuestion { questionId: string; questionVersion: number; questionType: string; content: string; points: number; position: number; options: SafeOption[] }
+export interface SafeQuestion { questionId: string; questionVersion: number; questionType: string; content: string; points: number; position: number; options: SafeOption[]; presentation?: Presentation | null }
 export interface Session {
   sessionId: string; examId: string; title: string; status: string; attemptNumber: number
   expiresAt: string; serverNow: string; questions: SafeQuestion[]; answers: Record<string, string>
+  /** Practice attempt: answers can be checked one by one (then locked). */
+  practice?: boolean; checks?: Record<string, PracticeCheck>
+}
+/** Verdict of one practice answer; parts: statement / gap / pair id → right; correctOptionIds for choice questions. */
+export interface PracticeCheck {
+  questionId: string; share: number; correct: boolean; correctAnswers: string[]; correctOptionIds: string[]
+  parts: Record<string, boolean>; explanation?: string | null
 }
 /** Candidate-safe own result (manual-grading-api.md). Fields the policy hides are simply absent, never null-as-zero. */
 export interface ResultItem {
   questionId: string; questionVersion: number; position: number; questionContent: string; questionType: string; pointValue?: number
-  answer?: string; answerDisplay?: string | null; awardedPoints?: number; feedback?: string; correctAnswers?: string[]; explanation?: string | null
+  answer?: string; answerDisplay?: string | null; awardedPoints?: number; feedback?: string; correctAnswers?: string[]; explanation?: string | null; presentation?: Presentation | null
 }
 export interface ResultRevision { resultRevision: number; releasedAt?: string; score?: number; totalScore?: number; publicReason?: string }
 export interface Result {
@@ -59,6 +67,8 @@ export const examApi = {
   create: (data: ExamInput) => api.post<Exam>('/exams/manual', { ...data, ...PHASE1_FLAGS }).then(r => r.data),
   update: (id: string, data: ExamInput) => api.put<Exam>(`/exams/${id}`, { ...data, ...PHASE1_FLAGS }).then(r => r.data),
   remove: (id: string) => api.delete(`/exams/${id}`),
+  /** Frozen questions with answer keys for the paper exam (owner/manager, published exams only). */
+  paper: (id: string) => api.get<PaperQuestion[]>(`/exams/${id}/paper`).then(r => r.data),
   /** Draft only, nothing persisted (contracts/exam-builder.md); save goes through create/update. */
   blueprintPreview: (body: BlueprintRequest) => api.post<BlueprintPreview>('/exams/blueprint/preview', body).then(r => r.data),
   publish: (id: string) => api.put<Exam>(`/exams/${id}/publish`).then(r => r.data),
@@ -83,6 +93,27 @@ export const examApi = {
   start: (examId: string) => api.post<Session>('/sessions/start', null, { params: { examId } }).then(r => r.data),
   session: (id: string) => api.get<Session>(`/sessions/${id}`).then(r => r.data),
   answer: (id: string, questionId: string, content: string) => api.post(`/sessions/${id}/answers`, { content }, { params: { questionId } }),
+  checkAnswer: (id: string, questionId: string) => api.post<PracticeCheck>(`/sessions/${id}/answers/check`, null, { params: { questionId } }).then(r => r.data),
   submit: (id: string) => api.post(`/sessions/${id}/submit`),
+  /** Voice answer of a SPEAKING question: the raw recording as the body; the stored answer becomes its metadata JSON. */
+  answerAudio: (id: string, questionId: string, audio: Blob, seconds: number) =>
+    api.post<{ questionId: string; seconds: number; bytes: number; type: string }>(`/sessions/${id}/answers/${questionId}/audio`, audio,
+      { params: { seconds }, headers: { 'Content-Type': audio.type.split(';')[0] || 'audio/webm' } }).then(r => r.data),
+  answerAudioBlob: (id: string, questionId: string) => api.get<Blob>(`/sessions/${id}/answers/${questionId}/audio`, { responseType: 'blob' }).then(r => r.data),
   result: (id: string) => api.get<Result>(`/grades/session/${id}`).then(r => r.data),
+  /** A fresh AI practice question on the same skill as a missed question (never stored). */
+  practice: (sessionId: string, questionId: string, lang: string) =>
+    api.post<PracticeQuestion>(`/grades/session/${sessionId}/questions/${questionId}/practice`, undefined, { params: { lang }, timeout: 60_000 }).then(r => r.data),
+  /** AI tutor on one question of the student's own released result (only when the key is visible). */
+  explain: (sessionId: string, questionId: string, lang: string) =>
+    api.post<TutorExplanation>(`/grades/session/${sessionId}/questions/${questionId}/explain`, undefined, { params: { lang }, timeout: 60_000 }).then(r => r.data),
+}
+
+export interface PracticeQuestion { question: string; options: string[]; answer: number; explanation: string }
+export interface TutorExplanation { verdict: 'CORRECT' | 'PARTIAL' | 'WRONG' | 'UNANSWERED' | 'UNKNOWN'; explanation: string; tips: string[]; source: 'AI' | 'RULES'; model: string | null }
+export interface PaperQuestion {
+  questionId: string; questionVersion: number; questionType: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | string
+  content: string; options: { id: string; content: string; displayOrder: number; correct: boolean }[]
+  points: number; expectedAnswer: string | null; explanation: string | null; position: number
+  presentation?: Presentation | null
 }

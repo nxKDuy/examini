@@ -18,6 +18,10 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
   const policy = useQuery({ queryKey: ['integrity-policy', sessionId], queryFn: () => integrityApi.sessionPolicy(sessionId!), enabled: !!sessionId, retry: 1, staleTime: Infinity })
   const [fullscreen, setFullscreen] = useState(isFullscreen)
   const [ack, setAck] = useState(false)
+  // Another tab of this browser opened the same attempt; only the newest tab may answer.
+  const [duplicate, setDuplicate] = useState(false)
+  const channel = useRef<BroadcastChannel | null>(null)
+  const tabId = useRef(Math.random().toString(36).slice(2))
   const receiptRef = useRef(onReceipt)
   receiptRef.current = onReceipt
   // Events that could not reach the server (offline / network error). Same clientEventId on resend: the server dedupes.
@@ -96,8 +100,11 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
       if (!p.requireFullscreen) return
       report(now ? 'FULLSCREEN_ENTER' : 'EXIT_FULLSCREEN', now ? { fromFullscreen: false, toFullscreen: true } : { fromFullscreen: true, toFullscreen: false })
     }
-    const onCopy = () => { if (p.monitorCopy) report('COPY') }
-    const onPaste = () => { if (p.monitorPaste) report('PASTE') }
+    // Copy/cut/paste/drop are blocked (not only recorded) while monitored; the right-click menu goes with copy.
+    const onCopy = (e: Event) => { if (p.monitorCopy) { e.preventDefault(); report('COPY') } }
+    const onPaste = (e: Event) => { if (p.monitorPaste) { e.preventDefault(); report('PASTE') } }
+    const onDrop = (e: DragEvent) => { if (p.monitorPaste && e.dataTransfer?.types.some(t => t === 'text/plain' || t === 'text/html' || t === 'Files')) { e.preventDefault(); report('PASTE') } }
+    const onContext = (e: Event) => { if (p.monitorCopy) e.preventDefault() }
     const onOffline = () => { if (p.monitorNetwork && !offlineAt) offlineAt = Date.now() }
     const onOnline = () => {
       if (p.monitorNetwork && offlineAt) {
@@ -112,7 +119,10 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
     document.addEventListener('visibilitychange', onVisibility)
     FULLSCREEN_EVENTS.forEach(e => document.addEventListener(e, onFullscreen))
     document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCopy)
     document.addEventListener('paste', onPaste)
+    document.addEventListener('drop', onDrop)
+    document.addEventListener('contextmenu', onContext)
     window.addEventListener('blur', onBlur)
     window.addEventListener('focus', back)
     window.addEventListener('offline', onOffline)
@@ -123,7 +133,10 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
       document.removeEventListener('visibilitychange', onVisibility)
       FULLSCREEN_EVENTS.forEach(e => document.removeEventListener(e, onFullscreen))
       document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCopy)
       document.removeEventListener('paste', onPaste)
+      document.removeEventListener('drop', onDrop)
+      document.removeEventListener('contextmenu', onContext)
       window.removeEventListener('blur', onBlur)
       window.removeEventListener('focus', back)
       window.removeEventListener('offline', onOffline)
@@ -131,15 +144,35 @@ export function useIntegrityMonitor(sessionId: string | undefined, active: boole
     }
   }, [on, p, sessionId])
 
+  // Same attempt in two tabs of this browser: the newest claims it, older tabs are blocked until they take it back.
+  useEffect(() => {
+    if (!sessionId || !active || typeof BroadcastChannel === 'undefined') return
+    const ch = new BroadcastChannel(`examini.attempt.${sessionId}`)
+    channel.current = ch
+    ch.onmessage = (e: MessageEvent<{ claim?: string }>) => { if (e.data?.claim && e.data.claim !== tabId.current) setDuplicate(true) }
+    ch.postMessage({ claim: tabId.current })
+    return () => { ch.close(); channel.current = null }
+  }, [sessionId, active])
+  const takeOver = useCallback(() => { channel.current?.postMessage({ claim: tabId.current }); setDuplicate(false) }, [])
+
   const enterFullscreen = useCallback(async () => { const ok = await requestFullscreen(); setFullscreen(isFullscreen()); return ok }, [])
   const current = on ? p! : null
+  const supported = fullscreenSupported()
   return {
     policy: current,
     /** Policy still loading: the question UI waits so a fullscreen-required attempt never flashes its questions. */
     loading: !!sessionId && policy.isLoading,
-    supported: fullscreenSupported(),
+    supported,
     fullscreen,
-    needsFullscreen: !!current?.requireFullscreen && !fullscreen,
+    /** Phones without the Fullscreen API (iPhone Safari) are never locked out; leaving the page is still recorded. */
+    needsFullscreen: !!current?.requireFullscreen && !fullscreen && supported,
+    fullscreenUnavailable: !!current?.requireFullscreen && !supported,
+    duplicate: !!sessionId && active && duplicate,
+    takeOver,
+    /** Camera proctoring is part of the frozen policy but runs separately (useCameraProctor). */
+    camera: !!sessionId && active && !!p?.requireCamera,
+    /** Copying is blocked: the page also disables text selection on questions. */
+    noCopy: !!current?.monitorCopy,
     ack: on && ack,
     acknowledge: () => setAck(false),
     enterFullscreen,

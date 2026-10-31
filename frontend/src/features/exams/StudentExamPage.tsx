@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CloudOff, Copy, Flag, LayoutGrid, Maximize, Send, ShieldAlert, Timer } from 'lucide-react'
 import BlockingOverlay from '../integrity/BlockingOverlay'
 import { exitFullscreen } from '../../lib/fullscreen'
 import { useT, t as tt, locale } from '../../lib/i18n'
 import { examApi, type SafeQuestion, type Session } from './examApi'
 import { rememberAttempt } from './attemptHints'
+import { SAVE_RETRIES, isTransientSaveError, saveRetryDelay } from './saveRetry'
 import { useAuthStore } from '../../store/authStore'
 import { useIntegrityMonitor } from '../integrity/useIntegrityMonitor'
+import { useCameraProctor } from '../integrity/camera/useCameraProctor'
+import { CameraDock, CameraGate } from '../integrity/camera/CameraViews'
 import { signalState, type StudentSignalState } from '../integrity/integrityModel'
 import { ConfirmDialog } from '../../components/Dialog'
 import { ErrorState, Notice, Spinner } from '../../components/ui'
 import { errorInfo, errorText } from '../../lib/errors'
 import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '../../lib/format'
+import { MediaImage, MediaList, PassageView } from '../question-bank/media/QuestionMedia'
+import { blockOf, countWords, wordState } from '../question-bank/media/mediaModel'
+import SpeakingRecorder from './SpeakingRecorder'
+import { ClozeText, MatchingAnswer, type PartState } from './StructuredAnswer'
+import PracticeFeedback from './PracticeFeedback'
+import { CHECKABLE, partStates } from './practiceModel'
+import type { PracticeCheck } from './examApi'
+import { isAnswered, judge, judgedCount, parseChosen, parseJudged, statementLabel, toggleChosen } from '../question-bank/choiceModel'
 
 type SaveState = 'pending' | 'saving' | 'saved' | 'error'
 const TEXT_DEBOUNCE_MS = 800
@@ -26,12 +37,29 @@ export default function StudentExamPage() {
   const [loadError, setLoadError] = useState<unknown>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({})
+  const [checks, setChecks] = useState<Record<string, PracticeCheck>>({})
+  const [checking, setChecking] = useState('')
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [actionError, setActionError] = useState('')
   const [index, setIndex] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const [online, setOnline] = useState(() => navigator.onLine)
   const [confirming, setConfirming] = useState(false)
+  // "Review later" marks: a private note of this browser only (never sent to the server or the teacher).
+  const flagKey = `examini-flags:${id}`
+  const [flagged, setFlagged] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(flagKey) ?? '[]') as string[]) } catch { return new Set() } })
+  const toggleFlag = (qid: string) => setFlagged(prev => {
+    const next = new Set(prev); if (next.has(qid)) next.delete(qid); else next.add(qid)
+    try { localStorage.setItem(flagKey, JSON.stringify([...next])) } catch { /* private mode: marks stay for this visit */ }
+    return next
+  })
+  // Keyboard on a laptop: the handler is rebuilt every render (it needs the current question), the listener only once.
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {})
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => keyHandler.current(e)
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [])
   const [submitting, setSubmitting] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -46,6 +74,7 @@ export default function StudentExamPage() {
   const latest = useRef<Record<string, string>>({})
   const queues = useRef<Record<string, Promise<unknown>>>({})
   const timers = useRef<Record<string, number>>({})
+  const retries = useRef<Record<string, number>>({})
   const stateRef = useRef<Record<string, SaveState>>({})
   const announced = useRef<Set<number>>(new Set())
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -66,6 +95,7 @@ export default function StudentExamPage() {
       if (autoSubmittedRef.current) return
       if (s.status !== 'IN_PROGRESS') { goResult(); return }
       setSession(s)
+      if (s.checks) setChecks(c => ({ ...s.checks, ...c }))
       if (initial) {
         latest.current = { ...s.answers }
         setAnswers({ ...s.answers })
@@ -105,6 +135,7 @@ export default function StudentExamPage() {
     if (next.stage === 'submitted') { autoSubmittedRef.current = true; setAutoSubmitted(true); setConfirming(false); return }
     if (r.warningRecommended) setAnnouncement(tt('Đã ghi nhận {0}/{1} tín hiệu. Thêm một tín hiệu nữa, bài sẽ được tự động nộp.', { 0: next.count, 1: next.limit }))
   })
+  const camera = useCameraProctor(id, integrity.camera)
   if (integrity.fullscreen) wasFullscreen.current = true
   // Leaving the attempt (result, auto-submit, navigation) gives the screen back.
   useEffect(() => { if (autoSubmitted) exitFullscreen() }, [autoSubmitted])
@@ -147,17 +178,38 @@ export default function StudentExamPage() {
     queues.current[qid] = run
     run.then(() => {
       if (queues.current[qid] !== run) return
+      delete retries.current[qid]
       setQState(qid, (latest.current[qid] ?? '') === value ? (timers.current[qid] ? 'pending' : 'saved') : 'pending')
       setLastSavedAt(new Date())
     }, e => {
       if (queues.current[qid] !== run) return
-      setQState(qid, 'error')
       const info = errorInfo(e)
+      // Saving an answer overwrites it, so a dropped connection or a busy server is retried quietly a few times.
+      const tries = retries.current[qid] ?? 0
+      if (isTransientSaveError(info.status) && tries < SAVE_RETRIES) {
+        retries.current[qid] = tries + 1
+        setQState(qid, 'pending')
+        timers.current[qid] = window.setTimeout(() => void persist(qid), saveRetryDelay(tries))
+        return
+      }
+      delete retries.current[qid]
+      setQState(qid, 'error')
       setActionError(info.message)
       if (info.status === 409 || info.status === 403) void sync()
     })
     return run
   }, [id, setQState, sync])
+
+  /** Practice: saves any pending typing first, then asks the server for the verdict (the answer is locked after). */
+  async function checkAnswer(qid: string) {
+    setChecking(qid); setActionError('')
+    try {
+      if (timers.current[qid] || saveState[qid] === 'error' || saveState[qid] === 'pending') await persist(qid)
+      else await queues.current[qid]
+      const c = await examApi.checkAnswer(id!, qid)
+      setChecks(x => ({ ...x, [qid]: c }))
+    } catch (e) { setActionError(errorText(e)) } finally { setChecking('') }
+  }
 
   function change(qid: string, value: string, immediate: boolean) {
     latest.current[qid] = value
@@ -170,7 +222,8 @@ export default function StudentExamPage() {
   }
 
   const flush = useCallback(async () => {
-    Object.keys(timers.current).forEach(qid => void persist(qid))
+    const failed = Object.entries(stateRef.current).filter(([, st]) => st === 'error').map(([qid]) => qid)
+    new Set([...Object.keys(timers.current), ...failed]).forEach(qid => void persist(qid))
     await Promise.allSettled(Object.values(queues.current))
     return Object.entries(stateRef.current).filter(([, s]) => s !== 'saved').map(([qid]) => qid)
   }, [persist])
@@ -207,6 +260,14 @@ export default function StudentExamPage() {
     }
   }
 
+  /** A recording is stored by its own upload; the answer only mirrors the metadata the server wrote. */
+  function spoken(qid: string, value: string) {
+    window.clearTimeout(timers.current[qid]); delete timers.current[qid]
+    latest.current[qid] = value
+    setAnswers(a => ({ ...a, [qid]: value }))
+    setQState(qid, 'saved'); setLastSavedAt(new Date()); setActionError('')
+  }
+
   function goTo(i: number) {
     const q = session?.questions[index]
     if (q && timers.current[q.questionId]) void persist(q.questionId)
@@ -232,17 +293,33 @@ export default function StudentExamPage() {
 
   const questions = session.questions
   const q = questions[index]
-  const answered = (qq: SafeQuestion) => (answers[qq.questionId] ?? '').trim() !== ''
+  const answered = (qq: SafeQuestion) => isAnswered(qq.questionType, answers[qq.questionId])
   const answeredCount = questions.filter(answered).length
   const unanswered = questions.map((qq, i) => (answered(qq) ? -1 : i)).filter(i => i >= 0)
   const states = Object.values(saveState)
   const errors = states.filter(s => s === 'error').length
   const busy = states.some(s => s === 'saving' || s === 'pending')
+  const block = blockOf(questions, index)
   const level = remaining <= 60 ? 'critical' : remaining <= 300 ? 'warn' : 'normal'
-  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack
+  const blocked = integrity.loading || integrity.needsFullscreen || integrity.ack || integrity.duplicate || camera.blocking
   const locked = expired || submitting || blocked
   const lastLine = signals?.stage === 'last' ? <p><strong>{t('Thêm một tín hiệu nữa, bài sẽ được tự động nộp.')}</strong></p> : null
   const countLine = signals ? <p><strong>{t('Đã ghi nhận {count}/{limit} tín hiệu rời khỏi bài.', { count: signals.count, limit: signals.limit })}</strong></p> : null
+  keyHandler.current = (e: KeyboardEvent) => {
+    const el = e.target as HTMLElement
+    if (locked || confirming || e.altKey || e.ctrlKey || e.metaKey || el.closest('input:not([type=radio]):not([type=checkbox]), textarea, select, [contenteditable=true], [role=dialog]')) return
+    const key = e.key.toLowerCase()
+    if (e.key === 'ArrowRight' && index < questions.length - 1) { e.preventDefault(); goTo(index + 1); return }
+    if (e.key === 'ArrowLeft' && index > 0) { e.preventDefault(); goTo(index - 1); return }
+    if (key === 'f') { e.preventDefault(); toggleFlag(q.questionId); return }
+    // A–H or 1–8 pick an option of a choice question (practice answers already checked stay locked).
+    const n = /^[a-h]$/.test(key) ? key.charCodeAt(0) - 97 : /^[1-8]$/.test(key) ? Number(key) - 1 : -1
+    if (n < 0 || checks[q.questionId] || n >= q.options.length) return
+    const opt = q.options[n]
+    if (q.questionType === 'MULTIPLE_CHOICE' || q.questionType === 'TRUE_FALSE') { e.preventDefault(); change(q.questionId, opt.id, true) }
+    else if (q.questionType === 'MULTIPLE_RESPONSE') { e.preventDefault(); const v = answers[q.questionId] ?? ''; change(q.questionId, toggleChosen(v, opt.id, !parseChosen(v).includes(opt.id)), true) }
+  }
+  const flaggedList = questions.map((qq, i) => (flagged.has(qq.questionId) ? i : -1)).filter(i => i >= 0)
   const neutral = <p className="small muted">{t('Tín hiệu trình duyệt là dữ liệu ghi nhận, không phải kết luận gian lận. Đồng hồ vẫn chạy theo máy chủ; hết giờ bài được tự động nộp như bình thường.')}</p>
 
   return (
@@ -262,8 +339,9 @@ export default function StudentExamPage() {
 
       {/* Questions render only while not blocked (fullscreen active, leave acknowledged): contract A. */}
       {!blocked && <>
-      <div className="take-body">
+      <div className={`take-body${integrity.noCopy ? ' no-copy' : ''}`}>
         <main className="stack">
+          {integrity.fullscreenUnavailable && <Notice tone="warning" title={t('Thiết bị không hỗ trợ toàn màn hình')}>{t('Bạn vẫn làm bài bình thường. Hệ thống ghi nhận mỗi lần bạn rời trang, chuyển ứng dụng hoặc chuyển tab.')}</Notice>}
           {expired && <Notice tone="warning" live title={t('Đã hết giờ')}>{t('Hệ thống đang tự động nộp các câu trả lời đã lưu. Bạn sẽ được chuyển đến trang kết quả.')}</Notice>}
           {!online && <Notice tone="warning" live title={t('Mất kết nối')}>{t('Câu trả lời sẽ được lưu khi có mạng lại. Đồng hồ vẫn chạy trên máy chủ; giữ trang này mở.')}</Notice>}
           {actionError && <Notice tone="danger" live>{actionError}</Notice>}
@@ -274,11 +352,32 @@ export default function StudentExamPage() {
           <section className="card card-body stack-lg" aria-labelledby="question-heading">
             <div className="spread">
               <h1 id="question-heading" ref={headingRef} tabIndex={-1} style={{ fontSize: '1rem' }}>{tt('Câu')} {index + 1} / {questions.length}</h1>
-              <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} {tt('điểm')}</span>
+              <span className="row" style={{ gap: 12 }}>
+                <span className="xsmall muted">{QUESTION_TYPE_LABEL[q.questionType]} · {formatScore(q.points)} {tt('điểm')}</span>
+                <button type="button" className="btn btn-ghost btn-sm flag-btn" aria-pressed={flagged.has(q.questionId)} onClick={() => toggleFlag(q.questionId)} title={tt('Phím F')}>
+                  <Flag size={14} aria-hidden /> {flagged.has(q.questionId) ? tt('Đã đánh dấu xem lại') : tt('Đánh dấu xem lại')}</button>
+              </span>
             </div>
-            <p className="question-text">{q.content}</p>
-            <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
-              onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
+            {block && <PassageView presentation={q.presentation} sessionId={session.sessionId}
+              range={tt('Dùng cho câu {0}–{1}', { 0: block.start + 1, 1: block.end + 1 })} />}
+            {q.questionType === 'FILL_BLANK'
+              ? <ClozeText content={q.content} gapIds={[...q.options].sort((a, b) => a.displayOrder - b.displayOrder).map(o => o.id)} value={answers[q.questionId] ?? ''} disabled={locked || !!checks[q.questionId]}
+                  states={partStates(checks[q.questionId], [])}
+                  onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
+              : <p className="question-text">{q.content}</p>}
+            <MediaList media={q.presentation?.media} maxPlays={q.presentation?.maxPlays} sessionId={session.sessionId} label={tt('Câu {0}', { 0: index + 1 })} />
+            {q.questionType === 'FILL_BLANK' ? null : q.questionType === 'SPEAKING'
+              ? <SpeakingRecorder key={q.questionId} sessionId={session.sessionId} questionId={q.questionId} value={answers[q.questionId] ?? ''} disabled={locked}
+                  maxSeconds={q.presentation?.maxRecordSeconds ?? 120} onSaved={v => spoken(q.questionId, v)} />
+              : <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked || !!checks[q.questionId]} check={checks[q.questionId]}
+                  onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />}
+            {session.practice && CHECKABLE.includes(q.questionType) && (checks[q.questionId]
+              ? <PracticeFeedback check={checks[q.questionId]} />
+              : <div className="row" style={{ gap: 8 }}>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={locked || checking === q.questionId || !isAnswered(q.questionType, answers[q.questionId])}
+                    onClick={() => void checkAnswer(q.questionId)}>{checking === q.questionId ? tt('Đang kiểm tra…') : tt('Kiểm tra đáp án')}</button>
+                  <span className="xsmall muted">{tt('Đề luyện tập: xem ngay đúng/sai; sau khi kiểm tra không sửa được câu này.')}</span>
+                </div>)}
             {saveState[q.questionId] === 'error' && (
               <div className="row"><span className="field-error">{tt('Câu này chưa lưu được.')}</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => void persist(q.questionId)}>{tt('Thử lưu lại')}</button></div>
@@ -298,27 +397,28 @@ export default function StudentExamPage() {
           <div className="spread"><h2 style={{ fontSize: '0.9375rem' }}>{tt('Câu hỏi')}</h2><span className="xsmall muted">{answeredCount}/{questions.length} {tt('đã trả lời')}</span></div>
           <div className="palette">
             {questions.map((qq, i) => (
-              <button key={qq.questionId} type="button" data-answered={answered(qq)} aria-current={i === index}
-                aria-label={tt('Câu {0}, {1}{2}', { 0: i + 1, 1: answered(qq) ? 'đã trả lời' : 'chưa trả lời', 2: saveState[qq.questionId] === 'error' ? ', chưa lưu được' : '' })}
+              <button key={qq.questionId} type="button" data-answered={answered(qq)} data-flagged={flagged.has(qq.questionId)} aria-current={i === index}
+                aria-label={tt('Câu {0}, {1}{2}', { 0: i + 1, 1: answered(qq) ? 'đã trả lời' : 'chưa trả lời', 2: (saveState[qq.questionId] === 'error' ? ', chưa lưu được' : '') + (flagged.has(qq.questionId) ? ', đã đánh dấu xem lại' : '') })}
                 onClick={() => goTo(i)}>{i + 1}</button>
             ))}
           </div>
           <div className="xsmall muted stack-sm" style={{ gap: 4 }}>
             <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, background: 'var(--color-accent)', border: '1px solid var(--color-accent)' }} /> {tt('Đã trả lời')}</span>
             <span className="row" style={{ gap: 6 }}><span aria-hidden style={{ width: 12, height: 12, border: '1px solid #000' }} /> {tt('Chưa trả lời')}</span>
+            <span className="row" style={{ gap: 6 }}><Flag size={12} aria-hidden style={{ color: '#c2410c' }} /> {tt('Đánh dấu xem lại')}</span>
           </div>
+          <p className="xsmall muted hide-sm kbd-hint">{tt('Phím tắt: A–D chọn đáp án · ← → chuyển câu · F đánh dấu')}</p>
         </aside>
       </div>
       </>}
 
-      {integrity.needsFullscreen && !integrity.supported && (
-        <BlockingOverlay title={t('Trình duyệt không hỗ trợ toàn màn hình')} remaining={remaining}
-          actions={<button type="button" className="btn btn-secondary" onClick={() => navigate(`/exam/lobby/${session.examId}`)}>{t('Về phòng chờ')}</button>}>
-          <p>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy mở bài bằng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari).')}</p>
-          {neutral}
+      {integrity.duplicate && (
+        <BlockingOverlay title={t('Bài thi đang mở ở tab khác')} remaining={remaining}
+          actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.takeOver}><Copy size={16} aria-hidden /> {t('Làm bài ở tab này')}</button>}>
+          <p>{t('Mỗi lượt làm bài chỉ được mở ở một tab. Tab kia sẽ bị khóa nếu bạn chọn tiếp tục ở đây.')}</p>
         </BlockingOverlay>
       )}
-      {integrity.needsFullscreen && integrity.supported && (
+      {!integrity.duplicate && integrity.needsFullscreen && (
         <BlockingOverlay title={t(wasFullscreen.current ? 'Bạn đã thoát toàn màn hình' : 'Bật toàn màn hình để làm bài')} remaining={remaining}
           actions={<button type="button" className="btn btn-primary" data-autofocus onClick={() => void backToFullscreen()}><Maximize size={16} aria-hidden /> {t('Quay lại toàn màn hình')}</button>}>
           <p>{t('Kỳ thi yêu cầu làm bài ở chế độ toàn màn hình. Câu hỏi được ẩn và không sửa được câu trả lời cho đến khi bạn quay lại.')}</p>
@@ -327,7 +427,9 @@ export default function StudentExamPage() {
           {neutral}
         </BlockingOverlay>
       )}
-      {!integrity.needsFullscreen && integrity.ack && (
+      {!integrity.duplicate && !integrity.needsFullscreen && camera.blocking && <CameraGate camera={camera} remaining={remaining} />}
+      {!blocked && <CameraDock camera={camera} />}
+      {!integrity.duplicate && !integrity.needsFullscreen && !camera.blocking && integrity.ack && (
         <BlockingOverlay title={t('Bạn vừa rời khỏi trang làm bài')} remaining={remaining}
           actions={<button type="button" className="btn btn-primary" data-autofocus onClick={integrity.acknowledge}>{t('Tôi đã hiểu')}</button>}>
           {countLine ?? <p>{t('Đang ghi nhận tín hiệu…')}</p>}{lastLine}
@@ -346,6 +448,12 @@ export default function StudentExamPage() {
               <div className="stack-sm">
                 <span className="small">{tt('Câu chưa trả lời:')}</span>
                 <div className="row">{unanswered.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}>{tt('Câu')} {i + 1}</button>)}</div>
+              </div>
+            )}
+            {flaggedList.length > 0 && (
+              <div className="stack-sm">
+                <span className="small">{tt('Câu bạn đánh dấu để xem lại:')}</span>
+                <div className="row">{flaggedList.map(i => <button key={i} type="button" className="btn btn-secondary btn-sm" onClick={() => { setConfirming(false); goTo(i) }}><Flag size={12} aria-hidden /> {tt('Câu')} {i + 1}</button>)}</div>
               </div>
             )}
             {busy && <p className="small muted">{tt('Đang lưu các thay đổi cuối; hệ thống sẽ hoàn tất lưu trước khi nộp.')}</p>}
@@ -368,25 +476,71 @@ function SaveIndicator({ online, errors, busy, lastSavedAt }: { online: boolean;
   return <span role="status" className="row xsmall muted" style={{ gap: 6 }}>{content}</span>
 }
 
-function Answer({ question, value, disabled, onChange, onBlur }: {
-  question: SafeQuestion; value: string; disabled: boolean; onChange: (v: string, immediate: boolean) => void; onBlur: () => void
+function Answer({ question, value, disabled, onChange, onBlur, check }: {
+  question: SafeQuestion; value: string; disabled: boolean; onChange: (v: string, immediate: boolean) => void; onBlur: () => void; check?: PracticeCheck
 }) {
   useT()
+  // Practice verdict per option / statement / pair: shown only once the answer was checked.
+  const states: Record<string, PartState> = partStates(check, question.questionType === 'MULTIPLE_RESPONSE' ? parseChosen(value) : value && !value.startsWith('{') ? [value] : [])
   const name = `answer-${question.questionId}`
   if (question.questionType === 'MULTIPLE_CHOICE' || question.questionType === 'TRUE_FALSE') {
     return (
       <fieldset className="stack-sm">
         <legend className="sr-only">{tt('Chọn một đáp án')}</legend>
         {question.options.map((o, i) => (
-          <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
+          <label key={o.id} className="choice" style={{ alignItems: 'center' }} data-state={states[o.id]}>
             <input type="radio" name={name} value={o.id} checked={value === o.id} disabled={disabled} onChange={() => onChange(o.id, true)} className="sr-only" />
             <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
-            <span className="prewrap" style={{ flex: 1 }}>{o.content}</span>
+            <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
+              {question.presentation?.optionMedia?.[String(o.displayOrder)] && <MediaImage id={question.presentation.optionMedia[String(o.displayOrder)]} alt={tt('Hình lựa chọn {0}', { 0: String.fromCharCode(65 + i) })} maxHeight={160} />}</span>
           </label>
         ))}
         {value && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Bỏ chọn')}</button></div>}
       </fieldset>
     )
+  }
+  if (question.questionType === 'MULTIPLE_RESPONSE') {
+    const chosen = new Set(parseChosen(value))
+    return (
+      <fieldset className="stack-sm">
+        <legend className="small" style={{ marginBottom: 4 }}><strong>{tt('Chọn tất cả đáp án đúng')}</strong> <span className="muted">{tt('(có thể nhiều hơn một)')}</span></legend>
+        {question.options.map((o, i) => (
+          <label key={o.id} className="choice" style={{ alignItems: 'center' }} data-state={states[o.id]}>
+            <input type="checkbox" value={o.id} checked={chosen.has(o.id)} disabled={disabled} onChange={e => onChange(toggleChosen(value, o.id, e.target.checked), true)} className="sr-only" />
+            <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
+            <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
+              {question.presentation?.optionMedia?.[String(o.displayOrder)] && <MediaImage id={question.presentation.optionMedia[String(o.displayOrder)]} alt={tt('Hình lựa chọn {0}', { 0: String.fromCharCode(65 + i) })} maxHeight={160} />}</span>
+          </label>
+        ))}
+        <div className="row xsmall muted" style={{ gap: 8 }}>{tt('Đã chọn {0}', { 0: chosen.size })}
+          {chosen.size > 0 && !disabled && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Bỏ chọn')}</button>}</div>
+      </fieldset>
+    )
+  }
+  if (question.questionType === 'TRUE_FALSE_GROUP') {
+    const judged = parseJudged(value)
+    return (
+      <fieldset className="stack-sm">
+        <legend className="small" style={{ marginBottom: 4 }}><strong>{tt('Chọn Đúng hoặc Sai cho từng ý')}</strong> <span className="muted">· {tt('đã làm {0}/{1} ý', { 0: judgedCount(value, question.options.length), 1: question.options.length })}</span></legend>
+        {question.options.map((o, i) => {
+          const v = judged[o.id]
+          return (
+            <div key={o.id} className="tf-row" data-judged={v !== undefined} data-state={states[o.id]}>
+              <span className="option-key" aria-hidden>{statementLabel(i).slice(0, 1)}</span>
+              <span className="prewrap" id={`${name}-${i}`}>{o.content}</span>
+              <span className="tf-toggle" role="radiogroup" aria-labelledby={`${name}-${i}`}>
+                <label><input type="radio" className="sr-only" name={`${name}-${i}`} checked={v === true} disabled={disabled} onChange={() => onChange(judge(value, o.id, true), true)} />{tt('Đúng')}</label>
+                <label><input type="radio" className="sr-only" name={`${name}-${i}`} checked={v === false} disabled={disabled} onChange={() => onChange(judge(value, o.id, false), true)} />{tt('Sai')}</label>
+              </span>
+            </div>
+          )
+        })}
+        {Object.keys(judged).length > 0 && !disabled && <div><button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('', true)}>{tt('Xóa lựa chọn')}</button></div>}
+      </fieldset>
+    )
+  }
+  if (question.questionType === 'MATCHING') {
+    return <MatchingAnswer items={question.options} targets={question.presentation?.matchTargets ?? []} value={value} disabled={disabled} onChange={onChange} states={states} />
   }
   if (question.questionType === 'SHORT_ANSWER') {
     return (
@@ -398,12 +552,18 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
       </div>
     )
   }
+  const p = question.presentation
+  const words = countWords(value)
+  const ws = wordState(words, p)
+  const limits = p?.minWords && p?.maxWords ? tt('{0}–{1} từ', { 0: p.minWords, 1: p.maxWords })
+    : p?.minWords ? tt('ít nhất {0} từ', { 0: p.minWords }) : p?.maxWords ? tt('tối đa {0} từ', { 0: p.maxWords }) : ''
   return (
     <div className="field">
-      <label className="field-label" htmlFor={name}>{tt('Bài làm')}</label>
+      <label className="field-label" htmlFor={name}>{tt('Bài làm')}{limits && <span className="muted"> ({limits})</span>}</label>
       <textarea id={name} className="input" rows={10} value={value} disabled={disabled} maxLength={20000}
         onChange={e => onChange(e.target.value, false)} onBlur={onBlur} />
-      <span className="field-hint">{value.length.toLocaleString(locale())}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
+      <span className="field-hint"><span className="word-count" data-state={ws}>{tt('{0} từ', { 0: words.toLocaleString(locale()) })}{ws === 'short' ? tt(' · chưa đủ số từ yêu cầu') : ws === 'long' ? tt(' · vượt số từ cho phép') : ''}</span>
+        {' · '}{value.length.toLocaleString(locale())}{tt('/20.000 ký tự. Giáo viên sẽ chấm phần tự luận.')}</span>
     </div>
   )
 }

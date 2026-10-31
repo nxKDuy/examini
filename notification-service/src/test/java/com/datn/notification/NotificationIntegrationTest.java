@@ -20,7 +20,7 @@ import static org.hamcrest.Matchers.*;
 
 /** Runs against real PostgreSQL and RabbitMQ (TEST_DB_URL / TEST_RABBIT_HOST); shares IntegrationTestSupport's context. */
 class NotificationIntegrationTest extends IntegrationTestSupport {
-    @Autowired MockMvc mvc;@Autowired RabbitTemplate rabbit;@Autowired NotificationService service;@Autowired NotificationRepository repo;@Autowired ObjectMapper json;
+    @Autowired MockMvc mvc;@Autowired RabbitTemplate rabbit;@Autowired NotificationService service;@Autowired NotificationRepository repo;@Autowired ObjectMapper json;@Autowired org.springframework.transaction.PlatformTransactionManager txm;
     UUID alice=UUID.randomUUID(),bob=UUID.randomUUID();
 
     String token(UUID user,String type,String role){
@@ -106,6 +106,25 @@ class NotificationIntegrationTest extends IntegrationTestSupport {
         mvc.perform(patch("/notifications/"+first+"/read").header("Authorization",bearer(alice))).andExpect(status().isOk());
         mvc.perform(get("/notifications?read=true").header("Authorization",bearer(alice))).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.content[0].id").value(first));
         mvc.perform(get("/notifications?read=false").header("Authorization",bearer(alice))).andExpect(jsonPath("$.totalElements").value(4));
+    }
+
+    @Test void inboxCanBeFilteredByGroup()throws Exception{
+        deliverDirect(envelope(UUID.randomUUID(),"exam.participant.assigned",assigned(alice,"Giao bài")));
+        var tx=new org.springframework.transaction.support.TransactionTemplate(txm);
+        tx.executeWithoutResult(s->{
+            repo.insertOnce(UUID.randomUUID(),alice,"EXAM_REMINDER","Nhắc","m","EXAM",UUID.randomUUID(),"{}",UUID.randomUUID(),"test");
+            repo.insertOnce(UUID.randomUUID(),alice,"RESULT_AVAILABLE","Điểm","m","EXAM_SESSION",UUID.randomUUID(),"{}",UUID.randomUUID(),"test");
+            repo.insertOnce(UUID.randomUUID(),bob,"EXAM_REMINDER","Bob","m","EXAM",UUID.randomUUID(),"{}",UUID.randomUUID(),"test");
+        });
+        mvc.perform(get("/notifications?group=schedule").header("Authorization",bearer(alice)))
+            .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.content[0].type").value("EXAM_REMINDER"));
+        mvc.perform(get("/notifications?group=RESULT").header("Authorization",bearer(alice)))
+            .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.content[0].type").value("RESULT_AVAILABLE"));
+        mvc.perform(get("/notifications?group=OTHER").header("Authorization",bearer(alice)))
+            .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.content[0].type").value("EXAM_ASSIGNED"));
+        mvc.perform(get("/notifications?group=SCHEDULE&read=true").header("Authorization",bearer(alice))).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/notifications").header("Authorization",bearer(alice))).andExpect(jsonPath("$.totalElements").value(3));
+        mvc.perform(get("/notifications?group=bogus").header("Authorization",bearer(alice))).andExpect(status().isBadRequest());
     }
 
     @Test void markReadAndReadAllAreIdempotentAndCounted()throws Exception{

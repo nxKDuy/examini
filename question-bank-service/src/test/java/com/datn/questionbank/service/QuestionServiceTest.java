@@ -40,7 +40,8 @@ class QuestionServiceTest {
         when(banks.defaultPersonal(any())).thenReturn(bankId);
         when(banks.get(bankId)).thenReturn(QuestionBank.builder().id(bankId).type(QuestionBank.BankType.PERSONAL).ownerUserId(owner.userId()).build());
         eligibility = mock(ExamEligibilityService.class);
-        service = new QuestionService(repo, categories, versions, reviews, new QuestionPolicy(), json, banks, eligibility);
+        service = new QuestionService(repo, categories, versions, reviews, new QuestionPolicy(), json, banks, eligibility,
+                new MediaService(mock(com.datn.questionbank.repository.QuestionMediaRepository.class), System.getProperty("java.io.tmpdir")));
         when(categories.getOrThrow(category.getId())).thenReturn(category);
         when(repo.saveAndFlush(any())).thenAnswer(call -> {
             Question q = call.getArgument(0); if (q.getId() == null) q.setId(UUID.randomUUID());

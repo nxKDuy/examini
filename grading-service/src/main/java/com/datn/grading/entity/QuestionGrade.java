@@ -37,6 +37,8 @@ public class QuestionGrade {
     @Column(columnDefinition="TEXT") private String answerContent;
     @Column(columnDefinition="TEXT") private String selectedOptionContent;
     @Column(columnDefinition="TEXT") private String explanation;
+    /** Images, audio, passage and limits of the question version (from the exam snapshot), shown when grading and in results. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(columnDefinition="jsonb") private java.util.Map<String,Object> presentation;
     private boolean needsReview;
     private UUID manualGradedBy;
     private Instant manualGradedAt;

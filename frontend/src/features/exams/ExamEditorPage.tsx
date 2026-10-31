@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Check, LayoutList, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Grid3x3, LayoutList, Plus, Trash2 } from 'lucide-react'
 import { examApi, type Exam, type ExamInput, type Policy } from './examApi'
 import type { Question } from '../question-bank/questionApi'
 import { bankApi } from '../banks/bankApi'
@@ -10,6 +10,8 @@ import { legacyScheduleFields } from './examInput'
 import { DEFAULT_POLICY, policyError } from './policy'
 import QuestionPicker from './QuestionPicker'
 import BlueprintDialog from './BlueprintDialog'
+import MatrixDialog from './MatrixDialog'
+import type { BlueprintRowCfg } from './builderModel'
 import { setAllPoints } from './builderModel'
 import { ConfirmDialog } from '../../components/Dialog'
 import { t, useT, i18nMap } from '../../lib/i18n'
@@ -19,6 +21,7 @@ import { DISABLED_POLICY, NEW_EXAM_POLICY, counts, limitError, policySummary } f
 import { EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, DIFFICULTY_LABEL, EXAM_TYPE_LABEL, QUESTION_TYPE_LABEL, formatScore, shortId } from '../../lib/format'
+import Select from '../../components/Select'
 
 interface Info {
   title: string; description: string; type: 'PRACTICE' | 'EXAM'; durationMinutes: number; passingScore: string
@@ -61,6 +64,8 @@ function Editor({ exam }: { exam?: Exam }) {
   const [bulkPoints, setBulkPoints] = useState('')
   const [clearing, setClearing] = useState(false)
   const [blueprint, setBlueprint] = useState(false)
+  const [matrixOpen, setMatrixOpen] = useState(false)
+  const [matrixRows, setMatrixRows] = useState<(BlueprintRowCfg & { label: string })[] | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -160,9 +165,9 @@ function Editor({ exam }: { exam?: Exam }) {
           </Field>
           <div className="grid-2">
             <Field label={t('Loại đề')} htmlFor="exam-type">
-              <select id="exam-type" className="input" value={info.type} onChange={e => setInfo({ ...info, type: e.target.value as Info['type'] })}>
+              <Select id="exam-type" className="input" value={info.type} onChange={e => setInfo({ ...info, type: e.target.value as Info['type'] })}>
                 {Object.entries(EXAM_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label={t('Thời lượng (phút)')} htmlFor="exam-duration" required hint={t('Thời gian tính từ lúc thí sinh bắt đầu; máy chủ kiểm soát hết giờ.')}>
               <input id="exam-duration" type="number" min={1} step={1} className="input" value={info.durationMinutes || ''} onChange={e => setInfo({ ...info, durationMinutes: Math.floor(Number(e.target.value)) })} />
@@ -184,6 +189,7 @@ function Editor({ exam }: { exam?: Exam }) {
           <div className="spread">
             <p className="small">{t('{n} câu hỏi · Tổng điểm {total}', { n: items.length, total: formatScore(total) })}</p>
             <span className="row" style={{ gap: 8 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setMatrixOpen(true)}><Grid3x3 size={16} aria-hidden /> {t('Tạo theo ma trận')}</button>
               <button type="button" className="btn btn-secondary" onClick={() => setBlueprint(true)}><LayoutList size={16} aria-hidden /> {t('Tạo theo khung đề')}</button>
               <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}><Plus size={16} aria-hidden /> {t('Thêm câu hỏi đủ điều kiện')}</button>
             </span>
@@ -257,11 +263,15 @@ function Editor({ exam }: { exam?: Exam }) {
       {clearing && <ConfirmDialog title={t('Bỏ tất cả câu khỏi đề?')} tone="danger" confirmLabel={t('Bỏ {n} câu', { n: items.length })}
         description={t('Chỉ bỏ khỏi bản nháp đang sửa; câu hỏi trong ngân hàng không bị ảnh hưởng. Chưa lưu cho đến khi bạn bấm Lưu.')}
         onConfirm={() => { setItems([]); setClearing(false) }} onCancel={() => setClearing(false)} />}
-      {blueprint && <BlueprintDialog inExam={items.map(i => i.questionId)} onClose={() => setBlueprint(false)}
+      {matrixOpen && <MatrixDialog inExam={items.length} onClose={() => setMatrixOpen(false)}
+        onGenerate={rows => { setMatrixOpen(false); setMatrixRows(rows) }} />}
+      {(blueprint || matrixRows) && <BlueprintDialog inExam={items.map(i => i.questionId)} initialRows={matrixRows ?? undefined}
+        title={matrixRows ? t('Xem trước đề theo ma trận') : undefined}
+        onClose={() => { setBlueprint(false); setMatrixRows(null) }}
         onApply={picked => {
           setKnown(k => ({ ...k, ...Object.fromEntries(picked.map(p => [p.question.id, p.question])) }))
           setItems(list => [...list, ...picked.filter(p => !list.some(i => i.questionId === p.question.id)).map(p => ({ questionId: p.question.id, weight: p.weight }))])
-          setBlueprint(false)
+          setBlueprint(false); setMatrixRows(null)
         }} />}
       {picking && <QuestionPicker excluded={items.map(i => i.questionId)} onClose={() => setPicking(false)}
         onAdd={qs => { setKnown(k => ({ ...k, ...Object.fromEntries(qs.map(q => [q.id, q])) })); setItems(list => [...list, ...qs.map(q => ({ questionId: q.id, weight: 1 }))]); setPicking(false) }} />}

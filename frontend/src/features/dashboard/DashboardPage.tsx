@@ -1,6 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
+import { progressApi, type ProgressItem } from '../progress/progressApi'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { BookOpenCheck, ClipboardCheck, FilePlus2, PlayCircle } from 'lucide-react'
+import { BarChart3, BookOpenCheck, CalendarPlus, ClipboardCheck, FilePlus2, FileUp, PlayCircle, Sparkles } from 'lucide-react'
+import { analyticsApi } from '../exams/analyticsApi'
+import { QUESTION_TYPE_LABEL, formatScore } from '../../lib/format'
 import { useAuthStore } from '../../store/authStore'
 import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, Notice, PageHeader, Section, Stat } from '../../components/ui'
@@ -44,6 +47,7 @@ function StudentDashboard() {
   useT()
   const my = useQuery({ queryKey: ['my-exams'], queryFn: examApi.my })
   const pub = useQuery({ queryKey: ['public-exams'], queryFn: examApi.publicExams })
+  const progress = useQuery({ queryKey: ['progress', 'mine'], queryFn: progressApi.mine, retry: false })
   const agenda = useAgendaCalendar()
   const nowMs = useNow(agenda.clockOffset, 30_000)
   // Availability and attempt state are the backend's answers (calendar items), not guesses from this browser's clock.
@@ -71,6 +75,7 @@ function StudentDashboard() {
         <Stat label={t('Kỳ thi đã tham gia / được giao')} value={my.data?.length ?? '-'} to="/my-exams" />
         <Stat label={t('Làm được ngay')} value={agenda.data ? doable.length : '-'} to="/calendar" />
         <Stat label={t('Kỳ thi công khai đang mở')} value={pub.data?.length ?? '-'} hint={t('Dành cho người dùng EXAMINI đã đăng nhập')} to="/my-exams" />
+        <Stat label={t('Điểm trung bình của tôi')} value={progress.data?.overview.averagePercent == null ? '-' : `${formatScore(progress.data.overview.averagePercent)}%`} hint={t('Xem tiến bộ và gợi ý ôn tập')} to="/progress" />
       </div>
       <TodayUpcoming />
       <div className="grid-2">
@@ -80,8 +85,41 @@ function StudentDashboard() {
             {publicNew.length > 0 && <p className="small muted">{t('Có')} {publicNew.length} {t('kỳ thi công khai bạn chưa tham gia.')} <Link to="/my-exams">{t('Xem và theo dõi')}</Link></p>}
           </div>
         </Section>
+        <RecentResults items={progress.data?.items ?? []} weakest={weakestType(progress.data?.overview.byType ?? [])} />
       </div>
     </>
+  )
+}
+
+/** The type of question the student scores lowest on (at least 2 questions seen), to suggest what to practise. */
+function weakestType(byType: { questionType: string; questions: number; percent: number | null }[]) {
+  return byType.filter(b => b.questions >= 2 && b.percent !== null).sort((a, b) => (a.percent ?? 0) - (b.percent ?? 0))[0]
+}
+
+/** Latest released results first, each one click from its review page (where the AI tutor explains mistakes). */
+function RecentResults({ items, weakest }: { items: ProgressItem[]; weakest?: { questionType: string; percent: number | null } }) {
+  useT()
+  const released = items.filter(i => i.phase === 'PUBLISHED' && !i.invalidated)
+    .sort((a, b) => Date.parse(b.releasedAt ?? b.submittedAt ?? '') - Date.parse(a.releasedAt ?? a.submittedAt ?? '')).slice(0, 4)
+  const waiting = items.filter(i => i.phase !== 'PUBLISHED').length
+  return (
+    <Section title={t('Kết quả gần đây')} description={waiting ? t('{0} bài đang chờ chấm hoặc công bố', { 0: waiting }) : undefined}
+      actions={<Link to="/progress" className="btn btn-ghost btn-sm"><BarChart3 size={14} aria-hidden /> {t('Tiến bộ')}</Link>} bodyClassName="">
+      {released.length === 0 ? <EmptyState title={t('Chưa có kết quả được công bố')} description={t('Điểm hiện ở đây ngay khi giáo viên công bố.')} />
+        : <ul className="result-bars">{released.map(i => {
+          const p = i.percent
+          return (
+            <li key={i.sessionId}><Link to={`/exam/result/${i.sessionId}`} className="result-bar result-bar-compact">
+              <span className="result-bar-title">{i.title}</span>
+              <span className="result-bar-track" aria-hidden><span style={{ width: `${Math.max(0, Math.min(100, p ?? 0))}%` }} data-level={p === null ? 'none' : p >= 80 ? 'high' : p >= 50 ? 'mid' : 'low'} /></span>
+              <span className="result-bar-value">{i.score === null ? '–' : `${formatScore(i.score)}/${formatScore(i.maxScore)}`}</span>
+            </Link></li>
+          )
+        })}</ul>}
+      {weakest && <p className="small" style={{ padding: '12px 20px', margin: 0, borderTop: '1px solid var(--color-hairline)' }}>
+        {t('Nên ôn thêm: dạng {0} ({1}% số điểm).', { 0: QUESTION_TYPE_LABEL[weakest.questionType] ?? weakest.questionType, 1: Math.round(weakest.percent ?? 0) })}{' '}
+        <Link to="/progress">{t('Xem gợi ý ôn tập')}</Link></p>}
+    </Section>
   )
 }
 
@@ -119,7 +157,14 @@ function TeacherDashboard() {
     })),
   })
   const needsReview = gradable.map((e, i) => ({ exam: e, count: review[i]?.data ?? 0 })).filter(x => x.count > 0)
+  const waiting = review.some(r => r.isLoading) ? '…' : needsReview.reduce((n, x) => n + x.count, 0)
   const c = (i: number) => counts[i]?.data ?? '-'
+  // Results of the most recent closed exams (the list is newest first): average and how many took part.
+  const closed = list.filter(e => e.status === 'CLOSED').slice(0, 4)
+  const summaries = useQueries({ queries: closed.map(e => ({ queryKey: ['analytics', user?.id, e.id, 'summary'], queryFn: () => analyticsApi.summary(e.id), retry: false, staleTime: 120_000 })) })
+  const results = closed.map((exam, i) => ({ exam, s: summaries[i]?.data })).filter(x => x.s)
+  const pct = (s?: { published?: { averagePercent: number | null } | null; averagePercent: number | null }) => s?.published?.averagePercent ?? s?.averagePercent ?? null
+  const latest = results.find(r => pct(r.s) !== null)
 
   return (
     <>
@@ -130,10 +175,17 @@ function TeacherDashboard() {
         </Notice>
       )}
       <div className="grid-stats">
-        <Stat label={t('Câu hỏi bản nháp')} value={c(0)} to="/questions" />
-        <Stat label={t('Câu hỏi đang dùng')} value={c(1)} to="/questions" />
-        <Stat label={t('Câu hỏi đã lưu trữ')} value={c(2)} to="/questions" />
+        <Stat label={t('Kỳ thi đang mở')} value={exams.isLoading ? '…' : byStatus('OPEN')} hint={t('{0} đề đã xuất bản chờ mở', { 0: byStatus('PUBLISHED') })} to="/exams" />
+        <Stat label={t('Bài chờ chấm tay')} value={waiting} hint={needsReview.length ? t('ở {0} kỳ thi', { 0: needsReview.length }) : t('Không còn bài tồn')} to={needsReview[0] ? `/grading?examId=${needsReview[0].exam.id}&status=NEEDS_REVIEW` : '/grading'} />
+        <Stat label={t('Câu hỏi sẵn dùng')} value={c(1)} hint={t('{0} bản nháp · {1} lưu trữ', { 0: c(0), 1: c(2) })} to="/questions" />
+        <Stat label={t('Điểm TB kỳ gần nhất')} value={latest ? `${Math.round(pct(latest.s)! * 10) / 10}%` : '–'} hint={latest ? latest.exam.title : t('Chưa có kỳ thi đã đóng')} to={latest ? `/exams/${latest.exam.id}?tab=analytics` : undefined} />
       </div>
+      <nav className="quick-actions" aria-label={t('Thao tác nhanh')}>
+        <Link to="/questions/imports?new=ai" className="quick-action"><Sparkles size={20} aria-hidden /><span><strong>{t('Tạo câu hỏi bằng AI')}</strong><small>{t('Từ chủ đề, tài liệu hoặc link')}</small></span></Link>
+        <Link to="/questions/imports" className="quick-action"><FileUp size={20} aria-hidden /><span><strong>{t('Nhập đề có sẵn')}</strong><small>{t('Word, PDF, ảnh chụp, Excel')}</small></span></Link>
+        <Link to="/exams/create" className="quick-action"><FilePlus2 size={20} aria-hidden /><span><strong>{t('Tạo đề thi')}</strong><small>{t('Chọn tay hoặc theo ma trận')}</small></span></Link>
+        <Link to="/calendar" className="quick-action"><CalendarPlus size={20} aria-hidden /><span><strong>{t('Xếp lịch thi')}</strong><small>{t('Tự mở, tự đóng, nhắc học sinh')}</small></span></Link>
+      </nav>
       <TodayUpcoming />
       <div className="grid-2">
         <Section title={t('Đề thi của tôi')} description={exams.data ? t('{0} đề thi bạn sở hữu hoặc cộng tác', { 0: exams.data.totalElements }) : undefined}
@@ -162,6 +214,25 @@ function TeacherDashboard() {
             ))}
         </Section>
       </div>
+      {results.length > 0 && (
+        <Section title={t('Kết quả kỳ thi gần đây')} description={t('Điểm trung bình theo % điểm tối đa; bấm để xem phân tích từng câu.')} bodyClassName="">
+          <ul className="result-bars">
+            {results.map(({ exam, s }) => {
+              const p = pct(s)
+              return (
+                <li key={exam.id}>
+                  <Link to={`/exams/${exam.id}?tab=analytics`} className="result-bar">
+                    <span className="result-bar-title">{exam.title}</span>
+                    <span className="result-bar-track" aria-hidden><span style={{ width: `${Math.max(0, Math.min(100, p ?? 0))}%` }} data-level={p === null ? 'none' : p >= 80 ? 'high' : p >= 50 ? 'mid' : 'low'} /></span>
+                    <span className="result-bar-value">{p === null ? '–' : `${Math.round(p * 10) / 10}%`}</span>
+                    <span className="xsmall muted result-bar-meta">{t('{0} bài nộp', { 0: s!.submissions })}{s!.needsReview ? ' · ' + t('{0} chờ chấm', { 0: s!.needsReview }) : ''}</span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </Section>
+      )}
       <p className="xsmall muted">{t('Số liệu lấy trực tiếp từ hệ thống cho tài khoản')} {user?.email}.</p>
     </>
   )
@@ -170,6 +241,9 @@ function TeacherDashboard() {
 function AdminDashboard() {
   useT()
   return <div className="grid-2">
+    <Section title={t('Thống kê hệ thống')} description={t('Người dùng, đề thi, lượt thi và mức độ dùng AI trên toàn hệ thống. Chỉ số đếm, không có dữ liệu cá nhân.')}>
+      <Link to="/admin/stats" className="btn btn-primary"><BarChart3 size={16} aria-hidden /> {t('Mở thống kê')}</Link>
+    </Section>
     <Section title={t('Ngân hàng câu hỏi')} description={t('Câu cá nhân không cần duyệt. Duyệt đóng góp tại từng tổ chức theo quyền BANK_REVIEW.')}>
       <Link to="/questions" className="btn btn-primary"><BookOpenCheck size={16} aria-hidden /> {t('Mở câu hỏi')}</Link>
     </Section>

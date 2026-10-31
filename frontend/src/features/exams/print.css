@@ -1,0 +1,65 @@
+/* Paper exam: controls on screen, A4 sheets for printing. */
+.print-screen { padding: 24px; }
+.print-root { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 24px; padding: 24px; background: #e9e9e9; min-height: 100vh; align-items: start; }
+.print-controls { position: sticky; top: 16px; background: #fff; border: 1px solid #000; padding: 16px; }
+.print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.print-preview { display: grid; gap: 24px; justify-items: center; min-width: 0; }
+.paper-sheet { background: #fff; color: #000; width: min(210mm, 100%); min-height: 200mm; padding: 15mm 18mm; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.45; }
+.paper-head { width: 100%; border-collapse: collapse; text-align: center; margin-bottom: 8px; }
+.paper-head td { vertical-align: top; width: 50%; padding: 0 4px; }
+.paper-rule { width: 40%; margin: 4px auto 0; border-top: 1px solid #000; }
+.paper-candidate { display: flex; flex-wrap: wrap; gap: 6px 24px; align-items: center; margin: 10px 0 14px; }
+.paper-code { margin-left: auto; border: 1px solid #000; padding: 2px 10px; font-weight: 700; }
+.paper-questions { list-style: none; padding: 0; margin: 0; }
+.paper-q { margin: 0 0 8px; break-inside: avoid; }
+.paper-q p { margin: 0 0 2px; }
+.paper-options { display: grid; gap: 0 12px; padding-left: 18px; }
+.paper-options-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.paper-lines { display: grid; padding-left: 18px; color: #333; }
+.paper-end { text-align: center; font-weight: 700; margin-top: 16px; }
+.paper-key h2 { text-align: center; font-size: 14pt; margin: 0 0 12px; line-height: 1.6; }
+.paper-key-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11pt; table-layout: fixed; }
+.paper-key-table th, .paper-key-table td { border: 1px solid #000; text-align: center; padding: 2px; overflow-wrap: anywhere; }
+.paper-key-table thead th:first-child, .paper-key-table tbody th { width: 52px; }
+.paper-note { font-size: 10.5pt; font-style: italic; }
+.paper-long { font-size: 11pt; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+.paper-long dd { margin: 0; }
+.paper-answer-sheet h2 { text-align: center; font-size: 14pt; margin: 0; line-height: 1.6; }
+.paper-sheet-sub { text-align: center; margin: 2px 0 8px; }
+.bubble-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 18px; margin-top: 8px; }
+.bubble-row { display: flex; align-items: center; gap: 6px; break-inside: avoid; }
+.bubble-n { width: 26px; text-align: right; font-weight: 700; }
+.bubble { width: 22px; height: 22px; border: 1.2px solid #000; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9pt; }
+.bubble-empty { visibility: hidden; }
+@media (max-width: 900px) {
+  .print-root { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .print-controls { position: static; }
+  .paper-sheet { padding: 8mm; font-size: 12pt; }
+  .paper-options-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media print {
+  @page { size: A4; margin: 12mm 14mm; }
+  body { background: #fff !important; }
+  .print-root { display: block; padding: 0; background: #fff; }
+  .print-controls, .skip-link { display: none !important; }
+  .print-preview { display: block; }
+  /* A little top padding: accents of uppercase Vietnamese headings would otherwise print on the previous page. */
+  .paper-sheet { width: auto; min-height: 0; padding: 4mm 0 0; box-shadow: none; break-after: page; page-break-after: always; }
+  .paper-sheet:last-child { break-after: auto; page-break-after: auto; }
+  .paper-options-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.paper-passage { list-style: none; margin: 8px 0 4px; padding: 6px 10px; border: 1px solid #000; break-inside: avoid; }
+.paper-passage-title { text-align: center; }
+.paper-sheet .media-image { max-width: 70%; margin: 4px 0; border: 0; }
+.paper-options .media-image { max-width: 200px; }
+.paper-statements { display: grid; gap: 2px; margin: 2px 0 2px 18px; }
+.paper-statement { display: flex; justify-content: space-between; gap: 16px; }
+.paper-match { width: 100%; border-collapse: collapse; margin: 4px 0; }
+.paper-match th, .paper-match td { border: 1px solid #000; padding: 4px 8px; text-align: left; vertical-align: top; width: 50%; }
+.paper-ds { white-space: nowrap; }
+.paper-part { font-size: 11pt; margin: 14px 0 4px; }
+.bubble-grid-tf { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.bubble-tf { display: flex; gap: 6px; align-items: flex-start; break-inside: avoid; }
+.bubble-tf-items { display: grid; gap: 3px; }
+.bubble-l { width: 18px; }

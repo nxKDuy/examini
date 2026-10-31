@@ -20,6 +20,17 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS_ENABLE:true}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 15000
+      mail.smtp.writetimeout: 15000
   data:
     redis:
       host: localhost
@@ -39,6 +50,16 @@ jwt:
   refresh-expiry-ms: ${JWT_REFRESH_EXPIRY_MS:604800000}
 
 auth:
+  google:
+    # OAuth 2.0 Web client id(s) from Google Cloud Console, comma separated. Blank = Google sign-in off.
+    client-ids: ${GOOGLE_CLIENT_ID:}
+  mail:
+    from: ${SMTP_FROM:}
+  password-reset:
+    # Address of the web app; reset links point to {base-url}/reset-password?token=...
+    base-url: ${APP_BASE_URL:http://localhost:3000}
+    # Development only: write reset links to the auth-service log when SMTP is not configured.
+    log-links: ${AUTH_RESET_LOG_LINKS:false}
   bootstrap:
     email: ${AUTH_BOOTSTRAP_EMAIL:}
     password: ${AUTH_BOOTSTRAP_PASSWORD:}
@@ -57,6 +78,9 @@ springdoc:
     path: /swagger-ui.html
 
 management:
+  health:
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:

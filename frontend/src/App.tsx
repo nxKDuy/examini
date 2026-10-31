@@ -2,6 +2,12 @@ import { lazy, Suspense } from 'react'
 import { RouterProvider, createBrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './features/auth/LoginPage'
 import RegisterPage from './features/auth/RegisterPage'
+import { ForgotPasswordPage, ResetPasswordPage } from './features/auth/PasswordPages'
+const ProfilePage = lazy(() => import('./features/account/ProfilePage'))
+const PrintExamPage = lazy(() => import('./features/exams/PrintExamPage'))
+const AdminUsersPage = lazy(() => import('./features/account/AdminUsersPage'))
+const AdminStatsPage = lazy(() => import('./features/admin/AdminStatsPage'))
+const ProgressPage = lazy(() => import('./features/progress/ProgressPage'))
 import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import { LoadingState } from './components/ui'
@@ -24,6 +30,7 @@ import ExamLobbyPage from './features/exams/ExamLobbyPage'
 import StudentExamPage from './features/exams/StudentExamPage'
 import ExamResultPage from './features/exams/ExamResultPage'
 import { t, useT } from './lib/i18n'
+import RouteError from './components/RouteError'
 
 function AppRoutes() {
   useT()
@@ -34,16 +41,23 @@ function AppRoutes() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Exam taking: focus mode without navigation chrome */}
         <Route element={<ProtectedRoute persona="STUDENT" />}>
           <Route path="/exam/take/:id" element={<StudentExamPage />} />
+        </Route>
+        {/* Paper exam: full-page print layout without the app chrome. */}
+        <Route element={<ProtectedRoute persona="TEACHER" />}>
+          <Route path="/exams/:id/print" element={<PrintExamPage />} />
         </Route>
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/public-bank" element={<PublicBankPage />} />
           <Route path="/public-bank/:postId" element={<PublicBankPage />} />
           <Route path="/organizations" element={<OrganizationsPage />} />
@@ -52,6 +66,7 @@ function AppRoutes() {
         </Route>
 
         <Route element={<ProtectedRoute persona="STUDENT"><AppLayout /></ProtectedRoute>}>
+          <Route path="/progress" element={<ProgressPage />} />
           <Route path="/my-exams" element={<MyExamsPage />} />
           <Route path="/exam/lobby/discover" element={<Navigate to="/my-exams" replace />} />
           <Route path="/exam/lobby/:id" element={<ExamLobbyPage />} />
@@ -72,6 +87,11 @@ function AppRoutes() {
           <Route path="/grading" element={<GradingPage />} />
         </Route>
 
+        <Route element={<ProtectedRoute adminOnly><AppLayout /></ProtectedRoute>}>
+          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/stats" element={<AdminStatsPage />} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       </Suspense>
@@ -80,7 +100,7 @@ function AppRoutes() {
 }
 
 // A data router (one splat route over the same <Routes> tree) so pages can block navigation with useBlocker while a draft is unsaved.
-const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }])
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes />, errorElement: <RouteError /> }])
 
 export default function App() {
   return <RouterProvider router={router} />

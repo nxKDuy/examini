@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 public interface QuestionImportJobRepository extends JpaRepository<QuestionImportJob,UUID> {
     Page<QuestionImportJob> findByOwnerUserId(UUID owner,Pageable page);
+    boolean existsByOwnerUserIdAndFileKindAndStatus(UUID owner,QuestionImportJob.FileKind kind,QuestionImportJob.Status status);
     @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select j from QuestionImportJob j where j.id=:id")
     Optional<QuestionImportJob> findByIdForUpdate(@Param("id") UUID id);
     @Modifying @Query("update QuestionImportJob j set j.status='FAILED',j.failureReason=:reason,j.updatedAt=:now where j.status='PROCESSING' and j.updatedAt<:before")

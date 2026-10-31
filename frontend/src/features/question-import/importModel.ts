@@ -2,7 +2,7 @@ import type { ImportItem, ImportOption, ItemFilter, ImportSummary, ItemPatch } f
 import { t, i18nMap } from '../../lib/i18n'
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024
-export const ACCEPT = '.docx,.pdf,.png,.jpg,.jpeg'
+export const ACCEPT = '.xlsx,.csv,.docx,.pdf,.png,.jpg,.jpeg'
 export const LOW_CONFIDENCE = 0.8
 
 export const FLAG_LABEL: Record<string, string> = i18nMap({
@@ -10,6 +10,9 @@ export const FLAG_LABEL: Record<string, string> = i18nMap({
   ANSWER_NOT_IN_OPTIONS: 'Đáp án không khớp phương án', MULTIPLE_ANSWERS: 'Nhiều đáp án', DUPLICATE_OPTION: 'Phương án trùng',
   OPTION_SEQUENCE_GAP: 'Thiếu phương án trong dãy', NO_ANSWER_ESSAY: 'Tự luận chưa có đáp án', CONTENT_TRUNCATED: 'Nội dung bị cắt',
   QUESTION_SPLIT_UNCERTAIN: 'Có thể bị tách câu sai', NUMBERING_GAP: 'Số câu bị nhảy', POSSIBLE_MERGED_QUESTIONS: 'Có thể dồn nhiều câu',
+  AI_GENERATED: 'Do AI tạo', POSSIBLE_DUPLICATE: 'Có thể trùng câu đã có',
+  SOURCE_REFERENCE: 'Nhắc tới tài liệu học sinh không thấy', CATCH_ALL_OPTION: 'Có phương án "tất cả/không có"',
+  WEAK_DISTRACTORS: 'Phương án nhiễu quá giống nhau hoặc chỉ khác do làm tròn', ANSWER_IN_STEM: 'Đề bài lộ đáp án', LONGEST_IS_KEY: 'Đáp án đúng dài hơn hẳn (dễ đoán)', KEY_DISPUTED: 'AI giải lại ra đáp án khác',
 })
 
 export const FILTERS: { value: ItemFilter; label: string; count: (s: ImportSummary) => number }[] = i18nMap([
@@ -29,6 +32,25 @@ export const hasUnknownFlag = (flags: string[]) => flags.some(f => !(f in FLAG_L
 export const flagLabel = (f: string) => (f in FLAG_LABEL ? FLAG_LABEL[f] : t('Cần xem lại ({0})', { 0: f }))
 export const isOcr = (i: Pick<ImportItem, 'source' | 'flags'>) => i.source.method === 'OCR' || i.flags.includes('OCR')
 export const lowConfidence = (i: Pick<ImportItem, 'confidence'>) => i.confidence < LOW_CONFIDENCE
+export const isAi = (i: Pick<ImportItem, 'source' | 'flags'>) => i.source.method === 'AI' || i.flags.includes('AI_GENERATED')
+/** AI confidence is a structural score, not a measure of correctness; it is shown only when there are problems. */
+export const lowConfidenceShown = (i: Pick<ImportItem, 'confidence' | 'source' | 'flags'>) =>
+  isAi(i) ? i.flags.some(f => f !== 'AI_GENERATED') : lowConfidence(i)
+/** Where an item came from, for list rows and the raw-text summary. */
+export const sourceText = (i: Pick<ImportItem, 'source' | 'flags'>) => isAi(i) ? 'AI' : t('trang {0}', { 0: i.source.page ?? '?' })
+
+export interface AiForm { topic: string; categoryId: string; count: number; questionTypes: string[]; material: string }
+/** Client-side checks mirror the provider limits; the server re-validates everything. */
+export function aiProblems(f: AiForm, maxQuestions = 20, maxMaterial = 20000) {
+  const p: Partial<Record<'topic' | 'categoryId' | 'count' | 'questionTypes' | 'material', string>> = {}
+  if (!f.topic.trim()) p.topic = t('Nhập chủ đề hoặc mục tiêu kiến thức.')
+  else if (f.topic.trim().length > 500) p.topic = t('Chủ đề tối đa 500 ký tự.')
+  if (!f.categoryId) p.categoryId = t('Chọn danh mục cho các câu được tạo.')
+  if (!Number.isInteger(f.count) || f.count < 1 || f.count > maxQuestions) p.count = t('Số câu từ 1 đến {0}.', { 0: maxQuestions })
+  if (!f.questionTypes.length) p.questionTypes = t('Chọn ít nhất một loại câu hỏi.')
+  if (f.material.length > maxMaterial) p.material = t('Tài liệu tối đa {0} ký tự.', { 0: maxMaterial })
+  return p
+}
 
 export function itemState(i: ImportItem): { label: string; tone: 'success' | 'warning' | 'danger' | 'muted' | 'neutral' } {
   if (i.importedQuestionId) return { label: t('Đã nhập'), tone: 'success' }
@@ -39,8 +61,8 @@ export function itemState(i: ImportItem): { label: string; tone: 'success' | 'wa
 }
 
 export function fileProblem(f: File | null) {
-  if (!f) return t('Chọn một tệp DOCX, PDF hoặc ảnh PNG/JPG.')
-  if (!/\.(docx|pdf|png|jpe?g)$/i.test(f.name)) return t('Chỉ nhận DOCX, PDF, PNG hoặc JPG.')
+  if (!f) return t('Chọn một tệp Excel, CSV, Word, PDF hoặc ảnh.')
+  if (!/\.(xlsx|csv|docx|pdf|png|jpe?g)$/i.test(f.name)) return t('Chỉ nhận XLSX, CSV, DOCX, PDF, PNG hoặc JPG.')
   if (f.size > MAX_FILE_BYTES) return t('Tệp vượt quá 20 MB.')
   return null
 }
@@ -69,3 +91,11 @@ export function patchOf(i: ImportItem, d: Draft, extra: Pick<ItemPatch, 'reviewe
 export const dirty = (i: ImportItem, d: Draft) => Object.keys(patchOf(i, d)).length > 1
 
 export const optionLetter = (n: number) => String.fromCharCode(65 + n)
+
+/** Readable provider names (fallback chain: cloud model → self-hosted model → local generator). */
+export const PROVIDER_LABEL: Record<string, string> = i18nMap({ gemini: 'Gemini', openai: 'AI tương thích OpenAI (Groq, OpenRouter…)', ollama: 'Mô hình tự chạy', local: 'Bộ sinh nội bộ (không cần AI)' })
+export const providerLabel = (model: string | null | undefined) => {
+  if (!model) return ''
+  const [name, ...rest] = model.split('/')
+  return name in PROVIDER_LABEL ? (name === 'local' ? PROVIDER_LABEL.local : `${PROVIDER_LABEL[name]} · ${rest.join('/')}`) : model
+}

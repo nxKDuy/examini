@@ -23,6 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthControllerTest {
     @Autowired MockMvc mvc;
     @MockBean AuthService authService;
+    @MockBean com.datn.auth.service.PasswordResetService passwordReset;
+    @MockBean com.datn.auth.service.AccountService accounts;
 
     @Test
     void personalTeacherRegistrationContractReachesService() throws Exception {

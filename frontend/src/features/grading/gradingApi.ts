@@ -1,7 +1,8 @@
+import type { Presentation } from '../question-bank/questionApi'
 import api from '../../lib/api'
 
 export type GradingStatus = 'PENDING' | 'NEEDS_REVIEW' | 'GRADED'
-export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY'
+export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP' | 'FILL_BLANK' | 'MATCHING'
 
 /** Contract: manual-grading-api.md (MAIN lock 0d6090e). Scores are the draft/current result; publishedScore is what the Student sees. */
 export interface Submission {
@@ -16,8 +17,9 @@ export interface GradeItem {
   pointValue: number | null; answerContent: string | null; selectedOptionContent: string | null
   autoScore: number | null; manualScore: number | null; awardedPoints: number | null; needsReview: boolean
   feedback: string | null; manualGradedBy: string | null; manualGradedAt: string | null
+  presentation?: Presentation | null
 }
-export interface SubmissionDetail extends Submission { items: GradeItem[] }
+export interface SubmissionDetail extends Submission { items: GradeItem[]; sessionId?: string | null }
 export interface Overview { totalSubmissions: number; needsReview: number; pending: number; graded: number; released: number; pendingManualItems: number; invalidated?: number }
 export interface Page<T> { content: T[]; totalElements: number; totalPages: number; number: number; size?: number }
 
@@ -37,6 +39,8 @@ export const gradingApi = {
   release: (id: string, expectedRevision: number) => api.post<SubmissionDetail>(`/submissions/${id}/release`, { expectedRevision }).then(r => r.data),
   regrade: (id: string, body: { expectedRevision: number; publicReason: string; privateAuditNote?: string }) =>
     api.post<SubmissionDetail>(`/submissions/${id}/regrade`, body).then(r => r.data),
+  /** On-demand AI score suggestion for one essay item; nothing is saved. */
+  aiSuggest: (id: string, questionId: string) => api.post<{ score: number; feedback: string; model: string }>(`/submissions/${id}/items/${questionId}/ai-suggest`, undefined, { timeout: 90_000 }).then(r => r.data),
   policy: (examId: string) => api.get<ResultPolicy>(`/exams/${examId}/result-policy`).then(r => r.data),
   savePolicy: (examId: string, body: ResultPolicy) => api.put<ResultPolicy>(`/exams/${examId}/result-policy`, body).then(r => r.data),
 }

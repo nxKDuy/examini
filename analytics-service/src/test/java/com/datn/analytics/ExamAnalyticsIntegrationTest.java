@@ -80,6 +80,40 @@ class ExamAnalyticsIntegrationTest {
                 List.of(item(q1, 0, "4", a1 != null, false, a1), item(q2, 1, "6", a2 != null, false, a2)));
     }
 
+    @Test void discriminationFlagsAWrongKeyAndInsightsExplainItWithoutAi() throws Exception {
+        UUID q3 = UUID.randomUUID();
+        for (int i = 0; i < 12; i++) {
+            boolean strong = i < 6;
+            projector.apply(result(exam, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 1, "GRADED", strong ? "14" : "6", "20",
+                    List.of(item(q1, 0, "4", true, false, strong ? "4" : "0"), item(q2, 1, "6", true, false, strong ? "0" : "6"),
+                            item(q3, 2, "10", true, false, strong ? "10" : "0"))));
+        }
+        var qs = queries.questions(exam);
+        assertEquals(0, BigDecimal.ONE.compareTo(qs.get(0).discrimination()));
+        assertEquals(0, BigDecimal.ONE.negate().compareTo(qs.get(1).discrimination()));
+        when(exams.permission(eq(exam), any(), eq(true), eq("test-permission"))).thenReturn("OWNER");
+        UUID teacher = UUID.randomUUID();
+        http.perform(get("/analytics/exams/" + exam + "/insights").header("Authorization", jwt(teacher, "TEACHER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("RULES")).andExpect(jsonPath("$.level").value("AVERAGE"))
+                .andExpect(jsonPath("$.aiAvailable").value(false))
+                .andExpect(jsonPath("$.flags[?(@.position == 2 && @.issue == 'NEGATIVE_DISCRIMINATION')]").exists())
+                .andExpect(jsonPath("$.concerns").value(hasItem(containsString("Câu 2: học sinh giỏi"))))
+                .andExpect(jsonPath("$.actions").value(hasItem(containsString("Kiểm tra lại đáp án"))));
+        // ai=true without a configured model falls back to the rule reading
+        http.perform(get("/analytics/exams/" + exam + "/insights?ai=true&lang=en").header("Authorization", jwt(teacher, "TEACHER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("RULES")).andExpect(jsonPath("$.summary").value(containsString("12 submissions")));
+    }
+
+    @Test void adminOverviewIsForSystemAdministratorsOnly() throws Exception {
+        for (int i = 0; i < 3; i++) projector.apply(graded(UUID.randomUUID(), i == 0 ? "10" : "4", "4", i == 0 ? "6" : "0"));
+        String admin = "Bearer " + Jwts.builder().subject(UUID.randomUUID().toString()).claim("type", "access").claim("role", "ADMIN").claim("systemPrivilege", "ADMIN")
+                .expiration(new Date(System.currentTimeMillis() + 60000)).signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8))).compact();
+        http.perform(get("/analytics/admin/overview?days=365").header("Authorization", admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.submissions").value(3)).andExpect(jsonPath("$.graded").value(3)).andExpect(jsonPath("$.perDay.length()").value(365));
+        http.perform(get("/analytics/admin/overview").header("Authorization", jwt(UUID.randomUUID(), "TEACHER"))).andExpect(status().isForbidden());
+        http.perform(get("/analytics/admin/overview?days=0").header("Authorization", admin)).andExpect(status().isBadRequest());
+    }
+
     @Test void zeroDataExamReturnsEmptyAggregates() {
         var s = queries.summary(exam);
         assertEquals(0, s.submissions());

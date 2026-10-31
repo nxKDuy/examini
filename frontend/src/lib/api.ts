@@ -1,5 +1,6 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { useAuthStore, validateAuthUser } from '../store/authStore'
+import { readStoredTokens, tokenSubject } from '../features/auth/crossTab'
 
 export const apiBaseURL = import.meta.env.VITE_API_BASE_URL || '/'
 const api = axios.create({ baseURL: apiBaseURL, headers: { 'Content-Type': 'application/json' } })
@@ -66,6 +67,14 @@ api.interceptors.response.use(
       await refreshFlight.promise
       return await api(original)
     } catch (refreshError) {
+      // Another tab of this browser may have refreshed first and rotated the refresh token: use its tokens instead.
+      const stored = readStoredTokens()
+      const now = useAuthStore.getState()
+      if (stored?.accessToken && stored.refreshToken && stored.refreshToken !== refresh && now.accessToken === access &&
+        tokenSubject(stored.accessToken) === tokenSubject(access)) {
+        now.setTokens(stored.accessToken, stored.refreshToken)
+        return api(original)
+      }
       if (useAuthStore.getState().accessToken === access) useAuthStore.getState().logout()
       throw refreshError
     }

@@ -15,8 +15,10 @@ public interface NotificationRepository extends JpaRepository<Notification,UUID>
     @Query("""
         select n from Notification n where n.recipientUserId=:recipient
         and (:read is null or (:read=true and n.readAt is not null) or (:read=false and n.readAt is null))
+        and (:all=true or (:exclude=false and n.type in :types) or (:exclude=true and n.type not in :types))
         order by n.createdAt desc, n.id desc""")
-    Page<Notification> inbox(@Param("recipient")UUID recipient,@Param("read")Boolean read,Pageable page);
+    Page<Notification> inbox(@Param("recipient")UUID recipient,@Param("read")Boolean read,@Param("all")boolean all,
+                             @Param("exclude")boolean exclude,@Param("types")Collection<String> types,Pageable page);
     long countByRecipientUserIdAndReadAtIsNull(UUID recipient);
     Optional<Notification> findByIdAndRecipientUserId(UUID id,UUID recipient);
     @Modifying(clearAutomatically=true) @Query("update Notification n set n.readAt=CURRENT_TIMESTAMP where n.id=:id and n.recipientUserId=:recipient and n.readAt is null")

@@ -5,6 +5,7 @@ import { authApi } from './authApi'
 import { errorInfo } from '../../lib/errors'
 import { Field, Notice } from '../../components/ui'
 import { AuthCard } from './AuthCard'
+import GoogleSignIn from './GoogleSignIn'
 import { t, useT, i18nMap } from '../../lib/i18n'
 
 type Persona = 'STUDENT' | 'TEACHER'
@@ -86,6 +87,7 @@ export default function RegisterPage() {
           <UserPlus size={18} aria-hidden /> {loading ? t('Đang tạo tài khoản…') : t('Tạo tài khoản mới')}
         </button>
       </form>
+      <GoogleSignIn mode="signup" persona={form.persona} onDone={() => navigate('/dashboard', { replace: true })} />
     </AuthCard>
   )
 }

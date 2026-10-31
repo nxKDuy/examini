@@ -44,6 +44,8 @@ public class DocumentExtractor {
         if (starts(bytes, 0x25, 0x50, 0x44, 0x46)) return FileKind.PDF;
         if (starts(bytes, 0x89, 0x50, 0x4E, 0x47) || starts(bytes, 0xFF, 0xD8, 0xFF)) return FileKind.IMAGE;
         if (starts(bytes, 0x50, 0x4B, 0x03, 0x04) && name.endsWith(".docx")) return FileKind.DOCX;
+        if (starts(bytes, 0x50, 0x4B, 0x03, 0x04) && name.endsWith(".xlsx")) return FileKind.XLSX;
+        if (name.endsWith(".csv") && bytes.length > 0 && java.util.stream.IntStream.range(0, Math.min(bytes.length, 4096)).noneMatch(i -> bytes[i] == 0)) return FileKind.CSV;
         return null;
     }
     private static boolean starts(byte[] bytes, int... magic) {
@@ -57,6 +59,8 @@ public class DocumentExtractor {
             case DOCX -> docx(bytes);
             case PDF -> pdf(bytes);
             case IMAGE -> image(bytes);
+            case AI -> throw new IllegalArgumentException("AI jobs have no document to extract");
+            case XLSX, CSV -> throw new IllegalArgumentException("Spreadsheets are read by SheetImport");
         };
     }
 

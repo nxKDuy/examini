@@ -1,10 +1,11 @@
+import { spokenAnswer } from '../question-bank/media/mediaModel'
 import type { DraftRequest, GradeItem, Submission, SubmissionDetail } from './gradingApi'
 import { t } from '../../lib/i18n'
 
 /** Pure grading-form logic: what to send, what is valid, what the Student sees. No React, no fetch. */
 
 /** The answer IS one of the offered options (shown by option label; may arrive as an option id). Short answers are free text. */
-export const isChoiceAnswer = (type: string) => type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE'
+export const isChoiceAnswer = (type: string) => type === 'MULTIPLE_CHOICE' || type === 'TRUE_FALSE' || type === 'MULTIPLE_RESPONSE' || type === 'TRUE_FALSE_GROUP' || type === 'FILL_BLANK' || type === 'MATCHING'
 /** The server auto-scores it, so changing that score is an override that needs its own reason. Includes SHORT_ANSWER. */
 export const isAutoGraded = (type: string) => isChoiceAnswer(type) || type === 'SHORT_ANSWER'
 export const shortStudent = (id: string) => id.slice(0, 8)
@@ -119,9 +120,14 @@ export const isStaleRevision = (error: unknown) => {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Own answer text; an objective answer that is only an option id cannot be shown by name (Contract Request), so say so instead of guessing. */
 export function studentAnswerText(type: string, answer: string | undefined, answerDisplay?: string | null): { text: string; unresolved: boolean } | null {
+  if (type === 'SPEAKING') {
+    const spoken = spokenAnswer(answerDisplay) ?? spokenAnswer(answer)
+    if (spoken) return { text: t('Bài ghi âm {0} giây', { 0: spoken.seconds }), unresolved: false }
+  }
   if (answerDisplay !== undefined && answerDisplay !== null && answerDisplay.trim() !== '') return { text: answerDisplay, unresolved: false }
   if (answer === undefined || answer === null || answer.trim() === '') return null
   if (isChoiceAnswer(type) && UUID.test(answer.trim())) return { text: t('Đã chọn một phương án'), unresolved: true }
+  if ((type === 'MULTIPLE_RESPONSE' || type === 'TRUE_FALSE_GROUP' || type === 'FILL_BLANK' || type === 'MATCHING') && /^[[{]/.test(answer.trim())) return { text: t('Đã trả lời'), unresolved: true }
   return { text: answer, unresolved: false }
 }
 export const readableAnswers = (list: string[] | undefined) => (list ?? []).filter(a => !UUID.test(a.trim()))

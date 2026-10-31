@@ -42,9 +42,19 @@ eureka:
   instance:
     prefer-ip-address: true
 
-gemini:
-  api:
-    key: ${GEMINI_API_KEY:demo-key}
+# Essay score suggestions and study tips. Providers are tried in order; blank = skipped. Teachers always review.
+ai:
+  gemini:
+    key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
+  # Any OpenAI-compatible API (free tiers: Groq, OpenRouter ":free" models, Mistral…; or a local LM Studio/vLLM).
+  openai:
+    url: ${AI_OPENAI_URL:}
+    key: ${AI_OPENAI_KEY:}
+    model: ${AI_OPENAI_MODEL:}
+  ollama:
+    url: ${OLLAMA_URL:}
+    model: ${OLLAMA_MODEL:qwen2.5:7b-instruct}
 
 management:
   endpoints:

@@ -32,9 +32,14 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             "X-Service-Token",
             "X-Question-Owner-Id"
     );
+    /** Read-only sign-in configuration (public Google client id); GET only. */
+    private static final Set<String> PUBLIC_AUTH_GET_PATHS = Set.of("/auth/providers", "/auth-service/auth/providers");
+    /** Calendar subscriptions: apps cannot log in, the random token in the path is checked by exam-service. */
+    private static final java.util.regex.Pattern CALENDAR_FEED = java.util.regex.Pattern.compile("/exams/calendar/feed/[A-Za-z0-9_-]{20,64}\\.ics");
     private static final Set<String> PUBLIC_AUTH_PATHS = Set.of(
-            "/auth/login", "/auth/register", "/auth/refresh",
-            "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh"
+            "/auth/login", "/auth/register", "/auth/refresh", "/auth/google", "/auth/password/forgot", "/auth/password/reset",
+            "/auth-service/auth/login", "/auth-service/auth/register", "/auth-service/auth/refresh", "/auth-service/auth/google",
+            "/auth-service/auth/password/forgot", "/auth-service/auth/password/reset"
     );
     private static final Set<String> ROLES = Set.of("STUDENT", "TEACHER", "ADMIN");
     private static final Set<String> PERSONAS = Set.of("STUDENT", "TEACHER");
@@ -102,8 +107,8 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
 
     private boolean isPublicAuthRequest(ServerWebExchange exchange) {
         String path = exchange.getRequest().getURI().getPath();
-        return HttpMethod.POST.equals(exchange.getRequest().getMethod())
-                && PUBLIC_AUTH_PATHS.contains(path);
+        return HttpMethod.POST.equals(exchange.getRequest().getMethod()) && PUBLIC_AUTH_PATHS.contains(path)
+                || HttpMethod.GET.equals(exchange.getRequest().getMethod()) && (PUBLIC_AUTH_GET_PATHS.contains(path) || CALENDAR_FEED.matcher(path).matches());
     }
 
     private TrustedIdentity trustedIdentity(Claims claims) {

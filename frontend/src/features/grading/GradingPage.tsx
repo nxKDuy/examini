@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useBlocker, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardCheck, Settings2 } from 'lucide-react'
@@ -13,6 +13,7 @@ import { ConfirmDialog } from '../../components/Dialog'
 import { EmptyState, ErrorState, Field, LoadingState, PageHeader } from '../../components/ui'
 import { useIsNarrow } from '../../lib/hooks'
 import { t as tt, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const TABS = i18nMap([{ value: '', label: 'Tất cả' }, { value: 'NEEDS_REVIEW', label: 'Cần chấm tay' }, { value: 'PENDING', label: 'Chờ chấm' }, { value: 'GRADED', label: 'Đã chấm' }])
 const RELEASED = i18nMap([{ value: '', label: 'Công bố: tất cả' }, { value: 'true', label: 'Đã công bố' }, { value: 'false', label: 'Chưa công bố' }])
@@ -66,6 +67,13 @@ export default function GradingPage() {
   const stay = () => { if (blocker.state === 'blocked') blocker.reset(); pageGuard.cancel(); rerender(n => n + 1) }
   const leave = () => { dirty.current = false; if (blocker.state === 'blocked') blocker.proceed(); pageGuard.confirm(); rerender(n => n + 1) }
 
+  // Laptop: open the first submission that still needs a teacher (else the first one) instead of an empty workspace.
+  const firstId = list.data?.content.find(x => x.status === 'NEEDS_REVIEW')?.id ?? list.data?.content[0]?.id
+  useEffect(() => {
+    if (narrow || selected || !examId || !firstId) return
+    const next = new URLSearchParams(params); next.set('r', firstId); setParams(next, { replace: true })
+  }, [narrow, selected, examId, firstId, params, setParams])
+
   const o = overview.data
   const showQueue = !narrow || !selected
   const showWork = !!selected && !!examId
@@ -76,10 +84,10 @@ export default function GradingPage() {
         actions={examId && <button type="button" className="btn btn-secondary" onClick={() => setPolicyOpen(true)} disabled={!policy.data}><Settings2 size={16} aria-hidden /> {tt('Chính sách kết quả')}</button>} />
       <section className="card card-body" style={{ display: 'grid', gap: 12 }}>
         <Field label={tt('Kỳ thi')} htmlFor="grading-exam" hint={tt('Chỉ Chủ sở hữu và Quản lý của kỳ thi được chấm bài. Hàng chờ chấm theo từng kỳ thi.')}>
-          <select id="grading-exam" className="input" value={examId} onChange={e => setExam(e.target.value)}>
+          <Select id="grading-exam" className="input" value={examId} onChange={e => setExam(e.target.value)}>
             <option value="">{tt('Chọn kỳ thi')}</option>
             {gradable.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-          </select>
+          </Select>
         </Field>
       </section>
 
@@ -103,9 +111,9 @@ export default function GradingPage() {
               <div className="tabs" role="tablist" aria-label={tt('Trạng thái chấm')} style={{ border: '1px solid #000' }}>
                 {TABS.map(t => <button key={t.value} type="button" role="tab" className="tab" aria-selected={status === t.value} onClick={() => setFilter('status', t.value)}>{t.label}</button>)}
               </div>
-              <select className="input" aria-label={tt('Lọc theo công bố')} style={{ maxWidth: 200 }} value={released} onChange={e => setFilter('released', e.target.value)}>
+              <Select className="input" aria-label={tt('Lọc theo công bố')} style={{ maxWidth: 200 }} value={released} onChange={e => setFilter('released', e.target.value)}>
                 {RELEASED.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
+              </Select>
             </div>
           )}
           <div className="grade-layout">

@@ -22,6 +22,8 @@ import java.util.*;
 public class QuestionController {
     private final QuestionService service;
     private final ExamEligibilityService eligibility;
+    private final com.datn.questionbank.service.ai.AiQuestionReview review;
+    private final com.datn.questionbank.service.ai.AiMatrixPlanner planner;
 
     private QuestionActor actor(HttpServletRequest request) {
         Object actor = request.getAttribute(QuestionActor.class.getName());
@@ -50,10 +52,25 @@ public class QuestionController {
     public EligibleIdsResponse eligibleIds(@Valid @RequestBody EligibleFilter body, HttpServletRequest req) {
         return eligibility.ids(body, actor(req));
     }
+    /** Reading/listening passages the author already used, to put another question under the same passage. */
+    @GetMapping("/passages")
+    public java.util.List<com.datn.questionbank.dto.Presentation.Passage> passages(HttpServletRequest req) {
+        return service.passages(actor(req));
+    }
+    @PostMapping("/eligible/matrix-counts")
+    public List<MatrixCount> matrixCounts(@Valid @RequestBody MatrixCountsRequest body, HttpServletRequest req) {
+        return eligibility.matrixCounts(body, actor(req));
+    }
     @PostMapping("/eligible/random")
     public EligibleRandomResponse eligibleRandom(@Valid @RequestBody EligibleRandomRequest body, HttpServletRequest req) {
         return eligibility.pick(body, actor(req));
     }
+    /** Exam matrix from a sentence (AI fills the counts over the given topics; the teacher reviews it). */
+    @PostMapping("/ai/matrix-plan")
+    public com.datn.questionbank.service.ai.AiMatrixPlanner.Plan matrixPlan(@RequestBody com.datn.questionbank.service.ai.AiMatrixPlanner.Request body, HttpServletRequest req) { return planner.plan(body, actor(req)); }
+    /** AI review of one question (rule checks + independent solve + short critique); changes nothing. */
+    @PostMapping("/{id}/ai-review")
+    public com.datn.questionbank.service.ai.AiQuestionReview.Review aiReview(@PathVariable UUID id, HttpServletRequest req) { return review.review(id, actor(req)); }
     @GetMapping("/{id}")
     public QuestionProjection findById(@PathVariable UUID id, @RequestParam(defaultValue="false") boolean includeAnswers, HttpServletRequest req) { return service.findById(id, includeAnswers, actor(req)); }
     @PostMapping

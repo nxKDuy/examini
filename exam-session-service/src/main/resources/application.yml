@@ -7,6 +7,17 @@ exam:
     max-events-per-session: ${INTEGRITY_MAX_EVENTS_PER_SESSION:10000}
   capacity:
     platform-limit: ${EXAM_PLATFORM_CONCURRENT_LIMIT:100}
+  # Camera proctoring evidence (snapshots + recordings) on a local volume.
+  # Voice answers of speaking questions (kept with the attempt, not deleted by camera retention).
+  answer-audio:
+    storage-dir: ${ANSWER_AUDIO_DIR:${java.io.tmpdir}/examini-answer-audio}
+  camera:
+    storage-dir: ${CAMERA_STORAGE_DIR:${java.io.tmpdir}/examini-camera}
+    events-per-minute: ${CAMERA_EVENTS_PER_MINUTE:30}
+    max-events-per-session: ${CAMERA_MAX_EVENTS_PER_SESSION:2000}
+    # Snapshots and video are deleted this many days after the attempt's deadline (0 = keep forever).
+    retention-days: ${CAMERA_RETENTION_DAYS:30}
+    retention-cron: ${CAMERA_RETENTION_CRON:0 30 3 * * *}
 question-bank:
   internal-token: ${QB_INTERNAL_TOKEN:}
 
@@ -28,6 +39,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 400KB
+      max-request-size: 500KB
   data:
     redis:
       host: localhost

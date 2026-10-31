@@ -10,6 +10,7 @@ import { errorText } from '../../lib/errors'
 import { formatDateTime } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const FILTERS = i18nMap([{ value: 'PENDING', label: 'Đang chờ' }, { value: '', label: 'Tất cả' }, { value: 'ACCEPTED', label: 'Đã chấp nhận' }, { value: 'DECLINED', label: 'Đã từ chối' }, { value: 'REVOKED', label: 'Đã thu hồi' }, { value: 'EXPIRED', label: 'Hết hạn' }])
 const TONE: Record<string, 'info' | 'success' | 'muted' | 'warning'> = { PENDING: 'info', ACCEPTED: 'success', DECLINED: 'muted', REVOKED: 'muted', EXPIRED: 'warning' }
@@ -38,9 +39,9 @@ export default function InvitationsTab({ org }: { org: Organization }) {
       {flash && <Notice tone={flash.tone} live>{flash.text}</Notice>}
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <label className="row small" style={{ gap: 6 }}>{t('Trạng thái')}
-          <select className="input" value={status} onChange={e => { setStatus(e.target.value); setPage(0) }} style={{ width: 'auto' }}>
+          <Select className="input" value={status} onChange={e => { setStatus(e.target.value); setPage(0) }} style={{ width: 'auto' }}>
             {FILTERS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
+          </Select>
         </label>
         {canInvite(org) && <button type="button" className="btn btn-primary" onClick={() => { setFlash(null); setInviting(true) }}><UserPlus size={16} aria-hidden /> {t('Mời thành viên')}</button>}
       </div>

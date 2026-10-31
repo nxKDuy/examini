@@ -23,6 +23,7 @@ public class AnalyticsController {
 
     private final ExamAnalyticsAccess access;
     private final ExamAnalyticsQueries queries;
+    private final com.datn.analytics.insight.ExamInsightsService insights;
 
     @GetMapping("/summary")
     @Operation(summary = "Tổng quan điểm của một đề thi")
@@ -60,6 +61,14 @@ public class AnalyticsController {
         validatePage(page, size);
         access.require(examId, actor);
         return queries.students(examId, page, size);
+    }
+
+    @GetMapping("/insights")
+    @Operation(summary = "Nhận xét kết quả kỳ thi (luật thống kê; ai=true để AI viết lại)")
+    public AnalyticsDto.ExamInsights insights(@PathVariable UUID examId, @RequestAttribute UUID actor,
+                                              @RequestParam(defaultValue = "false") boolean ai, @RequestParam(defaultValue = "vi") String lang) {
+        access.require(examId, actor);
+        return insights.insights(examId, ai, lang);
     }
 
     private static void validatePage(int page, int size) {

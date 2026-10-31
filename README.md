@@ -1,110 +1,177 @@
-# Nền tảng khảo thí online ứng dụng AI
+# EXAMINI — Nền tảng khảo thí trực tuyến ứng dụng AI
 
-**Đồ án tốt nghiệp (DATN)** — Đại học Tôn Đức Thắng (TDTU)
+**Đồ án tốt nghiệp** — Đại học Tôn Đức Thắng (TDTU)
 
-## Tech Stack
+EXAMINI cho phép giáo viên xây ngân hàng câu hỏi (nhập tay, nhập từ Word/PDF/ảnh, sinh bằng AI), tạo đề theo ma trận,
+tổ chức kỳ thi có giám sát, chấm điểm tự động + chấm tay có AI gợi ý, và xem thống kê có AI diễn giải.
 
-| Layer | Công nghệ |
+## Kiến trúc
+
+```
+                       ┌──────────────────────────── Docker network ─────────────────────────────┐
+ Trình duyệt ──► nginx (frontend, :80) ──/api──► api-gateway :8080 ──► eureka-server :8761 (đăng ký dịch vụ)
+   React SPA     · phục vụ SPA, cache asset      · xác thực JWT        │
+                 · header bảo mật                · giới hạn tần suất   ├─► auth-service          :8081  auth_db
+                                                 · CORS                ├─► organization-service  :8088  organization_db
+                                                                       ├─► question-bank-service :8082  question_bank_db + volume question_media
+                                                                       ├─► exam-service          :8083  exam_db
+                                                                       ├─► exam-session-service  :8084  exam_session_db + volume answer_audio, camera_data
+                                                                       ├─► grading-service       :8085  grading_db
+                                                                       ├─► analytics-service     :8086  analytics_db
+                                                                       └─► notification-service  :8087  notification_db (email SMTP, Web Push)
+                       RabbitMQ: sự kiện exam.attempt.* / grading.result.* … giữa các service (outbox)
+                       Redis: phiên làm bài, khoá, cache · PostgreSQL 16: mỗi service một database (Flyway)
+                       Gemini / Ollama (tuỳ chọn): sinh câu hỏi, gợi ý chấm tự luận, đọc số liệu thống kê
+                       └─────────────────────────────────────────────────────────────────────────┘
+```
+
+Giao kèo API và sự kiện giữa các service nằm trong [`contracts/`](contracts/).
+
+| Thành phần | Công nghệ |
 |---|---|
-| Backend | Java 21 + Spring Boot 3.3, Microservices |
-| Service Discovery | Spring Cloud Eureka |
-| API Gateway | Spring Cloud Gateway + JWT Filter |
-| Giao tiếp async | RabbitMQ |
-| Giao tiếp sync | OpenFeign |
-| Database | PostgreSQL 16 (database-per-service) |
-| Migration | Flyway |
-| Cache/Session | Redis 7 |
-| Real-time | Spring WebSocket + STOMP |
-| Frontend | React + Vite + TypeScript + TailwindCSS |
-| Containerization | Docker + Docker Compose |
-| AI | OpenAI / Claude API (Giai đoạn 4) |
-| Auth | JWT (JJWT 0.12) + Spring Security |
+| Backend | Java 21, Spring Boot 3.3, Spring Cloud (Eureka, Gateway, OpenFeign) |
+| Dữ liệu | PostgreSQL 16 (database-per-service, Flyway), Redis 7, RabbitMQ 3 |
+| Bảo mật | JWT (access + refresh), Google Sign-In, phân quyền theo vai trò và theo tổ chức, token nội bộ riêng cho từng cặp service |
+| Frontend | React 19, Vite, TypeScript, TanStack Query, biểu đồ SVG tự viết, PWA, song ngữ Việt/Anh |
+| AI | Gemini (mặc định) → Ollama tự host → bộ sinh cục bộ không cần mạng; OCR Tesseract (vie+eng); nhận diện khuôn mặt chạy trên trình duyệt |
+| Triển khai | Docker Compose, nginx, GitHub Actions CI |
 
-## Microservices
+## Tính năng theo vai trò
 
-| Service | Port | Trạng thái |
-|---|---|---|
-| eureka-server | 8761 | ✅ Giai đoạn 1 |
-| api-gateway | 8080 | ✅ Giai đoạn 1 |
-| auth-service | 8081 | ✅ Giai đoạn 1 |
-| question-bank-service | 8082 | 🔄 Giai đoạn 2 |
-| exam-service | 8083 | 🔄 Giai đoạn 2 |
-| exam-session-service | 8084 | 🔄 Giai đoạn 2 |
-| grading-service | 8085 | 🔄 Giai đoạn 3 |
-| analytics-service | 8086 | 🔄 Giai đoạn 3 |
+**Học sinh** — tham gia kỳ thi bằng mã/được giao/công khai; làm bài với 9 dạng câu hỏi (trắc nghiệm một đáp án, nhiều đáp án,
+đúng/sai, đúng/sai theo chùm kiểu THPT 2025, điền vào chỗ trống, nối cột, trả lời ngắn, tự luận, nói — ghi âm), câu hỏi có thể kèm
+đoạn văn, ảnh, âm thanh; trên laptop làm bài bằng phím tắt (A–D, ←/→) và đánh dấu câu cần xem lại; đề luyện tập báo đúng/sai ngay.
+Xem lại bài theo từng câu (lọc câu sai), **gia sư AI** giải thích vì sao sai dựa trên chính câu trả lời của mình và
+**luyện thêm câu tương tự** do AI tạo (AI tự giải lại để loại câu có hai đáp án); trang **Tiến bộ** với biểu đồ và gợi ý ôn tập.
+Thông báo trong web, email, trình duyệt; đồng bộ lịch thi với Google Calendar, iPhone, Outlook.
 
-## Khởi động nhanh (Development)
+**Giáo viên** — ngân hàng câu hỏi nhiều kho, chia sẻ/đồng bộ; nhập từ Word/PDF/ảnh/Excel theo mẫu; **sinh câu hỏi bằng AI**
+theo mức Bloom từ chủ đề, tài liệu hoặc link trang web/PDF (phương án nhiễu từ lỗi sai thường gặp, AI giải lại để kiểm tra đáp án,
+bộ lọc chất lượng); **rà soát bằng AI** câu tự soạn (bắt đáp án đặt sai, câu mơ hồ); tạo đề từ ma trận/khung đề, có thể **mô tả đề
+bằng một câu để AI điền ma trận**; in đề + phiếu trả lời theo mã đề; lịch thi tự mở/đóng, nhắc lịch; giám sát (toàn màn hình,
+chuyển tab, camera); chấm tay có **AI gợi ý điểm** tự luận (đọc cả bài đọc, nhận xét điểm mạnh/cần cải thiện); thống kê đề (độ khó,
+độ phân biệt) kèm nhận xét AI; xuất CSV/Moodle/Aiken/QTI 2.1. Trên laptop: tìm nhanh **Ctrl+K**, duyệt kho câu hỏi bằng ↑/↓.
 
-### 1. Clone & setup môi trường
+**Tổ chức** — lớp/khoa/trường: mời thành viên, phân vai OWNER/ADMIN/MEMBER, quyền chấm, nhật ký; thêm cả tổ chức vào kỳ thi một lần.
+
+**Quản trị** — quản lý tài khoản, trang **Thống kê hệ thống** (người dùng, kỳ thi, bài nộp theo ngày, phân bố câu hỏi).
+
+## Chạy bằng Docker (khuyến nghị)
 
 ```bash
-git clone <repo-url>
-cd DATN
-cp .env.example .env
-# Chỉnh sửa .env: đặt JWT_SECRET mạnh (>=64 ký tự)
+./scripts/secrets.sh unlock   # giải mã .env.enc → .env (hỏi mật khẩu một lần, có thể lưu vào .env.key)
+docker compose up -d --build  # lần đầu mất vài phút; đợi mọi container "healthy": docker compose ps
 ```
 
-### 2. Khởi động infrastructure + services
+**Khoá bí mật (.env).** Repo chỉ chứa `.env.enc` — bản mã hoá AES-256 của `.env` (khoá AI, mật khẩu CSDL, JWT…), nên
+máy quét khoá của GitHub/Google/Groq không đọc được và không tự khoá. Mật khẩu giải mã được gửi riêng cho thành viên,
+không nằm trên repo; `start.sh`/`start.bat` tự giải mã khi chưa có `.env`. Sửa `.env` xong thì chạy
+`./scripts/secrets.sh lock` và commit `.env.enc`. Cài mới không có mật khẩu: `cp .env.example .env` rồi tự điền.
+
+Mở **http://localhost** (hoặc `http://localhost:${WEB_PORT}` nếu đã đổi `WEB_PORT`). nginx chuyển `/api/*` tới gateway
+nên trình duyệt chỉ cần một địa chỉ. Các cổng phụ trợ: Eureka `8761`, Gateway `8080`, RabbitMQ UI `15673`.
+
+AI là tuỳ chọn và có thể dùng hoàn toàn miễn phí. Các nguồn được thử lần lượt, hết lượt ở nguồn này thì chuyển nguồn sau:
+Gemini (`GEMINI_API_KEY`, miễn phí ở Google AI Studio) → bất kỳ API tương thích OpenAI (`AI_OPENAI_URL/KEY/MODEL`, ví dụ
+Groq hoặc mô hình `:free` của OpenRouter) → mô hình tự chạy Ollama (`docker compose --profile ai up -d ollama`,
+`OLLAMA_URL=http://ollama:11434`) → bộ sinh theo luật không cần mạng. Câu hỏi AI sinh ra luôn qua bộ lọc chất lượng
+(câu nhắc tới tài liệu học sinh không thấy, phương án nhiễu quá giống nhau, đề lộ đáp án, câu gần trùng) và được một
+mô hình giải lại để phát hiện đáp án sai trước khi giáo viên duyệt. Xem ví dụ cấu hình trong `.env.example`.
+
+### Dữ liệu demo
 
 ```bash
-docker compose up -d
+python3 scripts/seed_demo.py   # sau khi mọi container healthy; chạy lại không tạo trùng
 ```
 
-### 3. Kiểm tra
+Tạo qua API thật nên mọi service đều có dữ liệu khớp nhau: 4 giáo viên, 24 học sinh thuộc 2 lớp (tổ chức), 4 môn với
+~54 câu hỏi đủ mọi dạng (có câu kèm hình, bài đọc dùng chung), 9 đề thi ở mọi trạng thái (đã thi + công bố điểm, đang chờ
+chấm tự luận, đang mở, vào bằng mã, đã lên lịch, bản nháp), bài làm và điểm của học sinh trải đều 26 ngày gần nhất để các
+biểu đồ Tiến bộ / Thống kê có dữ liệu. Mật khẩu chung `Examini@2026`:
 
-- Eureka Dashboard: http://localhost:8761
-- API Gateway: http://localhost:8080
-- Auth Service Swagger: http://localhost:8081/swagger-ui.html
-- RabbitMQ Management: http://localhost:15672 (user: datn / xem .env)
+| Vai trò | Tài khoản |
+|---|---|
+| Giáo viên | `gv.toan@examini.demo`, `gv.anh@examini.demo`, `gv.ly@examini.demo`, `gv.hoa@examini.demo` |
+| Học sinh | `hs01@examini.demo` … `hs24@examini.demo` (hs01–12 lớp 12A1, hs13–24 lớp 12A2) |
+| Admin | tài khoản bootstrap trong `.env` |
 
-### 4. Test auth flow
+Chỉ dùng cho môi trường demo/phát triển. Xoá sạch để seed lại: `docker compose down -v && docker compose up -d`.
+
+## Phát triển cục bộ
 
 ```bash
-# Đăng ký
-curl -X POST http://localhost:8080/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"student@test.com","password":"Test@1234","fullName":"Nguyễn Văn A"}'
-
-# Đăng nhập
-curl -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"student@test.com","password":"Test@1234"}'
-
-# Lấy thông tin user (thay YOUR_TOKEN)
-curl http://localhost:8080/auth/me \
-  -H "Authorization: Bearer YOUR_TOKEN"
+docker compose up -d postgres redis rabbitmq eureka-server   # hạ tầng
+mvn -pl auth-service spring-boot:run                          # chạy service đang sửa (tương tự cho service khác)
+cd frontend && npm ci && npm run dev                          # http://localhost:3000, proxy API về gateway :8080
 ```
 
-## Khởi tạo Admin
+## Kiểm thử
 
-Cấu hình `AUTH_BOOTSTRAP_EMAIL` và `AUTH_BOOTSTRAP_PASSWORD` trong môi trường triển khai (mật khẩu tối thiểu 16 ký tự). Không commit credentials. Bootstrap chỉ tạo/cập nhật tài khoản Admin, không nâng quyền tài khoản Student/Teacher có cùng email.
+```bash
+mvn test                                  # toàn bộ backend (cần PostgreSQL local; xem .github/workflows/ci.yml)
+cd frontend && npx tsc -b && npx oxlint && node --test tests/*.test.mjs && npm run build
+```
 
-Migration V4 vô hiệu hóa mật khẩu seed cũ, giữ nguyên ID và dữ liệu người dùng. Với profile `prod`, cài đặt mới phải có credentials bootstrap hoặc một Admin đã được cấu hình. Sau khi bootstrap thành công, có thể bỏ cấu hình bootstrap khỏi môi trường để tránh ghi lại mật khẩu ở mỗi lần khởi động.
+**Kiểm thử đầu-cuối (end-to-end)** chạy trên hệ thống thật đã seed, đi qua nginx như trình duyệt thật
+(`frontend/e2e/demo.e2e.mjs`): đăng nhập mọi tài khoản demo, phân quyền qua gateway, dữ liệu khớp giữa các service,
+sinh câu hỏi AI (kể cả khi không có mạng), học sinh xem kết quả/tiến bộ, vào đề bằng mã và luyện tập có báo đúng/sai,
+lịch thi + tệp .ics, xem lại bài với gia sư AI, làm bài bằng phím tắt và đánh dấu câu, giáo viên chấm tự luận, đổi lịch
+thi → học sinh nhận thông báo (kiểm tra cả màn hình điện thoại), tìm nhanh Ctrl+K, rà soát câu hỏi bằng AI, xuất QTI 2.1
+và trang thống kê của quản trị:
+
+```bash
+docker compose up -d && python3 scripts/seed_demo.py
+cd frontend && npx playwright install chromium         # lần đầu
+E2E_BASE_URL=http://localhost:${WEB_PORT:-80} npm run e2e
+# thêm E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD (tài khoản bootstrap) để chạy cả phần quản trị; E2E_HEADED=1 để xem trình duyệt
+```
+
+Bộ test chỉ thêm dữ liệu (một lượt làm bài, một bài được chấm, lịch thi lùi 15 phút) nên chạy lại được nhiều lần;
+phần nào đã dùng hết dữ liệu demo (hết lượt làm, hết bài chờ chấm) sẽ báo *bỏ qua* kèm lý do thay vì báo lỗi.
+
+CI (GitHub Actions) chạy test backend với PostgreSQL/Redis/Mailpit, kiểm tra kiểu + lint + test + build frontend, và build toàn bộ image Docker.
+
+## Vận hành
+
+- **Sao lưu:** `./scripts/backup.sh` → `backups/<thời gian>/` (mọi database + file đính kèm, giữ 14 bản).
+  Khôi phục: `./scripts/backup.sh --restore backups/<thời gian>`.
+- **Admin đầu tiên:** `AUTH_BOOTSTRAP_EMAIL` + `AUTH_BOOTSTRAP_PASSWORD` (≥ 16 ký tự). Bootstrap không nâng quyền
+  tài khoản học sinh/giáo viên trùng email; sau khi tạo xong có thể xoá khỏi `.env`.
+- **Giới hạn tần suất (gateway, theo địa chỉ IP):** quên/đặt lại mật khẩu 20/phút, đăng nhập/đăng ký 300/phút,
+  gọi AI 60/phút, tải file 600/phút — đủ rộng cho cả lớp dùng chung một IP trường, vẫn chặn được dò mật khẩu/spam hàng loạt
+  (khoá theo tài khoản vẫn do auth-service đảm nhận). Vượt ngưỡng trả `429` kèm `Retry-After`. Chỉnh bằng biến
+  `GATEWAY_RATE_LIMIT_SIGN_IN_PER_MINUTE`… hoặc tắt bằng `GATEWAY_RATE_LIMIT_ENABLED=false`.
+- **Ảnh camera giám sát** tự xoá sau `CAMERA_RETENTION_DAYS` ngày kể từ hạn thi.
+- **Nâng cấp từ bản cũ:** volume file đính kèm tạo trước bản sửa quyền thư mục thuộc root nên service không ghi được;
+  chạy một lần `docker compose exec -u 0 question-bank-service chown -R appuser:appgroup /data` và
+  `docker compose exec -u 0 exam-session-service chown -R appuser:appgroup /data`.
+- **Production:** đặt `APP_BASE_URL` đúng tên miền, cấu hình SMTP, `AUTH_RESET_LOG_LINKS=false`, đặt HTTPS phía trước nginx.
 
 ## Cấu trúc thư mục
 
 ```
-DATN/
-├── docker-compose.yml
-├── .env.example
-├── pom.xml                     ← Parent POM (multi-module Maven)
-├── docker/postgres/init/       ← SQL tạo databases
-├── eureka-server/
-├── api-gateway/
-├── auth-service/               ← Hoàn chỉnh (Giai đoạn 1)
-├── question-bank-service/      ← Skeleton (Giai đoạn 2)
-├── exam-service/               ← Skeleton (Giai đoạn 2)
-├── exam-session-service/       ← Skeleton (Giai đoạn 2)
-├── grading-service/            ← Skeleton (Giai đoạn 3)
-├── analytics-service/          ← Skeleton (Giai đoạn 3)
-└── frontend/                   ← React + Vite (Giai đoạn 2)
+├── docker-compose.yml         toàn bộ hệ thống (14 container)
+├── .env.example               biến môi trường (không commit .env)
+├── pom.xml                    Maven multi-module
+├── contracts/                 giao kèo API/sự kiện giữa các service
+├── docker/postgres/           script tạo database
+├── scripts/                   backup.sh (sao lưu/khôi phục)
+├── eureka-server/  api-gateway/
+├── auth-service/  organization-service/  question-bank-service/
+├── exam-service/  exam-session-service/  grading-service/
+├── analytics-service/  notification-service/
+└── frontend/                  React SPA + Dockerfile/nginx
 ```
 
 ## Nguyên tắc code
 
-- Mỗi service có `Dockerfile` multi-stage
-- Flyway migration, không dùng `ddl-auto: update`
-- Bean Validation `@Valid` trên mọi request body
-- RFC 7807 Problem Details cho error response
-- Không hardcode secret — dùng `.env` + Spring profile
-- OpenAPI/Swagger annotation trên mọi controller
+- Mỗi service có `Dockerfile` multi-stage, healthcheck qua `/actuator/health`.
+- Flyway migration, không dùng `ddl-auto: update`; mỗi service chỉ đọc database của mình.
+- Bean Validation trên mọi request body; lỗi trả về RFC 7807 Problem Details.
+- Không hardcode secret — mọi khoá lấy từ `.env`; token nội bộ khác nhau cho từng kênh service-to-service.
+
+## Ghi nhận
+
+Phần kiểm tra chất lượng câu hỏi AI tham khảo ý tưởng (không sao chép mã) từ các dự án mã nguồn mở giấy phép MIT:
+[SemanticQAGen](https://github.com/StephenGenusa/semantic-qa-gen) (lọc câu nhắc tới tài liệu nguồn, chống trùng, kiểm tra
+lại đáp án bằng mô hình) và [Questgen.ai](https://github.com/ramsrigouthamg/Questgen.ai) (lọc phương án nhiễu quá giống nhau).

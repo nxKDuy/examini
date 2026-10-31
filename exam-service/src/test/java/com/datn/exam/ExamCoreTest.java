@@ -35,7 +35,9 @@ class ExamCoreTest {
     @BeforeEach void setup(){when(sessions.eligibility(any(),any(),anyString())).thenReturn(new com.datn.exam.client.SessionClient.Eligibility(0,false));owner=UUID.randomUUID();manager=UUID.randomUUID();proctor=UUID.randomUUID();student=UUID.randomUUID();qid=UUID.randomUUID();oid=UUID.randomUUID();when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(question("ACTIVE",1L,true)));when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(question("ACTIVE",1L,true)));}
     QuestionBankClient.Question question(String status,long version,Boolean eligible){return new QuestionBankClient.Question(qid,version,status,"MULTIPLE_CHOICE","Original",List.of(new Snapshot.Option(oid,"Yes",0,true),new Snapshot.Option(UUID.randomUUID(),"No",1,false)),null,eligible,"PERSONAL",null,"Frozen author explanation");}
     String token(UUID id,String role){return "Bearer "+Jwts.builder().subject(id.toString()).claim("role",role).claim("type","access").expiration(new Date(System.currentTimeMillis()+60000)).signWith(Keys.hmacShaKeyFor("unit-test-only-signing-key-32-bytes-minimum".getBytes(StandardCharsets.UTF_8))).compact();}
-    UUID create()throws Exception {String body="{\"title\":\"Exam\",\"durationMinutes\":10,\"passingScore\":0,\"type\":\"EXAM\",\"questions\":[{\"questionId\":\""+qid+"\",\"weight\":2.5}]}";
+    UUID create()throws Exception {return create(List.of(qid));}
+    UUID create(List<UUID> ids)throws Exception {String items=String.join(",",ids.stream().map(q->"{\"questionId\":\""+q+"\",\"weight\":2.5}").toList());
+        String body="{\"title\":\"Exam\",\"durationMinutes\":10,\"passingScore\":0,\"type\":\"EXAM\",\"questions\":["+items+"]}";
         var response=mvc.perform(post("/exams/manual").header("Authorization",token(owner,"TEACHER")).contentType("application/json").content(body)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();return UUID.fromString(json.readTree(response).path("id").asText());}
     @Test void ownershipPermissionsLifecycleAndSafeSnapshot()throws Exception {
         UUID id=create();UUID second=create();assertNotEquals(id,second);
@@ -62,6 +64,68 @@ class ExamCoreTest {
         mvc.perform(get("/exams/public").header("Authorization",token(owner,"TEACHER"),token(student,"STUDENT"))).andExpect(status().isUnauthorized());
         mvc.perform(get("/exams/public").header("X-User-Id",student)).andExpect(status().isUnauthorized());
         mvc.perform(put("/exams/"+id+"/open").header("Authorization",token(proctor,"TEACHER"))).andExpect(status().isForbidden());
+    }
+    @Test void presentationAndSpeakingTypeAreFrozenIntoTheSafeSnapshot()throws Exception {
+        var presentation=Map.<String,Object>of("media",List.of(Map.of("id",UUID.randomUUID().toString(),"kind","AUDIO")),"maxPlays",2,
+                "passage",Map.of("key",UUID.randomUUID().toString(),"title","Bài đọc","content","Ngày xửa ngày xưa"));
+        var speaking=new QuestionBankClient.Question(qid,1L,"ACTIVE","SPEAKING","Nói về gia đình",List.of(),null,true,"PERSONAL",null,null,presentation);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(speaking));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(speaking));
+        UUID id=create();core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].questionType").value("SPEAKING")).andExpect(jsonPath("$[0].presentation.maxPlays").value(2))
+            .andExpect(jsonPath("$[0].presentation.passage.title").value("Bài đọc"));
+    }
+    @Test void multiCorrectTypesPublishWithTheirKeysHiddenFromStudents()throws Exception {
+        var opts=List.of(new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ý a",0,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ý b",1,false),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ý c",2,true));
+        var group=new QuestionBankClient.Question(qid,1L,"ACTIVE","TRUE_FALSE_GROUP","Mỗi ý đúng hay sai?",opts,null,true,"PERSONAL",null,null,null);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(group));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(group));
+        UUID id=create();core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].questionType").value("TRUE_FALSE_GROUP")).andExpect(jsonPath("$[0].options.length()").value(3))
+            .andExpect(jsonPath("$[0].options[0].correct").doesNotExist());
+    }
+    @Test void fillBlankAndMatchingHideTheirKeysFromStudents()throws Exception {
+        UUID q2=UUID.randomUUID();
+        var gaps=List.of(new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Hà Nội | Ha Noi",0,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"1945",1,true));
+        var pairs=List.of(new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Việt Nam => Hà Nội",0,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Pháp => Paris",1,true),new com.datn.exam.dto.Snapshot.Option(UUID.randomUUID(),"Ai Cập => Cairo",2,true));
+        var fill=new QuestionBankClient.Question(qid,1L,"ACTIVE","FILL_BLANK","Thủ đô là ___, năm ___.",gaps,null,true,"PERSONAL",null,null,null);
+        var match=new QuestionBankClient.Question(q2,1L,"ACTIVE","MATCHING","Nối nước với thủ đô",pairs,null,true,"PERSONAL",null,null,null);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(fill,match));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(fill,match));
+        UUID id=create(List.of(qid,q2));core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/internal/safe").header("X-Service-Token","test-internal")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].options[0].content").value("")).andExpect(jsonPath("$[0].options.length()").value(2))
+            .andExpect(jsonPath("$[1].options[0].content").value("Việt Nam"))
+            .andExpect(jsonPath("$[1].presentation.matchTargets[0]").value("Cairo")).andExpect(jsonPath("$[1].presentation.matchTargets[2]").value("Paris"));
+        // A gap count that does not match the stem is refused at publication.
+        var broken=new QuestionBankClient.Question(qid,1L,"ACTIVE","FILL_BLANK","Chỉ một chỗ ___.",gaps,null,true,"PERSONAL",null,null,null);
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(true))).thenReturn(List.of(broken));
+        when(bank.eligible(anyList(),anyString(),any(),eq(true),eq(false))).thenReturn(List.of(broken));
+        UUID other=create();
+        assertEquals(409,assertThrows(org.springframework.web.server.ResponseStatusException.class,()->core.transition(other,owner,Exam.Status.PUBLISHED)).getStatusCode().value());
+    }
+    @Test void adminStatsCountExamsAndResolveTitlesForAdministratorsOnly()throws Exception {
+        UUID id=create();
+        String admin="Bearer "+Jwts.builder().subject(UUID.randomUUID().toString()).claim("role","ADMIN").claim("systemPrivilege","ADMIN").claim("type","access").expiration(new Date(System.currentTimeMillis()+60000)).signWith(Keys.hmacShaKeyFor("unit-test-only-signing-key-32-bytes-minimum".getBytes(StandardCharsets.UTF_8))).compact();
+        mvc.perform(get("/exams/admin/stats").param("ids",id.toString()).header("Authorization",admin)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1))).andExpect(jsonPath("$.byStatus.DRAFT").exists())
+            .andExpect(jsonPath("$.createdPerDay.length()").value(30)).andExpect(jsonPath("$.titles['"+id+"']").value("Exam"));
+        mvc.perform(get("/exams/admin/stats").header("Authorization",token(owner,"TEACHER"))).andExpect(status().isForbidden());
+    }
+    @Test void paperExportNeedsAPublishedSnapshotAndAManagerAndIsAudited()throws Exception {
+        UUID id=create();
+        core.member(id,owner,proctor,Exam.MemberRole.PROCTOR,false);core.accept(id,proctor,"TEACHER");
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(owner,"TEACHER"))).andExpect(status().isConflict());
+        core.transition(id,owner,Exam.Status.PUBLISHED);
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(owner,"TEACHER"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].content").value("Original"))
+            .andExpect(jsonPath("$[0].options[0].correct").value(true)).andExpect(jsonPath("$[0].points").value(2.5))
+            .andExpect(jsonPath("$[0].explanation").value("Frozen author explanation"));
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(proctor,"TEACHER"))).andExpect(status().isForbidden());
+        mvc.perform(get("/exams/"+id+"/paper").header("Authorization",token(student,"STUDENT"))).andExpect(status().isForbidden());
+        assertEquals(1,audits.findByExamIdOrderByTimestampAsc(id).stream().filter(x->x.getAction().equals("PAPER_EXPORTED")).count());
     }
     @Test void unscheduledPublishKeepsReminderDefaultsAndDoesNotEmitDuplicateScheduleNotice()throws Exception {
         UUID id=create();

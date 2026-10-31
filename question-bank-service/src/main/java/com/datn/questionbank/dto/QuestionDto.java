@@ -28,12 +28,18 @@ public class QuestionDto {
             @Size(max = 500) String sourceLabel,
             @Size(max = 2000) String sourceUrl,
             @Size(max = 10000) String sourceExcerpt,
-            @Size(max = 10000) String explanation
+            @Size(max = 10000) String explanation,
+            Presentation presentation
     ) {
         public CreateRequest(UUID categoryId,String content,Question.QuestionType questionType,Question.DifficultyLevel difficultyLevel,
                 String source,List<OptionRequest> options,String expectedAnswer,Question.QuestionScope scope,Question.SourceType sourceType,
                 String sourceRefId,String sourceLabel,String sourceUrl,String sourceExcerpt) {
-            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,scope,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,null);
+            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,scope,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,null,null);
+        }
+        public CreateRequest(UUID categoryId,String content,Question.QuestionType questionType,Question.DifficultyLevel difficultyLevel,
+                String source,List<OptionRequest> options,String expectedAnswer,Question.QuestionScope scope,Question.SourceType sourceType,
+                String sourceRefId,String sourceLabel,String sourceUrl,String sourceExcerpt,String explanation) {
+            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,scope,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,explanation,null);
         }
     }
 
@@ -51,12 +57,19 @@ public class QuestionDto {
             @Size(max = 2000) String sourceUrl,
             @Size(max = 10000) String sourceExcerpt,
             @NotNull @Positive Long questionVersion,
-            @Size(max = 10000) String explanation
+            @Size(max = 10000) String explanation,
+            /** Null keeps the current presentation; an empty object removes it. */
+            Presentation presentation
     ) {
         public UpdateRequest(UUID categoryId,String content,Question.QuestionType questionType,Question.DifficultyLevel difficultyLevel,
                 String source,List<OptionRequest> options,String expectedAnswer,Question.SourceType sourceType,String sourceRefId,
                 String sourceLabel,String sourceUrl,String sourceExcerpt,Long questionVersion) {
-            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,questionVersion,null);
+            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,questionVersion,null,null);
+        }
+        public UpdateRequest(UUID categoryId,String content,Question.QuestionType questionType,Question.DifficultyLevel difficultyLevel,
+                String source,List<OptionRequest> options,String expectedAnswer,Question.SourceType sourceType,String sourceRefId,
+                String sourceLabel,String sourceUrl,String sourceExcerpt,Long questionVersion,String explanation) {
+            this(categoryId,content,questionType,difficultyLevel,source,options,expectedAnswer,sourceType,sourceRefId,sourceLabel,sourceUrl,sourceExcerpt,questionVersion,explanation,null);
         }
     }
 
@@ -85,7 +98,8 @@ public class QuestionDto {
             UUID createdBy, LocalDateTime updatedAt,
             Question.CreationMethod creationMethod, Question.SourceType sourceType,
             String sourceRefId, String sourceLabel, String sourceUrl, UUID bankId, QuestionBank.BankType bankType,
-            String publicationStatus, boolean eligible
+            String publicationStatus, boolean eligible,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Presentation presentation
     ) implements QuestionProjection {}
 
     @Builder
@@ -99,24 +113,25 @@ public class QuestionDto {
             String sourceRefId, String sourceLabel, String sourceUrl, String sourceExcerpt,
             @JsonInclude(JsonInclude.Include.NON_NULL) String expectedAnswer,
             @JsonInclude(JsonInclude.Include.NON_NULL) String explanation,
-            UUID bankId, QuestionBank.BankType bankType, String publicationStatus, boolean eligible
+            UUID bankId, QuestionBank.BankType bankType, String publicationStatus, boolean eligible,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Presentation presentation
     ) implements QuestionProjection {
         public QuestionResponse withContext(Question.QuestionStatus currentStatus, LocalDateTime currentUpdatedAt) {
             return new QuestionResponse(id, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options, questionVersion, currentStatus, scope, createdBy, currentUpdatedAt,
-                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, explanation, bankId, bankType, publicationStatus, eligible);
+                    creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, explanation, bankId, bankType, publicationStatus, eligible, presentation);
         }
         public QuestionResponse forExam(UUID resourceId, UUID resourceBank, QuestionBank.BankType type, String publication) {
             return new QuestionResponse(resourceId, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options, questionVersion, Question.QuestionStatus.ACTIVE, scope, createdBy, updatedAt,
                     creationMethod, sourceType, sourceRefId, sourceLabel, sourceUrl, sourceExcerpt, expectedAnswer, explanation,
-                    resourceBank, type, publication, true);
+                    resourceBank, type, publication, true, presentation);
         }
         public SafeQuestionResponse withoutAnswers() {
             return new SafeQuestionResponse(id, categoryId, categoryName, content, questionType, difficultyLevel,
                     source, createdAt, options.stream().map(o -> new SafeOptionResponse(o.id(), o.content(), o.displayOrder())).toList(),
                     questionVersion, status, scope, createdBy, updatedAt, creationMethod, sourceType,
-                    sourceRefId, sourceLabel, sourceUrl, bankId, bankType, publicationStatus, eligible);
+                    sourceRefId, sourceLabel, sourceUrl, bankId, bankType, publicationStatus, eligible, presentation);
         }
     }
 
@@ -135,5 +150,8 @@ public class QuestionDto {
             Question.DifficultyLevel difficulty, @Min(1) @Max(200) int count,
             @Size(max = 1000) List<@NotNull UUID> excludeQuestionIds) {}
     public record EligibleRandomResponse(List<UUID> ids, int requested, long available) {}
+    /** Exam matrix: how many eligible questions exist per topic (category) and difficulty. */
+    public record MatrixCountsRequest(UUID bankId, @NotEmpty @Size(max = 50) List<@NotNull UUID> categoryIds, Question.QuestionType questionType) {}
+    public record MatrixCount(UUID categoryId, Question.DifficultyLevel difficulty, long available) {}
     public record ImportResult(int totalRows, int imported, int failed, List<String> errors) {}
 }

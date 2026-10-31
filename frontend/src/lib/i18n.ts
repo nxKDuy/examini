@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { EN } from './i18n-en'
-import { EN_UI } from './i18n-en-ui'
 
 // Vietnamese-first i18n (scope D). The Vietnamese text is the key and the default, so untranslated text
 // never shows a raw key; English comes from the EN catalog. Kept per browser and per account.
@@ -12,11 +11,12 @@ const accountKey = (userId: string) => `examini.lang.${userId}`
 const read = (key: string): Lang | null => { try { const v = localStorage.getItem(key); return v === 'vi' || v === 'en' ? v : null } catch { return null } }
 const write = (key: string, v: Lang) => { try { localStorage.setItem(key, v) } catch { /* storage blocked: session only */ } }
 
-interface LangState { lang: Lang; userId: string | null; setLang: (lang: Lang) => void; bindAccount: (userId: string | null) => void }
+interface LangState { lang: Lang; userId: string | null; catalog: number; setLang: (lang: Lang) => void; bindAccount: (userId: string | null) => void }
 
 export const useLangStore = create<LangState>((set, get) => ({
   lang: read(BROWSER_KEY) ?? 'vi',
   userId: null,
+  catalog: 0,
   setLang: lang => {
     write(BROWSER_KEY, lang)
     const { userId } = get()
@@ -31,8 +31,23 @@ export const useLangStore = create<LangState>((set, get) => ({
   },
 }))
 
-useLangStore.subscribe(s => { if (typeof document !== 'undefined') document.documentElement.lang = s.lang })
+/**
+ * The large screen catalog is only fetched when English is chosen: Vietnamese users (most of them) never download it.
+ * Until it arrives English falls back to the core catalog, then to Vietnamese; `catalog` bumps so screens re-render.
+ */
+let EN_UI: Record<string, string> = {}
+let loadingEnglish: Promise<void> | null = null
+export function loadEnglish(): Promise<void> {
+  loadingEnglish ??= import('./i18n-en-ui').then(m => { EN_UI = m.EN_UI; useLangStore.setState(s => ({ catalog: s.catalog + 1 })) })
+  return loadingEnglish
+}
+
+useLangStore.subscribe(s => {
+  if (typeof document !== 'undefined') document.documentElement.lang = s.lang
+  if (s.lang === 'en') void loadEnglish()
+})
 if (typeof document !== 'undefined') document.documentElement.lang = useLangStore.getState().lang
+if (useLangStore.getState().lang === 'en') void loadEnglish()
 
 export type Vars = Record<string, string | number | null | undefined>
 export function translate(lang: Lang, vi: string, vars?: Vars) {
@@ -45,6 +60,7 @@ export const t = (vi: string, vars?: Vars) => translate(useLangStore.getState().
 
 export function useT() {
   useLangStore(s => s.lang)
+  useLangStore(s => s.catalog)
   return t
 }
 
@@ -58,7 +74,8 @@ export function i18nMap<T extends object>(source: T): T {
       const v = Reflect.get(target, key, receiver)
       if (typeof v === 'string') return t(v)
       // Only plain objects and arrays are wrapped; RegExp, Date, Map and class instances are returned as they are.
-      if (v && typeof v === 'object' && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype)) return i18nMap(v as object)
+      // React elements (icons in status maps) are plain objects too, but frozen in development: never proxy them.
+      if (v && typeof v === 'object' && !('$$typeof' in v) && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype)) return i18nMap(v as object)
       return v
     },
   }) as T

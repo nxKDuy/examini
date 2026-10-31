@@ -62,6 +62,8 @@ public class ExamSession {
     @Column(name="questions",columnDefinition="jsonb",nullable=false)
     @Builder.Default private java.util.List<com.datn.examsession.client.ExamClient.Question> questions = new java.util.ArrayList<>();
     @Column(name="exam_title",nullable=false) private String examTitle;
+    /** Practice attempt (exam type PRACTICE): answers may be checked one by one while answering. */
+    @Column(name="practice",nullable=false) @Builder.Default private boolean practice=false;
     @Column(name="schedule_revision",nullable=false) @Builder.Default private long scheduleRevision=0;
     @Column(name="start_admission_id") private UUID startAdmissionId;
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
