@@ -46,15 +46,15 @@ export default function AdminUsersPage() {
         {list.isLoading ? <div className="card-body"><LoadingState rows={4} /></div>
           : list.isError ? <div className="card-body"><ErrorState error={list.error} onRetry={() => void list.refetch()} /></div>
           : !list.data?.content.length ? <div className="card-body"><EmptyState title={t('Không có người dùng phù hợp')} /></div>
-          : <div className="table-wrap"><table className="pt-table">
+          : <div className="table-wrap"><table className="pt-table table-stack">
               <thead><tr><th scope="col">{t('Người dùng')}</th><th scope="col">{t('Vai trò')}</th><th scope="col">{t('Đăng nhập')}</th><th scope="col">{t('Gần nhất')}</th><th scope="col">{t('Trạng thái')}</th><th scope="col"><span className="sr-only">{t('Thao tác')}</span></th></tr></thead>
               <tbody>{list.data.content.map(u => <tr key={u.id}>
-                <td><div className="stack-sm" style={{ gap: 2 }}><strong className="small">{u.fullName}</strong><span className="xsmall muted">{u.email}</span></div></td>
-                <td className="small">{personaLabel(u)}</td>
-                <td className="xsmall">{[u.passwordSet ? t('Mật khẩu') : null, u.googleLinked ? 'Google' : null].filter(Boolean).join(' · ') || '–'}</td>
-                <td className="xsmall muted">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : t('Chưa đăng nhập')}</td>
-                <td>{u.locked ? <Badge tone="danger">{t('Đã khóa')}</Badge> : <Badge tone="success">{t('Hoạt động')}</Badge>}</td>
-                <td><div className="row" style={{ gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <td className="stack-title"><div className="stack-sm" style={{ gap: 2 }}><strong className="small">{u.fullName}</strong><span className="xsmall muted">{u.email}</span></div></td>
+                <td className="small" data-label={t('Vai trò')}>{personaLabel(u)}</td>
+                <td className="xsmall" data-label={t('Đăng nhập')}>{[u.passwordSet ? t('Mật khẩu') : null, u.googleLinked ? 'Google' : null].filter(Boolean).join(' · ') || '–'}</td>
+                <td className="xsmall muted" data-label={t('Gần nhất')}>{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : t('Chưa đăng nhập')}</td>
+                <td data-label={t('Trạng thái')}>{u.locked ? <Badge tone="danger">{t('Đã khóa')}</Badge> : <Badge tone="success">{t('Hoạt động')}</Badge>}</td>
+                <td className="stack-action"><div className="row" style={{ gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   {u.id !== me && !(u.systemPrivilege === 'ADMIN' && !u.locked) && <button type="button" className="btn btn-ghost btn-sm" disabled={lock.isPending}
                     onClick={() => lock.mutate({ id: u.id, locked: !u.locked })}>
                     {u.locked ? <><LockOpen size={14} aria-hidden /> {t('Mở khóa')}</> : <><Lock size={14} aria-hidden /> {t('Khóa')}</>}</button>}

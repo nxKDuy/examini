@@ -626,3 +626,17 @@ a.stat:hover { background: var(--color-subtle); }
   .lobby-grid:has(> .result-side) { grid-template-columns: minmax(0, 1fr) 320px; }
   .lobby-grid > .result-side { order: 2; }
 }
+
+/* Tables that turn into one card per row on phones: put data-label on each cell, .stack-title on the row's name,
+   .stack-action on the trailing button cell. Laptop layout is unchanged. */
+@media (max-width: 640px) {
+  .table-wrap:has(> .table-stack) { overflow: visible; }
+  .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: 100%; }
+  .table-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table-stack tr { padding: 12px 0; border-bottom: 1px solid var(--color-hairline); }
+  .table-stack tr:last-child { border-bottom: 0; }
+  .table-stack td { border: 0 !important; padding: 3px 0 !important; display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  .table-stack td[data-label]::before { content: attr(data-label); color: var(--color-muted, #555); font-size: 0.85rem; text-align: left; flex: 0 0 auto; }
+  .table-stack td.stack-title { display: block; text-align: left; font-size: 1.02rem; color: var(--color-ink, #000); padding-bottom: 6px !important; }
+  .table-stack td.stack-action { justify-content: flex-start; padding-top: 6px !important; }
+}

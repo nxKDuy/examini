@@ -50,14 +50,14 @@ export default function ProgressPage() {
         <StudyTips />
         <Section title={t('Các bài đã làm')}>
           {!q.data!.items.length ? <EmptyState title={t('Bạn chưa làm bài thi nào')} description={t('Kết quả xuất hiện ở đây sau khi bạn nộp bài.')} action={<Link to="/my-exams" className="btn btn-primary btn-sm">{t('Đến Kỳ thi của tôi')}</Link>} />
-            : <div className="table-wrap"><table className="table">
+            : <div className="table-wrap"><table className="table table-stack">
               <thead><tr><th scope="col">{t('Kỳ thi')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Trạng thái')}</th><th scope="col">{t('Điểm')}</th><th scope="col">{t('Nộp lúc')}</th><th scope="col"><span className="sr-only">{t('Mở')}</span></th></tr></thead>
               <tbody>{q.data!.items.map(i => <tr key={i.sessionId}>
-                <td>{i.title}</td><td>{i.attemptNumber}{i.invalidated && <> <Badge tone="warning">{t('Vô hiệu hóa')}</Badge></>}</td>
-                <td>{PHASE[i.phase]?.() ?? i.phase}</td>
-                <td className="mono">{i.score === null ? '—' : `${formatScore(i.score)}/${formatScore(i.maxScore)} (${pct(i.percent)})`}</td>
-                <td>{formatDateTime(i.submittedAt, '—')}</td>
-                <td><Link to={`/exam/result/${i.sessionId}`} className="btn btn-ghost btn-sm">{t('Xem')}</Link></td>
+                <td className="stack-title">{i.title}</td><td data-label={t('Lượt')}>{i.attemptNumber}{i.invalidated && <> <Badge tone="warning">{t('Vô hiệu hóa')}</Badge></>}</td>
+                <td data-label={t('Trạng thái')}>{PHASE[i.phase]?.() ?? i.phase}</td>
+                <td className="mono" data-label={t('Điểm')}>{i.score === null ? '—' : `${formatScore(i.score)}/${formatScore(i.maxScore)} (${pct(i.percent)})`}</td>
+                <td data-label={t('Nộp lúc')}>{formatDateTime(i.submittedAt, '—')}</td>
+                <td className="stack-action"><Link to={`/exam/result/${i.sessionId}`} className="btn btn-ghost btn-sm">{t('Xem')}</Link></td>
               </tr>)}</tbody></table></div>}
         </Section>
       </>}

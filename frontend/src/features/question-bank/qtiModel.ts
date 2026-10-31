@@ -13,6 +13,7 @@ const LEVEL: Record<string, string> = { EASY: 'Dễ', MEDIUM: 'Trung bình', HAR
 
 const x = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   // Characters XML 1.0 forbids (control codes pasted from Word) would make the whole file unreadable.
+  // oxlint-disable-next-line no-control-regex -- matching control characters is the point here
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
 /** Text as block content: one paragraph per blank-line-separated block, single newlines as line breaks. */
 const paras = (s: string) => s.split(/\n{2,}/).map(p => p.trim()).filter(Boolean).map(p => `<p>${x(p).replace(/\n/g, '<br/>')}</p>`).join('')
