@@ -9,8 +9,9 @@ export interface ExportQuestion {
   presentation?: { passage?: { title?: string | null; content: string } | null } | null
 }
 import { alternatives, pairOf } from './structuredModel'
+import { toQtiPackage } from './qtiModel'
 
-export type ExportFormat = 'csv' | 'moodle' | 'aiken'
+export type ExportFormat = 'csv' | 'moodle' | 'aiken' | 'qti'
 
 const TYPE_WORD: Record<string, string> = { MULTIPLE_CHOICE: 'Trắc nghiệm', MULTIPLE_RESPONSE: 'Nhiều đáp án', TRUE_FALSE_GROUP: 'Đúng/Sai nhiều ý', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói', FILL_BLANK: 'Điền vào chỗ trống', MATCHING: 'Nối cột' }
 const LEVEL_WORD: Record<string, string> = { EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' }
@@ -115,8 +116,9 @@ export function toAiken(list: ExportQuestion[]): { text: string; skipped: number
   return { text: blocks.join('\n\n') + (blocks.length ? '\n' : ''), skipped }
 }
 
-export function exportFile(format: ExportFormat, list: ExportQuestion[]): { name: string; type: string; body: string; skipped: number } {
+export function exportFile(format: ExportFormat, list: ExportQuestion[]): { name: string; type: string; body: string | Uint8Array<ArrayBuffer>; skipped: number } {
   const stamp = new Date().toISOString().slice(0, 10)
+  if (format === 'qti') return { name: `cau-hoi-${stamp}-qti21.zip`, type: 'application/zip', body: toQtiPackage(list), skipped: 0 }
   if (format === 'moodle') return { name: `cau-hoi-${stamp}-moodle.xml`, type: 'application/xml', body: toMoodleXml(list), skipped: 0 }
   if (format === 'aiken') { const a = toAiken(list); return { name: `cau-hoi-${stamp}-aiken.txt`, type: 'text/plain;charset=utf-8', body: a.text, skipped: a.skipped } }
   return { name: `cau-hoi-${stamp}.csv`, type: 'text/csv;charset=utf-8', body: toCsv(list), skipped: 0 }

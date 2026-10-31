@@ -13,6 +13,7 @@ const MAX = 500
 const FORMATS: { value: ExportFormat; label: () => string; hint: () => string }[] = [
   { value: 'csv', label: () => t('Excel / CSV (mẫu EXAMINI)'), hint: () => t('Mở bằng Excel; cùng cột với file mẫu nên nhập lại được vào EXAMINI.') },
   { value: 'moodle', label: () => t('Moodle XML'), hint: () => t('Nhập vào ngân hàng câu hỏi Moodle (mọi loại câu; câu Nói thành Tự luận).') },
+  { value: 'qti', label: () => t('QTI 2.1 (ZIP)'), hint: () => t('Chuẩn quốc tế IMS QTI 2.1 cho TAO, Canvas, Inspera, ONYX…: mọi loại câu kèm đáp án và cách chấm; tự luận và câu Nói để chấm tay.') },
   { value: 'aiken', label: () => t('Aiken (TXT)'), hint: () => t('Định dạng văn bản đơn giản cho trắc nghiệm một đáp án; Moodle, Canvas và nhiều nền tảng đọc được.') },
 ]
 

@@ -44,7 +44,7 @@ trang **Tiến bộ** với biểu đồ điểm theo thời gian và gợi ý �
 
 **Giáo viên** — ngân hàng câu hỏi nhiều kho, chia sẻ/đồng bộ; nhập từ Word/PDF/ảnh/Excel theo mẫu; sinh câu hỏi bằng AI theo
 mức Bloom từ tài liệu (dán chữ, tải Word/PDF/ảnh hoặc dán link trang web/PDF trực tuyến); tạo đề từ ma trận/blueprint; in đề + phiếu trả lời; lịch thi, thông báo email/push; giám sát
-(chống chuyển tab, camera); chấm tay có AI gợi ý; thống kê đề (độ khó, độ phân biệt) kèm nhận xét AI; xuất CSV/Moodle/Aiken.
+(chống chuyển tab, camera); chấm tay có AI gợi ý; thống kê đề (độ khó, độ phân biệt) kèm nhận xét AI; xuất CSV/Moodle/Aiken/QTI 2.1.
 
 **Tổ chức** — lớp/khoa/trường: mời thành viên, phân vai OWNER/ADMIN/MEMBER, quyền chấm, nhật ký; thêm cả tổ chức vào kỳ thi một lần.
 

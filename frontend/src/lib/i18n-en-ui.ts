@@ -2423,4 +2423,6 @@ export const EN_UI: Record<string, string> = {
   'Đúng một phần ({0}% điểm câu)': 'Partly right ({0}% of the points)',
   'Chưa đúng': 'Not right',
   'Đề luyện tập: xem ngay đúng/sai; sau khi kiểm tra không sửa được câu này.': 'Practice: see right away whether you are right; once checked, this answer can no longer be changed.',
+  'QTI 2.1 (ZIP)': 'QTI 2.1 (ZIP)',
+  'Chuẩn quốc tế IMS QTI 2.1 cho TAO, Canvas, Inspera, ONYX…: mọi loại câu kèm đáp án và cách chấm; tự luận và câu Nói để chấm tay.': 'IMS QTI 2.1 standard for TAO, Canvas, Inspera, ONYX…: every question type with its key and scoring; essays and speaking left for manual marking.',
 }
