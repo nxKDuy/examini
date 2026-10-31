@@ -329,7 +329,8 @@ test('teacher reviews a question with AI; a wrong key is caught', async () => {
     await page.getByText(r.aiAvailable ? /AI tự giải ra đáp án khác/ : /Chưa có AI/).first().waitFor({ timeout: 90_000 })
     await done(page)
   } finally {
-    await call(`/questions/${created.id}`, 'gv.toan', { method: 'DELETE', ok: null })
+    // DELETE archives the question (it never reaches an exam); the bank stays as the seed left it.
+    await call(`/questions/${created.id}?questionVersion=${created.questionVersion}`, 'gv.toan', { method: 'DELETE', ok: null })
   }
 })
 
