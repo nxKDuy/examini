@@ -168,6 +168,7 @@ export default function ExamLobbyPage() {
         <section className="card card-body stack">
           {why ? <Notice tone="info" title={tt('Chưa bắt đầu được')}>{why}</Notice> : <p className="small">{tt('Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.')}</p>}
           {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>{tt('Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.')}</span></label>}
+          {a.canStart && <p className="xsmall muted hide-sm" style={{ margin: 0 }}>{tt('Mẹo trên máy tính: phím A–D chọn đáp án, ← → chuyển câu, F đánh dấu câu cần xem lại.')}</p>}
           {needsFullscreen && !fsUnsupported && a.canStart && <p className="small">{t('Kỳ thi yêu cầu toàn màn hình: bấm Bắt đầu sẽ bật toàn màn hình rồi mới tạo lượt làm bài.')}</p>}
           {fsUnsupported && <Notice tone="warning" title={t('Trình duyệt không hỗ trợ toàn màn hình')}>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy dùng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari). Lượt làm bài chưa được tạo.')}</Notice>}
           {fsProblem && <Notice tone="danger" live title={t('Chưa bật được toàn màn hình')}

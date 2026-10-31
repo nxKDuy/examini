@@ -2513,4 +2513,5 @@ export const EN_UI: Record<string, string> = {
   'AI đang đọc…': 'AI is reading…',
   'Điền ma trận': 'Fill the matrix',
   'Đã điền ma trận; kiểm tra lại các ô bên dưới.': 'Matrix filled; check the cells below.',
+  'Mẹo trên máy tính: phím A–D chọn đáp án, ← → chuyển câu, F đánh dấu câu cần xem lại.': 'On a computer: A–D picks an answer, ← → moves, F marks a question for review.',
 }
