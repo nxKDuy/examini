@@ -27,6 +27,13 @@ export interface SafeQuestion { questionId: string; questionVersion: number; que
 export interface Session {
   sessionId: string; examId: string; title: string; status: string; attemptNumber: number
   expiresAt: string; serverNow: string; questions: SafeQuestion[]; answers: Record<string, string>
+  /** Practice attempt: answers can be checked one by one (then locked). */
+  practice?: boolean; checks?: Record<string, PracticeCheck>
+}
+/** Verdict of one practice answer; parts: statement / gap / pair id → right; correctOptionIds for choice questions. */
+export interface PracticeCheck {
+  questionId: string; share: number; correct: boolean; correctAnswers: string[]; correctOptionIds: string[]
+  parts: Record<string, boolean>; explanation?: string | null
 }
 /** Candidate-safe own result (manual-grading-api.md). Fields the policy hides are simply absent, never null-as-zero. */
 export interface ResultItem {
@@ -86,6 +93,7 @@ export const examApi = {
   start: (examId: string) => api.post<Session>('/sessions/start', null, { params: { examId } }).then(r => r.data),
   session: (id: string) => api.get<Session>(`/sessions/${id}`).then(r => r.data),
   answer: (id: string, questionId: string, content: string) => api.post(`/sessions/${id}/answers`, { content }, { params: { questionId } }),
+  checkAnswer: (id: string, questionId: string) => api.post<PracticeCheck>(`/sessions/${id}/answers/check`, null, { params: { questionId } }).then(r => r.data),
   submit: (id: string) => api.post(`/sessions/${id}/submit`),
   /** Voice answer of a SPEAKING question: the raw recording as the body; the stored answer becomes its metadata JSON. */
   answerAudio: (id: string, questionId: string, audio: Blob, seconds: number) =>

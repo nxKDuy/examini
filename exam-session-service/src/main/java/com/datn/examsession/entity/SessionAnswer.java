@@ -32,6 +32,14 @@ public class SessionAnswer {
     @Column(name = "answer_content", columnDefinition = "TEXT")
     private String answerContent;
 
+    /** Practice only: when the student checked this answer; it is locked from then on. */
+    @Column(name = "checked_at")
+    private LocalDateTime checkedAt;
+
+    /** Practice only: the verdict shown (JSON of SessionService.PracticeCheck). */
+    @Column(name = "check_result", columnDefinition = "TEXT")
+    private String checkResult;
+
     @UpdateTimestamp
     @Column(name = "last_updated_at")
     private LocalDateTime lastUpdatedAt;

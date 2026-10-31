@@ -2418,4 +2418,9 @@ export const EN_UI: Record<string, string> = {
   'Nối cột cần 2–10 cặp.': 'A matching question needs 2–10 pairs.',
   'Nhập đủ hai vế cho mọi cặp (không dùng “=>” trong nội dung).': 'Fill in both items of every pair (do not use “=>” inside them).',
   'Các vế trong câu nối cột không được trùng nhau.': 'Items in a matching question must not repeat.',
+  // Practice feedback
+  'Chính xác!': 'Correct!',
+  'Đúng một phần ({0}% điểm câu)': 'Partly right ({0}% of the points)',
+  'Chưa đúng': 'Not right',
+  'Đề luyện tập: xem ngay đúng/sai; sau khi kiểm tra không sửa được câu này.': 'Practice: see right away whether you are right; once checked, this answer can no longer be changed.',
 }

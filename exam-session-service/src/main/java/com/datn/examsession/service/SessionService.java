@@ -73,7 +73,7 @@ public class SessionService {
         var s=ExamSession.builder().examId(examId).userId(user).startTime(LocalDateTime.ofInstant(now,ZoneOffset.UTC))
             .expiresAt(now.plusSeconds(exam.durationMinutes()*60L)).status(ExamSession.Status.IN_PROGRESS)
             .integrityPolicy(exam.integrityPolicy()==null?com.datn.examsession.dto.IntegrityPolicy.disabled():exam.integrityPolicy())
-            .attemptNumber(Math.toIntExact(attempts+1)).questions(questions).examTitle(exam.title()).build();
+            .attemptNumber(Math.toIntExact(attempts+1)).questions(questions).examTitle(exam.title()).practice(exam.practice()).build();
         s.setExpiresAt(admission.deadlineAt());s.setScheduleRevision(admission.scheduleRevision());s.setStartAdmissionId(admission.admissionId());
         s.setAttemptNumber(nextAttemptNumber(examId,user)); // monotonic and never reused, independent of how many rows exist
         // Immutable snapshot order is persisted for this attempt and reused on refresh.
@@ -196,8 +196,37 @@ public class SessionService {
         if("SPEAKING".equals(q.questionType()) && !content.isEmpty())throw error(400,"Speaking answers are recorded through the audio upload");
         if(!content.isEmpty())checkStructured(json,q,content);
         var a=answers.findBySessionIdAndQuestionId(sessionId,questionId).orElseGet(()->SessionAnswer.builder().session(s).questionId(questionId).build());
+        if(a.getCheckedAt()!=null)throw error(409,"Câu này đã kiểm tra đáp án nên không sửa được");
         a.setAnswerContent(content);answers.save(a);
     }
+
+    /**
+     * Practice attempts: the verdict for one saved answer, with the key and explanation. The answer is locked afterwards,
+     * so checking cannot be used to try options one by one. Essay and speaking answers are graded by teachers, not here.
+     */
+    @Transactional(noRollbackFor=ResponseStatusException.class)
+    public PracticeCheck checkAnswer(UUID sessionId,UUID userId,UUID questionId){
+        var s=owned(sessionId,userId);expire(s);
+        if(s.getStatus()!=ExamSession.Status.IN_PROGRESS)throw error(409,"Session ended");
+        if(!s.isPractice())throw error(409,"Chỉ đề luyện tập mới xem đáp án ngay");
+        var q=s.getQuestions().stream().filter(v->v.questionId().equals(questionId)).findFirst().orElseThrow(()->error(400,"Question outside this exam"));
+        if(!PracticeScoring.checkable(q.questionType()))throw error(409,"Câu tự luận và câu nói do giáo viên chấm");
+        var a=answers.findBySessionIdAndQuestionId(sessionId,questionId).orElse(null);
+        if(a!=null&&a.getCheckedAt()!=null)return readCheck(a.getCheckResult());
+        if(a==null||a.getAnswerContent()==null||a.getAnswerContent().isBlank())throw error(400,"Hãy trả lời trước khi kiểm tra");
+        if(token.isBlank())throw error(503,"Exam service integration not configured");
+        var key=exams.keys(s.getExamId(),token).stream().filter(k->k.questionId().equals(questionId)).findFirst().orElseThrow(()->error(409,"Published snapshot unavailable"));
+        var check=PracticeScoring.check(key,a.getAnswerContent());
+        try{a.setCheckResult(json.writeValueAsString(check));}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException(e);}
+        a.setCheckedAt(LocalDateTime.now(ZoneOffset.UTC));answers.save(a);
+        return check;
+    }
+    private PracticeCheck readCheck(String raw){
+        try{return raw==null?null:json.readValue(raw,PracticeCheck.class);}catch(Exception e){return null;}
+    }
+    /** share: 0..1 of the points; parts: per option id, whether that statement/gap/pair is right; correctOptionIds for choice types. */
+    public record PracticeCheck(UUID questionId,double share,boolean correct,List<String> correctAnswers,List<UUID> correctOptionIds,
+                                Map<String,Boolean> parts,String explanation){}
     public void submitExam(UUID id,UUID user){var s=owned(id,user);expire(s);if(s.getStatus()==ExamSession.Status.IN_PROGRESS)finish(s,ExamSession.Status.SUBMITTED);}
     public void autoSubmitExam(UUID id){expire(load(id));}
     public SessionDetailDto getSessionDetails(UUID id){var s=load(id);expire(s);return new SessionDetailDto(s.getId(),s.getExamId(),s.getUserId(),s.getStatus().name(),s.getExamTitle(),s.getAttemptNumber(),s.getStartTime(),s.getEndTime(),answers.findBySessionId(id).stream().map(a->new SessionDetailDto.AnswerDto(a.getQuestionId(),a.getAnswerContent())).toList(),s.getInvalidatedAt(),s.getInvalidationReason());}
@@ -291,8 +320,12 @@ public class SessionService {
         }
         return new StaffAttemptDto(s.getId(),s.getUserId(),s.getAttemptNumber(),s.getStatus().name(),s.getStartTime(),s.getEndTime(),s.getExpiresAt(),true,s.getInvalidatedAt(),s.getInvalidatedBy(),s.getInvalidationReason());
     }
-    private StartSessionResponse response(ExamSession s){var saved=new HashMap<UUID,String>();answers.findBySessionId(s.getId()).forEach(a->saved.put(a.getQuestionId(),a.getAnswerContent()));return new StartSessionResponse(s.getId(),s.getExamId(),s.getExamTitle(),s.getStatus().name(),s.getAttemptNumber(),s.getExpiresAt(),Instant.now(),s.getQuestions(),saved);}
-    public record StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers){}
+    private StartSessionResponse response(ExamSession s){var saved=new HashMap<UUID,String>();answers.findBySessionId(s.getId()).forEach(a->saved.put(a.getQuestionId(),a.getAnswerContent()));var checks=new HashMap<UUID,PracticeCheck>();
+        if(s.isPractice())answers.findBySessionId(s.getId()).forEach(a->{if(a.getCheckedAt()!=null){var c=readCheck(a.getCheckResult());if(c!=null)checks.put(a.getQuestionId(),c);}});
+        return new StartSessionResponse(s.getId(),s.getExamId(),s.getExamTitle(),s.getStatus().name(),s.getAttemptNumber(),s.getExpiresAt(),Instant.now(),s.getQuestions(),saved,s.isPractice(),checks);}
+    public record StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers,boolean practice,Map<UUID,PracticeCheck> checks){
+        public StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers){this(sessionId,examId,title,status,attemptNumber,expiresAt,serverNow,questions,answers,false,Map.of());}
+    }
     public record ScheduleAvailability(long attempts,boolean resumable,Instant activeExpiresAt,long activeSessions,UUID latestSessionId,String latestSessionStatus){}
     public record RecipientProgress(UUID userId,boolean started,boolean submitted){}
     public record AdmissionStatus(UUID examId,UUID admissionId,UUID sessionId,boolean started){}

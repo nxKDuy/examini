@@ -603,6 +603,13 @@ a.stat:hover { background: var(--color-subtle); }
   .match-edit-row { grid-template-columns: auto 1fr auto; } .match-edit-row > span[aria-hidden="true"]:not(.option-key) { display: none; }
   .match-edit-row > input:nth-of-type(2) { grid-column: 2 / 3; }
 }
+/* Practice: verdict after "Kiểm tra đáp án". */
+.practice-feedback { border: 1px solid var(--color-border); border-left-width: 4px; padding: 10px 14px; display: grid; gap: 6px; }
+.practice-feedback[data-verdict="right"] { border-color: var(--color-success); background: var(--color-success-soft); }
+.practice-feedback[data-verdict="partial"] { border-color: var(--color-warning, #b26a00); }
+.practice-feedback[data-verdict="wrong"] { border-color: var(--color-danger); background: var(--color-danger-soft); }
+.choice.choice[data-state="right"], .tf-row[data-state="right"] { border-color: var(--color-success); box-shadow: inset 6px 0 0 var(--color-success); opacity: 1; }
+.choice.choice[data-state="wrong"], .tf-row[data-state="wrong"] { border-color: var(--color-danger); box-shadow: inset 6px 0 0 var(--color-danger); opacity: 1; }
 /* Phone: the three attempt navigation buttons must fit without horizontal scrolling. */
 @media (max-width: 420px) { .take-nav { gap: 4px; } .take-nav .btn { padding-left: 10px; padding-right: 10px; font-size: 0.875rem; } }
 

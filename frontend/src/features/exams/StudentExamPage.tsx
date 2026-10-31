@@ -19,7 +19,10 @@ import { QUESTION_TYPE_LABEL, formatClock, formatDuration, formatScore } from '.
 import { MediaImage, MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 import { blockOf, countWords, wordState } from '../question-bank/media/mediaModel'
 import SpeakingRecorder from './SpeakingRecorder'
-import { ClozeText, MatchingAnswer } from './StructuredAnswer'
+import { ClozeText, MatchingAnswer, type PartState } from './StructuredAnswer'
+import PracticeFeedback from './PracticeFeedback'
+import { CHECKABLE, partStates } from './practiceModel'
+import type { PracticeCheck } from './examApi'
 import { isAnswered, judge, judgedCount, parseChosen, parseJudged, statementLabel, toggleChosen } from '../question-bank/choiceModel'
 
 type SaveState = 'pending' | 'saving' | 'saved' | 'error'
@@ -34,6 +37,8 @@ export default function StudentExamPage() {
   const [loadError, setLoadError] = useState<unknown>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({})
+  const [checks, setChecks] = useState<Record<string, PracticeCheck>>({})
+  const [checking, setChecking] = useState('')
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [actionError, setActionError] = useState('')
   const [index, setIndex] = useState(0)
@@ -75,6 +80,7 @@ export default function StudentExamPage() {
       if (autoSubmittedRef.current) return
       if (s.status !== 'IN_PROGRESS') { goResult(); return }
       setSession(s)
+      if (s.checks) setChecks(c => ({ ...s.checks, ...c }))
       if (initial) {
         latest.current = { ...s.answers }
         setAnswers({ ...s.answers })
@@ -178,6 +184,17 @@ export default function StudentExamPage() {
     })
     return run
   }, [id, setQState, sync])
+
+  /** Practice: saves any pending typing first, then asks the server for the verdict (the answer is locked after). */
+  async function checkAnswer(qid: string) {
+    setChecking(qid); setActionError('')
+    try {
+      if (timers.current[qid] || saveState[qid] === 'error' || saveState[qid] === 'pending') await persist(qid)
+      else await queues.current[qid]
+      const c = await examApi.checkAnswer(id!, qid)
+      setChecks(x => ({ ...x, [qid]: c }))
+    } catch (e) { setActionError(errorText(e)) } finally { setChecking('') }
+  }
 
   function change(qid: string, value: string, immediate: boolean) {
     latest.current[qid] = value
@@ -310,15 +327,23 @@ export default function StudentExamPage() {
             {block && <PassageView presentation={q.presentation} sessionId={session.sessionId}
               range={tt('Dùng cho câu {0}–{1}', { 0: block.start + 1, 1: block.end + 1 })} />}
             {q.questionType === 'FILL_BLANK'
-              ? <ClozeText content={q.content} gapIds={[...q.options].sort((a, b) => a.displayOrder - b.displayOrder).map(o => o.id)} value={answers[q.questionId] ?? ''} disabled={locked}
+              ? <ClozeText content={q.content} gapIds={[...q.options].sort((a, b) => a.displayOrder - b.displayOrder).map(o => o.id)} value={answers[q.questionId] ?? ''} disabled={locked || !!checks[q.questionId]}
+                  states={partStates(checks[q.questionId], [])}
                   onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />
               : <p className="question-text">{q.content}</p>}
             <MediaList media={q.presentation?.media} maxPlays={q.presentation?.maxPlays} sessionId={session.sessionId} label={tt('Câu {0}', { 0: index + 1 })} />
             {q.questionType === 'FILL_BLANK' ? null : q.questionType === 'SPEAKING'
               ? <SpeakingRecorder key={q.questionId} sessionId={session.sessionId} questionId={q.questionId} value={answers[q.questionId] ?? ''} disabled={locked}
                   maxSeconds={q.presentation?.maxRecordSeconds ?? 120} onSaved={v => spoken(q.questionId, v)} />
-              : <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked}
+              : <Answer question={q} value={answers[q.questionId] ?? ''} disabled={locked || !!checks[q.questionId]} check={checks[q.questionId]}
                   onChange={(v, immediate) => change(q.questionId, v, immediate)} onBlur={() => { if (timers.current[q.questionId]) void persist(q.questionId) }} />}
+            {session.practice && CHECKABLE.includes(q.questionType) && (checks[q.questionId]
+              ? <PracticeFeedback check={checks[q.questionId]} />
+              : <div className="row" style={{ gap: 8 }}>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={locked || checking === q.questionId || !isAnswered(q.questionType, answers[q.questionId])}
+                    onClick={() => void checkAnswer(q.questionId)}>{checking === q.questionId ? tt('Đang kiểm tra…') : tt('Kiểm tra đáp án')}</button>
+                  <span className="xsmall muted">{tt('Đề luyện tập: xem ngay đúng/sai; sau khi kiểm tra không sửa được câu này.')}</span>
+                </div>)}
             {saveState[q.questionId] === 'error' && (
               <div className="row"><span className="field-error">{tt('Câu này chưa lưu được.')}</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => void persist(q.questionId)}>{tt('Thử lưu lại')}</button></div>
@@ -409,17 +434,19 @@ function SaveIndicator({ online, errors, busy, lastSavedAt }: { online: boolean;
   return <span role="status" className="row xsmall muted" style={{ gap: 6 }}>{content}</span>
 }
 
-function Answer({ question, value, disabled, onChange, onBlur }: {
-  question: SafeQuestion; value: string; disabled: boolean; onChange: (v: string, immediate: boolean) => void; onBlur: () => void
+function Answer({ question, value, disabled, onChange, onBlur, check }: {
+  question: SafeQuestion; value: string; disabled: boolean; onChange: (v: string, immediate: boolean) => void; onBlur: () => void; check?: PracticeCheck
 }) {
   useT()
+  // Practice verdict per option / statement / pair: shown only once the answer was checked.
+  const states: Record<string, PartState> = partStates(check, question.questionType === 'MULTIPLE_RESPONSE' ? parseChosen(value) : value && !value.startsWith('{') ? [value] : [])
   const name = `answer-${question.questionId}`
   if (question.questionType === 'MULTIPLE_CHOICE' || question.questionType === 'TRUE_FALSE') {
     return (
       <fieldset className="stack-sm">
         <legend className="sr-only">{tt('Chọn một đáp án')}</legend>
         {question.options.map((o, i) => (
-          <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
+          <label key={o.id} className="choice" style={{ alignItems: 'center' }} data-state={states[o.id]}>
             <input type="radio" name={name} value={o.id} checked={value === o.id} disabled={disabled} onChange={() => onChange(o.id, true)} className="sr-only" />
             <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
             <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
@@ -436,7 +463,7 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
       <fieldset className="stack-sm">
         <legend className="small" style={{ marginBottom: 4 }}><strong>{tt('Chọn tất cả đáp án đúng')}</strong> <span className="muted">{tt('(có thể nhiều hơn một)')}</span></legend>
         {question.options.map((o, i) => (
-          <label key={o.id} className="choice" style={{ alignItems: 'center' }}>
+          <label key={o.id} className="choice" style={{ alignItems: 'center' }} data-state={states[o.id]}>
             <input type="checkbox" value={o.id} checked={chosen.has(o.id)} disabled={disabled} onChange={e => onChange(toggleChosen(value, o.id, e.target.checked), true)} className="sr-only" />
             <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span>
             <span style={{ flex: 1 }}><span className="prewrap">{o.content}</span>
@@ -456,7 +483,7 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
         {question.options.map((o, i) => {
           const v = judged[o.id]
           return (
-            <div key={o.id} className="tf-row" data-judged={v !== undefined}>
+            <div key={o.id} className="tf-row" data-judged={v !== undefined} data-state={states[o.id]}>
               <span className="option-key" aria-hidden>{statementLabel(i).slice(0, 1)}</span>
               <span className="prewrap" id={`${name}-${i}`}>{o.content}</span>
               <span className="tf-toggle" role="radiogroup" aria-labelledby={`${name}-${i}`}>
@@ -471,7 +498,7 @@ function Answer({ question, value, disabled, onChange, onBlur }: {
     )
   }
   if (question.questionType === 'MATCHING') {
-    return <MatchingAnswer items={question.options} targets={question.presentation?.matchTargets ?? []} value={value} disabled={disabled} onChange={onChange} />
+    return <MatchingAnswer items={question.options} targets={question.presentation?.matchTargets ?? []} value={value} disabled={disabled} onChange={onChange} states={states} />
   }
   if (question.questionType === 'SHORT_ANSWER') {
     return (

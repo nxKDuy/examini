@@ -9,7 +9,7 @@ createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.end(); return }
   let raw = ''
   for await (const chunk of req) raw += chunk
-  const body = raw ? JSON.parse(raw) : {}
+  const body = (raw ? JSON.parse(raw) : null) ?? {}
   const url = new URL(req.url, 'http://localhost')
   const identity = body.email?.split('@')[0] || req.headers.authorization?.replace('Bearer fixture-', '') || 'student'
   const bank = bankFixture(url, req.method, body, identity)
@@ -63,6 +63,13 @@ createServer(async (req, res) => {
           options: [{ id: 'm1', content: 'Việt Nam', displayOrder: 0 }, { id: 'm2', content: 'Nhật Bản', displayOrder: 1 }, { id: 'm3', content: 'Pháp', displayOrder: 2 }, { id: 'm4', content: 'Ai Cập', displayOrder: 3 }],
           presentation: { matchTargets: ['Cairo', 'Hà Nội', 'Paris', 'Tokyo'] } }],
       answers: { qf: JSON.stringify({ g1: 'Hà Nội' }), qm: JSON.stringify({ m1: 'Hà Nội', m3: 'Paris' }) } }
+    // Practice attempt: one answer already checked, one waiting for "Kiểm tra đáp án".
+    else if (url.pathname === '/sessions/s-practice') data = { sessionId: 's-practice', examId: 'e1', title: 'Luyện tập thủ đô', status: 'IN_PROGRESS', attemptNumber: 1, expiresAt: new Date(Date.now() + 36e5).toISOString(), serverNow: nowIso, practice: true,
+      questions: [{ questionId: 'pm', questionVersion: 1, questionType: 'MULTIPLE_CHOICE', content: 'Thủ đô của Nhật Bản là thành phố nào?', points: 1, position: 0, options: [{ id: 'o1', content: 'Kyoto', displayOrder: 0 }, { id: 'o2', content: 'Tokyo', displayOrder: 1 }, { id: 'o3', content: 'Osaka', displayOrder: 2 }] },
+        { questionId: 'pf', questionVersion: 1, questionType: 'FILL_BLANK', content: 'Thủ đô của Pháp là ___.', points: 1, position: 1, options: [{ id: 'pg', content: '', displayOrder: 0 }] }],
+      answers: { pm: 'o1', pf: '{"pg":"Paris"}' },
+      checks: { pm: { questionId: 'pm', share: 0, correct: false, correctAnswers: ['Tokyo'], correctOptionIds: ['o2'], parts: {}, explanation: 'Tokyo là thủ đô Nhật Bản từ năm 1869.' } } }
+    else if (url.pathname === '/sessions/s-practice/answers/check') data = { questionId: 'pf', share: 1, correct: true, correctAnswers: ['(1) Paris'], correctOptionIds: [], parts: { pg: true }, explanation: null }
     else if (parts[2] === 'members') data = {}
     else if (parts[2] === 'schedule') data = { examId: 'e1', startAt: null, endAt: null, timezone: 'UTC', deadlineRule: 'FULL_DURATION', autoOpen: false, autoClose: false, reminderOffsetsMinutes: [], scheduleRevision: 1, lifecycleRevision: 1, serverNow: nowIso }
     else if (parts[2] === 'lobby') data = exam
