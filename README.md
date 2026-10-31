@@ -38,13 +38,19 @@ Giao kèo API và sự kiện giữa các service nằm trong [`contracts/`](con
 
 ## Tính năng theo vai trò
 
-**Học sinh** — tham gia kỳ thi bằng mã/được giao/công khai; làm bài với 7 dạng câu hỏi (trắc nghiệm một đáp án, nhiều đáp án, đúng/sai,
-đúng/sai theo chùm kiểu THPT 2025, trả lời ngắn, tự luận, nói — ghi âm), câu hỏi có thể kèm đoạn văn, ảnh, âm thanh; xem kết quả và lời giải;
-trang **Tiến bộ** với biểu đồ điểm theo thời gian và gợi ý ôn tập do AI viết.
+**Học sinh** — tham gia kỳ thi bằng mã/được giao/công khai; làm bài với 9 dạng câu hỏi (trắc nghiệm một đáp án, nhiều đáp án,
+đúng/sai, đúng/sai theo chùm kiểu THPT 2025, điền vào chỗ trống, nối cột, trả lời ngắn, tự luận, nói — ghi âm), câu hỏi có thể kèm
+đoạn văn, ảnh, âm thanh; trên laptop làm bài bằng phím tắt (A–D, ←/→) và đánh dấu câu cần xem lại; đề luyện tập báo đúng/sai ngay.
+Xem lại bài theo từng câu (lọc câu sai), **gia sư AI** giải thích vì sao sai dựa trên chính câu trả lời của mình và
+**luyện thêm câu tương tự** do AI tạo (AI tự giải lại để loại câu có hai đáp án); trang **Tiến bộ** với biểu đồ và gợi ý ôn tập.
+Thông báo trong web, email, trình duyệt; đồng bộ lịch thi với Google Calendar, iPhone, Outlook.
 
-**Giáo viên** — ngân hàng câu hỏi nhiều kho, chia sẻ/đồng bộ; nhập từ Word/PDF/ảnh/Excel theo mẫu; sinh câu hỏi bằng AI theo
-mức Bloom từ tài liệu (dán chữ, tải Word/PDF/ảnh hoặc dán link trang web/PDF trực tuyến); tạo đề từ ma trận/blueprint; in đề + phiếu trả lời; lịch thi, thông báo email/push; giám sát
-(chống chuyển tab, camera); chấm tay có AI gợi ý; thống kê đề (độ khó, độ phân biệt) kèm nhận xét AI; xuất CSV/Moodle/Aiken/QTI 2.1.
+**Giáo viên** — ngân hàng câu hỏi nhiều kho, chia sẻ/đồng bộ; nhập từ Word/PDF/ảnh/Excel theo mẫu; **sinh câu hỏi bằng AI**
+theo mức Bloom từ chủ đề, tài liệu hoặc link trang web/PDF (phương án nhiễu từ lỗi sai thường gặp, AI giải lại để kiểm tra đáp án,
+bộ lọc chất lượng); **rà soát bằng AI** câu tự soạn (bắt đáp án đặt sai, câu mơ hồ); tạo đề từ ma trận/khung đề, có thể **mô tả đề
+bằng một câu để AI điền ma trận**; in đề + phiếu trả lời theo mã đề; lịch thi tự mở/đóng, nhắc lịch; giám sát (toàn màn hình,
+chuyển tab, camera); chấm tay có **AI gợi ý điểm** tự luận (đọc cả bài đọc, nhận xét điểm mạnh/cần cải thiện); thống kê đề (độ khó,
+độ phân biệt) kèm nhận xét AI; xuất CSV/Moodle/Aiken/QTI 2.1. Trên laptop: tìm nhanh **Ctrl+K**, duyệt kho câu hỏi bằng ↑/↓.
 
 **Tổ chức** — lớp/khoa/trường: mời thành viên, phân vai OWNER/ADMIN/MEMBER, quyền chấm, nhật ký; thêm cả tổ chức vào kỳ thi một lần.
 
