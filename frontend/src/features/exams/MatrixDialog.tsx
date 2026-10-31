@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Grid3x3, Save, Trash2, Wand2 } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Grid3x3, Save, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { bankApi } from '../banks/bankApi'
 import { BANK_TYPE_LABEL } from '../banks/bankModel'
 import { questionBankApi } from '../question-bank/questionApi'
@@ -95,6 +95,20 @@ export default function MatrixDialog({ inExam, onGenerate, onClose }: {
     setMatrix(m => ({ ...m, points: { EASY: each, MEDIUM: each, HARD: each } }))
   }
 
+  // "Mô tả đề" → AI fills the cells over the ticked topics; the teacher still sees and edits every number.
+  const [description, setDescription] = useState('')
+  const plan = useMutation({
+    mutationFn: () => questionBankApi.matrixPlan({ description: description.trim(), questionType: matrix.questionType,
+      topics: matrix.topics.map(tp => ({ categoryId: tp.categoryId, name: tp.name, available: availability?.[tp.categoryId] ?? {} })) }),
+    onSuccess: r => {
+      setMatrix(m => {
+        const counts: Matrix['counts'] = {}
+        for (const c of r.cells) (counts[c.categoryId] ??= {})[c.level as typeof LEVELS[number]] = c.count
+        return { ...m, counts, points: { ...m.points, ...r.points } }
+      })
+    },
+  })
+
   function save() {
     const name = templateName.trim()
     if (!name || !userId) return
@@ -146,6 +160,18 @@ export default function MatrixDialog({ inExam, onGenerate, onClose }: {
             onChange={e => toggleTopic(c.id, c.name, e.target.checked)} /> <span>{c.name}</span></label>)}
         </fieldset>}
         {subjectId && categories.data?.length === 0 && <Notice tone="info">{t('Môn này chưa có chủ đề (danh mục). Tạo danh mục trong Kho câu hỏi trước.')}</Notice>}
+
+        {matrix.topics.length > 0 && <div className="mx-ai">
+          <label className="field-label" htmlFor="mx-desc"><Sparkles size={14} aria-hidden /> {t('Mô tả đề, AI điền ma trận giúp bạn (không bắt buộc)')}</label>
+          <div className="mx-ai-row">
+            <textarea id="mx-desc" className="input" rows={2} maxLength={1000} value={description} onChange={e => setDescription(e.target.value)}
+              placeholder={t('Ví dụ: đề 45 phút, 10 câu dễ và 8 câu trung bình về hàm số, 4 câu khó về logarit, thang điểm 10')} />
+            <button type="button" className="btn btn-secondary" disabled={!description.trim() || plan.isPending} aria-busy={plan.isPending} onClick={() => plan.mutate()}>
+              <Sparkles size={16} aria-hidden /> {plan.isPending ? t('AI đang đọc…') : t('Điền ma trận')}</button>
+          </div>
+          {plan.isError && <span className="field-error">{errorText(plan.error)}</span>}
+          {plan.data && <p className="small" role="status" style={{ margin: 0 }}>{plan.data.notes.length ? plan.data.notes.join(' ') : t('Đã điền ma trận; kiểm tra lại các ô bên dưới.')}</p>}
+        </div>}
 
         {matrix.topics.length > 0 && <>
           <div className="matrix-quick">

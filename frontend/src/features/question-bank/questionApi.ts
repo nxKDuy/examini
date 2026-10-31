@@ -52,7 +52,12 @@ export interface Review { id: string; questionVersion: number; reviewerId: strin
 export interface ImportResult { totalRows: number; imported: number; failed: number; errors: string[] }
 export interface AiReview { keyCheck: 'AGREES' | 'DISPUTED' | 'UNCHECKED'; issues: string[]; suggestion: string | null; aiAvailable: boolean }
 
+export interface MatrixPlan { cells: { categoryId: string; level: string; count: number }[]; points: Partial<Record<'EASY' | 'MEDIUM' | 'HARD', number>>; notes: string[] }
+
 export const questionBankApi = {
+  /** AI reads a sentence describing the exam and fills the matrix over the given topics. */
+  matrixPlan: (body: { description: string; questionType?: string; topics: { categoryId: string; name: string; available: Partial<Record<string, number>> }[] }) =>
+    api.post<MatrixPlan>('/questions/ai/matrix-plan', body, { timeout: 60_000 }).then(r => r.data),
   /** AI review of one question; nothing is saved. */
   aiReview: (id: string) => api.post<AiReview>(`/questions/${id}/ai-review`, undefined, { timeout: 90_000 }).then(r => r.data),
   getSubjects: () => api.get<Subject[]>('/subjects').then(r => r.data),

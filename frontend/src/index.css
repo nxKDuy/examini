@@ -706,3 +706,9 @@ a.stat:hover { background: var(--color-subtle); }
 .practice-opt:disabled { cursor: default; }
 .practice-opt[data-state="right"] { border-color: #15803d; box-shadow: inset 4px 0 0 #15803d; background: #f0fdf4; }
 .practice-opt[data-state="wrong"] { border-color: #c2410c; box-shadow: inset 4px 0 0 #c2410c; background: #fff7ed; }
+
+.mx-ai { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--color-accent); background: #f4f6ff; }
+.mx-ai .field-label { display: flex; align-items: center; gap: 6px; }
+.mx-ai-row { display: flex; gap: 10px; align-items: stretch; }
+.mx-ai-row textarea { flex: 1; min-width: 0; resize: vertical; }
+@media (max-width: 640px) { .mx-ai-row { flex-direction: column; } }

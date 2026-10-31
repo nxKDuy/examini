@@ -177,3 +177,13 @@ a port other than 80/443, a name without a dot or ending in `.local`/`.internal`
 private, link-local (cloud metadata), CGNAT, multicast or unique-local ranges, more than 3 redirects (each hop re-checked),
 a body over 3 MB, a type other than HTML/text/PDF, or a page with almost no text. Timeouts: connect 5 s, read 10 s
 (properties `question-bank.ai.web-connect-ms` / `question-bank.ai.web-read-ms`).
+
+## AI helpers for authors (additive, 2026-11-01)
+
+- `POST /questions/{id}/ai-review` → `{ keyCheck: AGREES|DISPUTED|UNCHECKED, issues: string[], suggestion: string|null, aiAvailable }`.
+  Author roles who may read the question. Rule checks (same as AI drafts) + a blind solve compared with the stored key +
+  a short critique. Nothing is changed.
+- `POST /questions/ai/matrix-plan` body `{ description, topics: [{ categoryId, name, available: {EASY,MEDIUM,HARD} }], questionType? }`
+  → `{ cells: [{ categoryId, level, count }], points: {EASY?,MEDIUM?,HARD?}, notes: string[] }`. Only the given topic ids
+  and the three levels are accepted; 422 when nothing usable comes back, 503 without AI.
+Both count as AI calls at the gateway.

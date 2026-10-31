@@ -2508,4 +2508,9 @@ export const EN_UI: Record<string, string> = {
   'Câu luyện tập do AI tạo (không tính điểm)': 'AI practice question (not scored)',
   'Chưa đúng, đáp án là {0}.': 'Not quite, the answer is {0}.',
   'Câu khác': 'Another one',
+  'Mô tả đề, AI điền ma trận giúp bạn (không bắt buộc)': 'Describe the exam and AI fills the matrix (optional)',
+  'Ví dụ: đề 45 phút, 10 câu dễ và 8 câu trung bình về hàm số, 4 câu khó về logarit, thang điểm 10': 'E.g. 45 minutes, 10 easy and 8 medium on functions, 4 hard on logarithms, out of 10',
+  'AI đang đọc…': 'AI is reading…',
+  'Điền ma trận': 'Fill the matrix',
+  'Đã điền ma trận; kiểm tra lại các ô bên dưới.': 'Matrix filled; check the cells below.',
 }
