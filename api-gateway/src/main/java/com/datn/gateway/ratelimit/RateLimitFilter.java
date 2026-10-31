@@ -39,7 +39,7 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         return List.of(
                 new Rule("password-mail", l.passwordMail(), r -> post(r) && path(r).matches("/auth/password/(forgot|reset)")),
                 new Rule("sign-in", l.signIn(), r -> post(r) && path(r).matches("/auth/(login|register|google)")),
-                new Rule("ai", l.ai(), r -> (post(r) && path(r).matches("/question-imports/ai(/material|/material-url)?|/grades/session/[^/]+/questions/[^/]+/explain|/submissions/[^/]+/items/[^/]+/ai-suggest|/questions/[^/]+/ai-review"))
+                new Rule("ai", l.ai(), r -> (post(r) && path(r).matches("/question-imports/ai(/material|/material-url)?|/grades/session/[^/]+/questions/[^/]+/(explain|practice)|/submissions/[^/]+/items/[^/]+/ai-suggest|/questions/[^/]+/ai-review"))
                         || ("true".equals(r.getQueryParams().getFirst("ai")) && path(r).matches("/analytics/exams/[^/]+/insights|/grades/my/insights"))),
                 new Rule("upload", l.upload(), r -> post(r) && path(r).matches("/question-media|/question-imports|/sessions/[^/]+/answers/[^/]+/audio")));
     }

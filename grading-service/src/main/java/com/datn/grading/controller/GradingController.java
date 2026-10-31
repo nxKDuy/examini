@@ -11,6 +11,11 @@ public class GradingController {
     private final com.datn.grading.service.StudentProgressService progress;
     private final com.datn.grading.service.AnswerTutor tutor;
     /** "Why was I wrong?" on one question of the student's own released result (only when the key is visible). */
+    /** A fresh practice question on the same skill as a missed question (AI, never stored). */
+    @PostMapping("/grades/session/{id}/questions/{questionId}/practice")
+    public com.datn.grading.service.AnswerTutor.Practice practice(@PathVariable UUID id,@PathVariable UUID questionId,@RequestParam(defaultValue="vi") String lang,@RequestAttribute UUID actor){
+        return tutor.practice(id,questionId,actor,lang);
+    }
     @PostMapping("/grades/session/{id}/questions/{questionId}/explain")
     public com.datn.grading.service.AnswerTutor.Explanation explain(@PathVariable UUID id,@PathVariable UUID questionId,@RequestParam(defaultValue="vi") String lang,@RequestAttribute UUID actor){
         return tutor.explain(id,questionId,actor,lang);

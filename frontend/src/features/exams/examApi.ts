@@ -101,11 +101,15 @@ export const examApi = {
       { params: { seconds }, headers: { 'Content-Type': audio.type.split(';')[0] || 'audio/webm' } }).then(r => r.data),
   answerAudioBlob: (id: string, questionId: string) => api.get<Blob>(`/sessions/${id}/answers/${questionId}/audio`, { responseType: 'blob' }).then(r => r.data),
   result: (id: string) => api.get<Result>(`/grades/session/${id}`).then(r => r.data),
+  /** A fresh AI practice question on the same skill as a missed question (never stored). */
+  practice: (sessionId: string, questionId: string, lang: string) =>
+    api.post<PracticeQuestion>(`/grades/session/${sessionId}/questions/${questionId}/practice`, undefined, { params: { lang }, timeout: 60_000 }).then(r => r.data),
   /** AI tutor on one question of the student's own released result (only when the key is visible). */
   explain: (sessionId: string, questionId: string, lang: string) =>
     api.post<TutorExplanation>(`/grades/session/${sessionId}/questions/${questionId}/explain`, undefined, { params: { lang }, timeout: 60_000 }).then(r => r.data),
 }
 
+export interface PracticeQuestion { question: string; options: string[]; answer: number; explanation: string }
 export interface TutorExplanation { verdict: 'CORRECT' | 'PARTIAL' | 'WRONG' | 'UNANSWERED' | 'UNKNOWN'; explanation: string; tips: string[]; source: 'AI' | 'RULES'; model: string | null }
 export interface PaperQuestion {
   questionId: string; questionVersion: number; questionType: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | string

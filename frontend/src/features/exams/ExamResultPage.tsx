@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, Hourglass, PenLine, PlayCircle, Sparkles } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Dumbbell, Hourglass, PenLine, PlayCircle, Sparkles } from 'lucide-react'
 import { examApi, type ResultItem } from './examApi'
 import { errorText } from '../../lib/errors'
 import { useLangStore } from '../../lib/i18n'
@@ -151,7 +151,10 @@ function QuestionResult({ q, verdict, sessionId }: { q: ResultItem; verdict: Ver
       {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(['TRUE_FALSE_GROUP', 'FILL_BLANK', 'MATCHING'].includes(q.questionType) ? '\n' : ' · ')}</p></div>}
       {q.explanation?.trim() && <div className="small" aria-label={t('Giải thích')}><span className="xsmall muted">{t('Giải thích')}</span><p className="prewrap">{q.explanation}</p></div>}
       {q.feedback && <div className="small"><span className="xsmall muted">{t('Nhận xét')}</span><p className="prewrap">{q.feedback}</p></div>}
-      {correct.length > 0 && verdict !== 'right' && verdict !== 'unknown' && <AskTutor sessionId={sessionId} questionId={q.questionId} />}
+      {correct.length > 0 && verdict !== 'right' && verdict !== 'unknown' && <>
+        <AskTutor sessionId={sessionId} questionId={q.questionId} />
+        <PracticeMore sessionId={sessionId} questionId={q.questionId} />
+      </>}
     </li>
   )
 }
@@ -173,6 +176,44 @@ function AskTutor({ sessionId, questionId }: { sessionId: string; questionId: st
       <div className="xsmall muted row" style={{ gap: 6 }}><Sparkles size={13} aria-hidden /> {ask.data.source === 'AI' ? t('Gia sư AI giải thích riêng cho bài làm của bạn') : t('Giải thích từ đáp án và lời giải của giáo viên')}</div>
       <p className="prewrap small">{ask.data.explanation}</p>
       {ask.data.tips.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{ask.data.tips.map(tip => <li key={tip}>{tip}</li>)}</ul>}
+    </div>
+  )
+}
+
+/** "Luyện thêm câu tương tự": one new AI question on the same skill; pick an option to see right/wrong and why. */
+function PracticeMore({ sessionId, questionId }: { sessionId: string; questionId: string }) {
+  useT()
+  const lang = useLangStore(s => s.lang)
+  const [picked, setPicked] = useState<number | null>(null)
+  const gen = useMutation({ mutationFn: () => examApi.practice(sessionId, questionId, lang), onMutate: () => setPicked(null) })
+  const p = gen.data
+  return (
+    <div className="stack-sm">
+      {!p && <div className="row" style={{ gap: 8 }}>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={gen.isPending} aria-busy={gen.isPending} onClick={() => gen.mutate()}>
+          <Dumbbell size={14} aria-hidden /> {gen.isPending ? t('AI đang soạn câu…') : t('Luyện thêm câu tương tự')}</button>
+        {gen.isError && <span className="field-error">{errorText(gen.error)}</span>}
+      </div>}
+      {p && (
+        <fieldset className="practice-q">
+          <legend className="xsmall muted row" style={{ gap: 6 }}><Dumbbell size={13} aria-hidden /> {t('Câu luyện tập do AI tạo (không tính điểm)')}</legend>
+          <p className="prewrap small" style={{ color: 'var(--color-ink)', margin: 0 }}>{p.question}</p>
+          <div className="stack-sm">
+            {p.options.map((o, i) => (
+              <button key={i} type="button" className="practice-opt" disabled={picked !== null}
+                data-state={picked === null ? undefined : i === p.answer ? 'right' : i === picked ? 'wrong' : undefined} onClick={() => setPicked(i)}>
+                <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span><span>{o}</span>
+              </button>
+            ))}
+          </div>
+          {picked !== null && <div role="status" className="small">
+            <strong style={{ color: picked === p.answer ? '#15803d' : '#c2410c' }}>{picked === p.answer ? t('Chính xác!') : t('Chưa đúng, đáp án là {0}.', { 0: String.fromCharCode(65 + p.answer) })}</strong>
+            {p.explanation && <> {p.explanation}</>}
+          </div>}
+          {picked !== null && <div><button type="button" className="btn btn-secondary btn-sm" disabled={gen.isPending} aria-busy={gen.isPending} onClick={() => gen.mutate()}>
+            <Dumbbell size={14} aria-hidden /> {gen.isPending ? t('AI đang soạn câu…') : t('Câu khác')}</button></div>}
+        </fieldset>
+      )}
     </div>
   )
 }

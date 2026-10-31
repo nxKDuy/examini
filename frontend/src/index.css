@@ -699,3 +699,10 @@ a.stat:hover { background: var(--color-subtle); }
 .kbd-hint { margin: 0; border-top: 1px solid var(--color-hairline); padding-top: 8px; }
 .result-bar-compact { grid-template-columns: minmax(0, 1.4fr) minmax(80px, 1fr) 72px; }
 @media (max-width: 760px) { .result-bar-compact { grid-template-columns: minmax(0, 1fr) 64px; } }
+.practice-q { display: grid; gap: 10px; padding: 12px 14px; border: 1px dashed var(--color-accent); margin: 0; }
+.practice-q legend { padding: 0 6px; }
+.practice-opt { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; font: inherit; font-size: .92rem; padding: 8px 10px; border: 1px solid #000; background: #fff; color: #000; cursor: pointer; }
+.practice-opt:hover:not(:disabled) { background: var(--color-subtle); }
+.practice-opt:disabled { cursor: default; }
+.practice-opt[data-state="right"] { border-color: #15803d; box-shadow: inset 4px 0 0 #15803d; background: #f0fdf4; }
+.practice-opt[data-state="wrong"] { border-color: #c2410c; box-shadow: inset 4px 0 0 #c2410c; background: #fff7ed; }

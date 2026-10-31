@@ -2503,4 +2503,9 @@ export const EN_UI: Record<string, string> = {
   'Tự mở, tự đóng, nhắc qua email, trình duyệt và lịch điện thoại.': 'Opens and closes itself; reminders by email, browser and phone calendar.',
   'Thi nghiêm túc': 'Fair exams',
   'Toàn màn hình, ghi nhận chuyển tab, camera; học sinh xem lại bài với gia sư AI.': 'Fullscreen, tab-switch records, camera; students review with an AI tutor.',
+  'AI đang soạn câu…': 'AI is writing…',
+  'Luyện thêm câu tương tự': 'Practise a similar question',
+  'Câu luyện tập do AI tạo (không tính điểm)': 'AI practice question (not scored)',
+  'Chưa đúng, đáp án là {0}.': 'Not quite, the answer is {0}.',
+  'Câu khác': 'Another one',
 }

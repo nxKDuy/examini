@@ -84,6 +84,31 @@ class AnswerTutorTest {
                 AnswerTutor.withPassage(java.util.Map.of("passage", java.util.Map.of("title", "Green cities", "content", " Cycle lanes. ")), "Viết đoạn văn."));
     }
 
+    final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+    @Test void practiceQuestionIsShapeCheckedAndKeyGated() throws Exception {
+        var om = new ObjectMapper();
+        assertTrue(AnswerTutor.practiceOf(om.readTree("{\"question\":\"3 + 4 = ?\",\"options\":[\"6\",\"7\",\"8\",\"12\"],\"answer\":1,\"explanation\":\"Cộng.\"}")).isPresent());
+        assertTrue(AnswerTutor.practiceOf(om.readTree("{\"question\":\"3 + 4 = ?\",\"options\":[\"6\",\"7\",\"8\"],\"answer\":1}")).isEmpty(), "needs 4 options");
+        assertTrue(AnswerTutor.practiceOf(om.readTree("{\"question\":\"3 + 4 = ?\",\"options\":[\"6\",\"7\",\"7\",\"12\"],\"answer\":1}")).isEmpty(), "options must differ");
+        assertTrue(AnswerTutor.practiceOf(om.readTree("{\"question\":\"3 + 4 = ?\",\"options\":[\"6\",\"7\",\"8\",\"12\"],\"answer\":4}")).isEmpty(), "key index in range");
+        when(grading.student(session, student)).thenReturn(result("GRADED", item(null, 0f, "4")));
+        assertEquals(403, assertThrows(ResponseStatusException.class, () -> tutor(5).practice(session, question, student, "vi")).getStatusCode().value());
+        when(grading.student(session, student)).thenReturn(result("GRADED", item(List.of("5"), 0f, "4")));
+        when(ai.available()).thenReturn(true);
+        var good = om.readTree("{\"question\":\"2 + 6 = ?\",\"options\":[\"7\",\"8\",\"9\",\"12\"],\"answer\":1,\"explanation\":\"Cộng.\"}");
+        var flawed = om.readTree("{\"question\":\"Số nào chẵn?\",\"options\":[\"2\",\"4\",\"5\",\"7\"],\"answer\":0,\"explanation\":\"x\"}");
+        // First draft: the blind solve finds two right options and rejects it; the second draft is confirmed.
+        when(ai.json(any())).thenAnswer(inv -> {
+            String prompt = inv.getArgument(0);
+            if (prompt.startsWith("Solve this")) return Optional.of(om.readTree(prompt.contains("chẵn") ? "{\"answer\":\"A\",\"ambiguous\":true}" : "{\"answer\":\"B\",\"ambiguous\":false}"));
+            return Optional.of(prompt.contains("ORIGINAL") && inv.getMock() != null && calls.getAndIncrement() == 0 ? flawed : good);
+        });
+        var p = tutor(5).practice(session, question, student, "vi");
+        assertEquals(1, p.answer());
+        assertEquals(List.of("7", "8", "9", "12"), p.options());
+        assertEquals(2, calls.get(), "the ambiguous draft was replaced");
+    }
+
     @Test void hourlyAllowancePerStudent() {
         var t = tutor(2);
         assertTrue(t.allow(student));
