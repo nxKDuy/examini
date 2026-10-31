@@ -2468,4 +2468,11 @@ export const EN_UI: Record<string, string> = {
   'Điểm được làm tròn 0,25; bạn vẫn sửa được trước khi lưu.': 'Rounded to 0.25; you can still change it before saving.',
   'AI đang đọc bài…': 'AI is reading…',
   'Hỏi AI gợi ý điểm': 'Ask AI for a score',
+  'Bài chờ chấm': 'Waiting to grade',
+  'Nhập mã tham gia kỳ thi': 'Enter an exam join code',
+  'Trang': 'Pages',
+  'Tìm nhanh': 'Quick find',
+  'Tìm trang, thao tác hoặc kỳ thi…': 'Find a page, an action or an exam…',
+  'Không tìm thấy “{0}”': 'Nothing found for “{0}”',
+  '↑ ↓ chọn · Enter mở · {0} hoặc / để mở lại': '↑ ↓ choose · Enter open · {0} or / to reopen',
 }

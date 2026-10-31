@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { LogOut, Search } from 'lucide-react'
+import CommandPalette from '../../features/command/CommandPalette'
+import { shortcutLabel } from '../../features/command/commandModel'
 import { useAuthStore } from '../../store/authStore'
 import { authApi } from '../../features/auth/authApi'
 import { AUDIENCE_LABEL, audienceOf, navigationItems } from './navigation'
@@ -46,6 +48,9 @@ export default function AppLayout() {
           <div className="topbar-main">
             <Brand />
             <div style={{ flex: 1 }} />
+            <button type="button" className="cmd-open" onClick={() => window.dispatchEvent(new Event('examini:command'))} aria-keyshortcuts="Control+K Meta+K /">
+              <Search size={15} aria-hidden /> {t('Tìm nhanh')} <kbd>{shortcutLabel()}</kbd></button>
+            <CommandPalette audience={audience} />
             <div className="row topbar-user" style={{ gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
             <LanguageSwitch />
             <NotificationBell />

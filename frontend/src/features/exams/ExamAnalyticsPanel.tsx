@@ -6,6 +6,7 @@ import { download, fileSlug, scoreCsv } from './scoreExport'
 import { allResults } from './analyticsApi'
 import { difficultyOf, discriminationOf, type Difficulty, type Discrimination } from './analyticsModel'
 import ExamInsightsCard from './ExamInsightsCard'
+import { examApi } from './examApi'
 import type { PublishedStats } from './analyticsApi'
 import { errorText } from '../../lib/errors'
 import { useQuery } from '@tanstack/react-query'
@@ -30,6 +31,9 @@ export default function ExamAnalyticsPanel({ examId, actorId, examTitle = '' }: 
   const questions = useQuery({ queryKey: ['analytics', actorId, examId, 'questions'], queryFn: () => analyticsApi.questions(examId), enabled: on, retry: false })
   const students = useQuery({ queryKey: ['analytics', actorId, examId, 'students', page], queryFn: () => analyticsApi.students(examId, page, PAGE_SIZE), enabled: on, retry: false })
   const names = useParticipantNames(on ? examId : undefined)
+  // Question text from the frozen paper (same cache as the overview tab), so the table names the question, not its id.
+  const paper = useQuery({ queryKey: ['exam', examId, 'paper'], queryFn: () => examApi.paper(examId), enabled: on, retry: false, staleTime: 300_000 })
+  const textOf = (id: string) => paper.data?.find(p => p.questionId === id)?.content
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   async function exportScores() {
@@ -60,7 +64,7 @@ export default function ExamAnalyticsPanel({ examId, actorId, examTitle = '' }: 
       {questions.isLoading ? <LoadingState rows={3} /> : questions.isError ? <ErrorState error={questions.error} onRetry={() => void questions.refetch()} /> : !questions.data?.length ? <EmptyState title={t('Chưa có thống kê câu hỏi')} description={t('Số liệu xuất hiện sau khi Analytics nhận kết quả.')} /> : <div className="table-wrap"><table className="table analytics-table">
         <thead><tr><th scope="col">{t('Câu')}</th><th scope="col">{t('Loại')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Đúng')}</th><th scope="col">{t('Một phần')}</th><th scope="col">{t('Sai')}</th><th scope="col">{t('Bỏ trống')}</th><th scope="col">{t('Chờ chấm')}</th><th scope="col">{t('Tỷ lệ đúng')}</th><th scope="col">{t('Độ khó')}</th><th scope="col" title={t('Chênh lệch tỷ lệ làm đúng giữa 27% thí sinh điểm cao nhất và 27% thấp nhất. Từ 0,3 là tốt; dưới 0,2 phân loại kém; âm thường do sai đáp án.')}>{t('Độ phân biệt')}</th><th scope="col">{t('Điểm TB')}</th></tr></thead>
         <tbody>{questions.data.map(q => <tr key={`${q.questionId}:${q.questionVersion}`}>
-          <td><strong>{t('Câu')} {q.position + 1}</strong><div className="small muted">v{q.questionVersion} · {shortId(q.questionId)}</div></td><td>{questionType(q.questionType)}</td><td>{q.attempts}</td><td>{q.correct}</td><td>{q.partial}</td><td>{q.incorrect}</td><td>{q.unanswered}</td><td>{q.pendingReview}</td>
+          <td style={{ maxWidth: 360 }}><strong>{t('Câu')} {q.position + 1}</strong><div className="small muted truncate-2" title={textOf(q.questionId)}>{textOf(q.questionId) ?? `v${q.questionVersion} · ${shortId(q.questionId)}`}</div></td><td>{questionType(q.questionType)}</td><td>{q.attempts}</td><td>{q.correct}</td><td>{q.partial}</td><td>{q.incorrect}</td><td>{q.unanswered}</td><td>{q.pendingReview}</td>
           <td>{q.correctRate === null ? t(NO_DATA) : `${(q.correctRate * 100).toFixed(1)}%`}</td><td><DifficultyBadge value={difficultyOf(q.correctRate, q.attempts - q.pendingReview)} /></td><td><DiscriminationBadge value={q.discrimination} /></td><td>{q.averageAwardedPoints === null ? t(NO_DATA) : `${formatScore(q.averageAwardedPoints)} / ${formatScore(q.pointValue)}`}</td>
         </tr>)}</tbody>
       </table></div>}
