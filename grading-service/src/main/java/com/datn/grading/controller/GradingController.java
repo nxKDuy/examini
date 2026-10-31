@@ -9,6 +9,12 @@ import java.util.UUID;
 public class GradingController {
     private final GradingService service;
     private final com.datn.grading.service.StudentProgressService progress;
+    private final com.datn.grading.service.AnswerTutor tutor;
+    /** "Why was I wrong?" on one question of the student's own released result (only when the key is visible). */
+    @PostMapping("/grades/session/{id}/questions/{questionId}/explain")
+    public com.datn.grading.service.AnswerTutor.Explanation explain(@PathVariable UUID id,@PathVariable UUID questionId,@RequestParam(defaultValue="vi") String lang,@RequestAttribute UUID actor){
+        return tutor.explain(id,questionId,actor,lang);
+    }
     /** The signed-in student's own results across exams (policy-filtered) and study tips. */
     @GetMapping("/grades/my") public com.datn.grading.dto.ProgressDto.Progress myProgress(@RequestAttribute UUID actor){return progress.progress(actor);}
     @GetMapping("/grades/my/insights") public com.datn.grading.dto.ProgressDto.Insights myInsights(@RequestAttribute UUID actor,@RequestParam(defaultValue="false") boolean ai,@RequestParam(defaultValue="vi") String lang){return progress.insights(actor,ai,lang);}

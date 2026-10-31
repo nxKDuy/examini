@@ -41,6 +41,8 @@ class RateLimitFilterTest {
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/question-imports/ai").header("X-Forwarded-For", "10.0.0.9").build()));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/question-imports/ai/material-url").header("X-Forwarded-For", "10.0.0.9").build()),
                 "fetching a web page for AI material counts as an AI call");
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, call(MockServerHttpRequest.post("/grades/session/s1/questions/q1/explain").header("X-Forwarded-For", "10.0.0.9").build()),
+                "asking the AI tutor counts as an AI call");
     }
 
     @Test void disabledFilterPassesEverything() {
