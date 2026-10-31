@@ -266,7 +266,7 @@ a.stat:hover { background: var(--color-subtle); }
 .topbar { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid #000; display: grid; grid-template-columns: minmax(0,1fr); padding: 0 max(28px, calc((100% - 1260px) / 2 + 28px)); }
 .topbar-main { min-height: 64px; display: flex; align-items: center; gap: 14px; min-width: 0; }
 /* Very narrow phones: the name block and decorative avatar give way so the bell and Đăng xuất stay on screen. */
-@media (max-width: 420px) { .topbar-who { display: none !important; } }
+@media (max-width: 420px) { .topbar-who { display: none !important; } .lang-switch > svg { display: none; } .lang-select { max-width: 108px; } }
 @media (max-width: 360px) { .topbar-main { gap: 4px; } .topbar .brand { padding: 0; font-size: 1.05rem; } .topbar-user { gap: 2px !important; } }
 .quicklinks { display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; border-top: 1px solid var(--color-hairline); }
 .quicklink { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 10px 12px; color: #000; text-decoration: none; white-space: nowrap; }

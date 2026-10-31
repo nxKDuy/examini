@@ -93,6 +93,13 @@ nothing. ADMIN sees only their own inbox. A foreign or unknown ID returns 404.
 | `GET /notifications/unread-count` | `{ "count": 3 }` |
 | `PATCH /notifications/{id}/read` | `NotificationResponse`; idempotent, first `readAt` is kept |
 | `PATCH /notifications/read-all` | `{ "updated": 2 }`; repeat returns 0 |
+| `GET /notifications/preferences` | `{ "settings": [ { "category": "SCHEDULE", "email": true, "push": true }, … ] }`, always all 5 categories |
+| `PUT /notifications/preferences` | Same body; only the categories sent are changed. Empty list, unknown or repeated category → 400 |
+
+Cài đặt kênh theo người dùng (V4 `notification_preferences`): chỉ chặn email và push, hộp thư trong ứng dụng luôn nhận đủ.
+Không có dòng = bật cả hai. Nhóm: `SCHEDULE` (EXAM_SCHEDULED/RESCHEDULED/UNSCHEDULED), `REMINDER` (EXAM_REMINDER),
+`EXAM_STATUS` (EXAM_OPENED/CLOSED), `RESULT` (RESULT_AVAILABLE/REGRADED), `GRADING` (GRADING_REVIEW_REQUIRED).
+Kiểm tra lúc xếp hàng gửi và kiểm tra lại ngay trước mỗi lần gửi/thử lại; kênh bị tắt ghi `SKIPPED` với lý do `USER_PREFERENCE`.
 
 ```text
 NotificationResponse:

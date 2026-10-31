@@ -1,4 +1,5 @@
 package com.datn.notification.scheduling;
+import com.datn.notification.delivery.DeliveryQueue;
 import com.datn.notification.client.*;
 import com.datn.notification.client.ExamRecipientClient.*;
 import com.datn.notification.service.SchedulingEvents.*;
@@ -22,11 +23,11 @@ public class SchedulingJobs {
     static final Duration LEASE=Duration.ofMinutes(2),WAIT_FOR_REVISION=Duration.ofSeconds(30),MAX_BACKOFF=Duration.ofMinutes(30);
     static final Set<String> EMAIL_TYPES=Set.of("EXAM_SCHEDULED","EXAM_RESCHEDULED","EXAM_UNSCHEDULED","EXAM_REMINDER","GRADING_REVIEW_REQUIRED");
     private final JdbcTemplate db;private final TransactionTemplate tx;private final ObjectMapper json;private final Clock clock;
-    private final ExamRecipientClient exams;private final SchedulingConsumer consumer;private final int batch;
+    private final ExamRecipientClient exams;private final SchedulingConsumer consumer;private final DeliveryQueue deliveries;private final int batch;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(SchedulingJobs.class);
-    public SchedulingJobs(JdbcTemplate db,TransactionTemplate tx,ObjectMapper json,Clock clock,ExamRecipientClient exams,SchedulingConsumer consumer,
+    public SchedulingJobs(JdbcTemplate db,TransactionTemplate tx,ObjectMapper json,Clock clock,ExamRecipientClient exams,SchedulingConsumer consumer,DeliveryQueue deliveries,
                           @Value("${notification.jobs.batch-size:20}") int batch){
-        this.db=db;this.tx=tx;this.json=json;this.clock=clock;this.exams=exams;this.consumer=consumer;this.batch=batch;
+        this.db=db;this.tx=tx;this.json=json;this.clock=clock;this.exams=exams;this.consumer=consumer;this.deliveries=deliveries;this.batch=batch;
     }
 
     record Job(UUID id,String kind,UUID examId,UUID sourceId,long revision,Instant startAt,Integer offset,String payload,Instant expiresAt,int attempts){}
@@ -129,17 +130,9 @@ public class SchedulingJobs {
                     UUID.randomUUID(),t.userId(),c.type(),c.title(),c.message(),examId,write(meta),t.manager()?job.sourceId():studentSource,"scheduling."+job.kind().toLowerCase(),ts(now));
                 if(inserted.isEmpty())continue;
                 UUID id=inserted.getFirst();
-                if(EMAIL_TYPES.contains(c.type()))delivery(id,t.userId(),"EMAIL",null,"PENDING",null,now,expires);
-                List<UUID> subs=db.queryForList("SELECT id FROM push_subscriptions WHERE user_id=? AND revoked_at IS NULL",UUID.class,t.userId());
-                if(subs.isEmpty())delivery(id,t.userId(),"PUSH",null,"SKIPPED","NO_SUBSCRIPTION",now,expires);
-                for(UUID sub:subs)delivery(id,t.userId(),"PUSH",sub,"PENDING",null,now,expires);
+                deliveries.enqueue(id,t.userId(),c.type(),EMAIL_TYPES.contains(c.type()),now,expires);
             }
         });
-    }
-    private void delivery(UUID notification,UUID user,String channel,UUID subscription,String status,String reason,Instant now,Instant expires){
-        db.update("""
-            INSERT INTO notification_deliveries(id,notification_id,recipient_user_id,channel,subscription_id,status,skip_reason,next_attempt_at,expires_at,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING""",UUID.randomUUID(),notification,user,channel,subscription,status,reason,ts(now),ts(expires),ts(now),ts(now));
     }
 
     private void finish(Job job,String status,String error,Instant next){

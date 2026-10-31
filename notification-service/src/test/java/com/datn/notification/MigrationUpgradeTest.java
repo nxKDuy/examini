@@ -29,15 +29,15 @@ class MigrationUpgradeTest {
                     s.execute("INSERT INTO scheduling_jobs(id,kind,exam_id,source_id,revision,status,due_at,next_attempt_at,expires_at) VALUES(gen_random_uuid(),'"+kind+"','"+exam+"',gen_random_uuid(),1,'PENDING',now(),now(),now())");
             }
             var result=Flyway.configure().dataSource(url,USER,PASSWORD).locations("classpath:db/migration").load().migrate();
-            assertEquals("3",result.targetSchemaVersion);
+            assertEquals("4",result.targetSchemaVersion);
             // validate() also fails on duplicate versions or edited checksums.
             Flyway.configure().dataSource(url,USER,PASSWORD).locations("classpath:db/migration").load().validate();
             try(Connection c=DriverManager.getConnection(url,USER,PASSWORD);Statement s=c.createStatement()){
                 var r=s.executeQuery("SELECT recipient_user_id,read_at FROM notifications WHERE id='"+id+"'");assertTrue(r.next());assertEquals(user,r.getObject(1));assertNull(r.getObject(2));
                 r=s.executeQuery("SELECT count(*) FROM scheduling_jobs WHERE exam_id='"+exam+"'");r.next();assertEquals(3,r.getInt(1));
-                r=s.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_name IN ('exam_schedule_state','scheduling_jobs','push_subscriptions','notification_deliveries','grading_notice_state')");
-                r.next();assertEquals(5,r.getInt(1));
-                r=s.executeQuery("SELECT string_agg(version,',' ORDER BY installed_rank) FROM flyway_schema_history WHERE success");r.next();assertEquals("1,2,3",r.getString(1));
+                r=s.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_name IN ('exam_schedule_state','scheduling_jobs','push_subscriptions','notification_deliveries','grading_notice_state','notification_preferences')");
+                r.next();assertEquals(6,r.getInt(1));
+                r=s.executeQuery("SELECT string_agg(version,',' ORDER BY installed_rank) FROM flyway_schema_history WHERE success");r.next();assertEquals("1,2,3,4",r.getString(1));
                 s.execute("INSERT INTO scheduling_jobs(id,kind,exam_id,source_id,revision,status,due_at,next_attempt_at,expires_at) VALUES(gen_random_uuid(),'GRADING_REVIEW','"+exam+"',gen_random_uuid(),1,'PENDING',now(),now(),now())");
                 assertThrows(SQLException.class,()->s.execute("INSERT INTO scheduling_jobs(id,kind,exam_id,source_id,revision,status,due_at,next_attempt_at,expires_at) VALUES(gen_random_uuid(),'BOGUS','"+exam+"',gen_random_uuid(),1,'PENDING',now(),now(),now())"));
             }

@@ -96,3 +96,14 @@ export function englishNotice(n: Pick<AppNotification, 'type' | 'metadata' | 'cr
 export function localizedNotice(n: AppNotification, lang: 'vi' | 'en') {
   return (lang === 'en' && englishNotice(n)) || { title: n.title, message: n.message }
 }
+
+export interface PreferenceRow { category: 'SCHEDULE' | 'REMINDER' | 'EXAM_STATUS' | 'RESULT' | 'GRADING'; label: string; hint: string }
+const PREF_ROWS: PreferenceRow[] = [
+  { category: 'SCHEDULE', label: 'Lịch thi', hint: 'Đặt, đổi hoặc gỡ lịch thi' },
+  { category: 'REMINDER', label: 'Nhắc giờ thi', hint: 'Nhắc trước giờ bắt đầu' },
+  { category: 'EXAM_STATUS', label: 'Mở/đóng kỳ thi', hint: 'Khi kỳ thi mở hoặc đóng' },
+  { category: 'RESULT', label: 'Kết quả', hint: 'Công bố điểm, chấm lại' },
+  { category: 'GRADING', label: 'Cần chấm tay', hint: 'Bài tự luận chờ giáo viên chấm' },
+]
+/** Students never get grading-review notices; staff never get their own result notices. */
+export const preferenceRows = (student: boolean) => PREF_ROWS.filter(r => (student ? r.category !== 'GRADING' : r.category !== 'RESULT'))

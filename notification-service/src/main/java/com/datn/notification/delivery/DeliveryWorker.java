@@ -22,12 +22,12 @@ public class DeliveryWorker {
     static final Duration LEASE=Duration.ofMinutes(2),MAX_BACKOFF=Duration.ofMinutes(30);
     static final int MAX_ATTEMPTS=8,PUSH_BODY_LIMIT=300;
     private final JdbcTemplate db;private final Clock clock;private final ObjectMapper json;
-    private final AuthContactClient contacts;private final ExamRecipientClient exams;private final EmailSender email;private final WebPushSender push;
+    private final AuthContactClient contacts;private final ExamRecipientClient exams;private final EmailSender email;private final WebPushSender push;private final Preferences preferences;
     private final String appBaseUrl;private final int batch;
     private final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(DeliveryWorker.class);
-    public DeliveryWorker(JdbcTemplate db,Clock clock,ObjectMapper json,AuthContactClient contacts,ExamRecipientClient exams,EmailSender email,WebPushSender push,
+    public DeliveryWorker(JdbcTemplate db,Clock clock,ObjectMapper json,AuthContactClient contacts,ExamRecipientClient exams,EmailSender email,WebPushSender push,Preferences preferences,
                           @Value("${notification.app-base-url}") String appBaseUrl,@Value("${notification.deliveries.batch-size:50}") int batch){
-        this.db=db;this.clock=clock;this.json=json;this.contacts=contacts;this.exams=exams;this.email=email;this.push=push;this.appBaseUrl=appBaseUrl.replaceAll("/+$","");
+        this.db=db;this.clock=clock;this.json=json;this.contacts=contacts;this.exams=exams;this.email=email;this.push=push;this.preferences=preferences;this.appBaseUrl=appBaseUrl.replaceAll("/+$","");
         // One Auth contact lookup per batch, bounded by its 100-ID limit.
         this.batch=Math.min(batch,AuthContactClient.MAX_IDS);
     }
@@ -53,11 +53,24 @@ public class DeliveryWorker {
             (r,i)->new Row(r.getObject(1,UUID.class),r.getString(2),r.getObject(3,UUID.class),r.getObject(4,UUID.class),r.getInt(5),r.getTimestamp(6).toInstant(),
                 r.getObject(7,UUID.class),r.getString(8),r.getString(9),r.getString(10),r.getObject(11,UUID.class),meta(r.getString(12))),
             ts(now.plus(LEASE)),ts(now),ts(now),ts(now),ts(now),batch);
-        rows=stillAuthorized(rows);
+        rows=stillWanted(stillAuthorized(rows));
         var emails=rows.stream().filter(r->r.channel().equals("EMAIL")).toList();
         if(!emails.isEmpty())sendEmails(emails);
         rows.stream().filter(r->r.channel().equals("PUSH")).forEach(this::sendPush);
         return rows.size();
+    }
+
+    /** A channel the recipient switched off after the delivery was queued is skipped, including pending retries. */
+    private List<Row> stillWanted(List<Row> rows){
+        if(rows.isEmpty())return rows;
+        Set<String> off=preferences.disabled(rows.stream().map(Row::userId).collect(java.util.stream.Collectors.toSet()));
+        if(off.isEmpty())return rows;
+        var ok=new ArrayList<Row>();
+        for(Row r:rows){
+            String k=Preferences.key(r.userId(),r.type(),r.channel());
+            if(k!=null&&off.contains(k))finish(r,"SKIPPED",Preferences.SKIP_REASON,null,null);else ok.add(r);
+        }
+        return ok;
     }
 
     /**

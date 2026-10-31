@@ -13,11 +13,16 @@ import java.util.UUID;
  */
 @Component
 public class DeliveryQueue {
-    private final JdbcTemplate db;
-    public DeliveryQueue(JdbcTemplate db){this.db=db;}
+    private final JdbcTemplate db;private final Preferences preferences;
+    public DeliveryQueue(JdbcTemplate db,Preferences preferences){this.db=db;this.preferences=preferences;}
 
-    public void enqueue(UUID notificationId,UUID userId,boolean email,Instant now,Instant expires){
-        if(email)insert(notificationId,userId,"EMAIL",null,"PENDING",null,now,expires);
+    /** @param type notification type, used to honour the recipient's channel preferences (switched off = SKIPPED). */
+    public void enqueue(UUID notificationId,UUID userId,String type,boolean email,Instant now,Instant expires){
+        if(email){
+            if(preferences.allows(userId,type,"EMAIL"))insert(notificationId,userId,"EMAIL",null,"PENDING",null,now,expires);
+            else insert(notificationId,userId,"EMAIL",null,"SKIPPED",Preferences.SKIP_REASON,now,expires);
+        }
+        if(!preferences.allows(userId,type,"PUSH")){insert(notificationId,userId,"PUSH",null,"SKIPPED",Preferences.SKIP_REASON,now,expires);return;}
         List<UUID> subs=db.queryForList("SELECT id FROM push_subscriptions WHERE user_id=? AND revoked_at IS NULL",UUID.class,userId);
         if(subs.isEmpty())insert(notificationId,userId,"PUSH",null,"SKIPPED","NO_SUBSCRIPTION",now,expires);
         for(UUID sub:subs)insert(notificationId,userId,"PUSH",sub,"PENDING",null,now,expires);

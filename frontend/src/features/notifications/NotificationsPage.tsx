@@ -5,6 +5,7 @@ import { notificationApi, type AppNotification } from './notificationApi'
 import { notificationTarget } from './notificationModel'
 import NotificationItem from './NotificationItem'
 import { PushCard } from './PushControls'
+import { PreferencesCard } from './PreferencesCard'
 import { audienceOf } from '../../components/layout/navigation'
 import { EmptyState, ErrorState, LoadingState, PageHeader, Pagination } from '../../components/ui'
 import { useAuthStore } from '../../store/authStore'
@@ -33,6 +34,7 @@ export default function NotificationsPage() {
       <PageHeader title={t('Thông báo')} description={t('Đặt/đổi/gỡ lịch, mở và đóng kỳ thi, nhắc giờ và các cập nhật khác. Bấm một thông báo để mở nội dung liên quan.')}
         actions={<button type="button" className="btn btn-secondary" disabled={(unread.data ?? 0) === 0 || readAll.isPending} onClick={() => readAll.mutate()}>{t('Đánh dấu tất cả đã đọc')}</button>} />
       <PushCard />
+      <PreferencesCard />
       <section className="card" style={{ overflow: 'hidden' }}>
         <div className="tabs" role="tablist" aria-label={t('Lọc thông báo')}>
           <button type="button" role="tab" className="tab" aria-selected={tab === 'all'} onClick={() => setTabAndReset('all')}>{t('Tất cả')}</button>

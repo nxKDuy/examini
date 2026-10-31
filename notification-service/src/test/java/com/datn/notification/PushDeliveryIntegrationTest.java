@@ -27,7 +27,7 @@ class PushDeliveryIntegrationTest extends IntegrationTestSupport {
     UUID exam=UUID.randomUUID(),owner=UUID.randomUUID(),student=UUID.randomUUID(),other=UUID.randomUUID();
 
     @BeforeEach void reset(){
-        db.execute("TRUNCATE scheduling_jobs, notification_deliveries, exam_schedule_state, push_subscriptions");
+        db.execute("TRUNCATE scheduling_jobs, notification_deliveries, exam_schedule_state, push_subscriptions, notification_preferences");
         ROUTES.clear();REQUESTS.clear();clock.set(BASE);
         ROUTES.put("/auth/internal/contacts",r->new Response(200,"[]"));
     }
@@ -66,6 +66,51 @@ class PushDeliveryIntegrationTest extends IntegrationTestSupport {
     }
     String pushStatus(UUID subscription){return db.queryForObject("SELECT status||':'||coalesce(skip_reason,'') FROM notification_deliveries WHERE subscription_id=? ORDER BY created_at DESC LIMIT 1",String.class,subscription);}
     void drain(){while(deliveries.runDue()>0){}}
+
+    String prefs(UUID user,String body)throws Exception{
+        var req=body==null?get("/notifications/preferences"):put("/notifications/preferences").contentType(MediaType.APPLICATION_JSON).content(body);
+        return mvc.perform(req.header("Authorization",bearer(user))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    }
+
+    @Test void preferencesDefaultOnAreOwnerScopedAndValidated()throws Exception{
+        var all=json.readTree(prefs(student,null)).get("settings");
+        assertEquals(5,all.size());
+        all.forEach(s->{assertTrue(s.get("email").asBoolean());assertTrue(s.get("push").asBoolean());});
+        var after=json.readTree(prefs(student,"{\"settings\":[{\"category\":\"REMINDER\",\"email\":false,\"push\":true}]}")).get("settings");
+        assertEquals(5,after.size(),"categories left out keep their value");
+        after.forEach(s->assertEquals(!s.get("category").asText().equals("REMINDER"),s.get("email").asBoolean()));
+        json.readTree(prefs(other,null)).get("settings").forEach(s->assertTrue(s.get("email").asBoolean(),"another user is unaffected"));
+        for(String bad:List.of("{\"settings\":[]}","{\"settings\":[{\"category\":\"NOPE\",\"email\":false,\"push\":false}]}",
+                "{\"settings\":[{\"category\":\"RESULT\",\"email\":false,\"push\":false},{\"category\":\"RESULT\",\"email\":true,\"push\":true}]}"))
+            mvc.perform(put("/notifications/preferences").header("Authorization",bearer(student)).contentType(MediaType.APPLICATION_JSON).content(bad))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/notifications/preferences")).andExpect(status().isUnauthorized());
+    }
+
+    @Test void switchedOffChannelsAreSkippedButTheInboxStillGetsTheNotice()throws Exception{
+        var b=PushTestKeys.browser();UUID sub=subscribe(student,"pref",b);pushRoute("pref",201);
+        prefs(student,"{\"settings\":[{\"category\":\"SCHEDULE\",\"email\":false,\"push\":false}]}");
+        scheduleFor(1,BASE.plus(Duration.ofDays(1)),List.of(student,other));
+        var mine=db.queryForList("""
+            SELECT d.channel||':'||d.status||':'||coalesce(d.skip_reason,'') FROM notification_deliveries d JOIN notifications n ON n.id=d.notification_id
+            WHERE n.type='EXAM_SCHEDULED' AND d.recipient_user_id=? ORDER BY d.channel""",String.class,student);
+        assertEquals(List.of("EMAIL:SKIPPED:USER_PREFERENCE","PUSH:SKIPPED:USER_PREFERENCE"),mine);
+        assertEquals(1L,db.queryForObject("SELECT count(*) FROM notifications WHERE type='EXAM_SCHEDULED' AND recipient_user_id=?",Long.class,student),"inbox always kept");
+        assertEquals(1L,db.queryForObject("SELECT count(*) FROM notification_deliveries WHERE recipient_user_id=? AND channel='EMAIL' AND status='PENDING'",Long.class,other));
+        drain();
+        assertTrue(pushCalls("pref").isEmpty());
+    }
+
+    @Test void turningAChannelOffStopsAlreadyQueuedDeliveries()throws Exception{
+        var b=PushTestKeys.browser();UUID sub=subscribe(student,"late",b);pushRoute("late",201);
+        scheduleFor(1,BASE.plus(Duration.ofDays(1)),List.of(student));
+        assertEquals("PENDING:",pushStatus(sub));
+        prefs(student,"{\"settings\":[{\"category\":\"SCHEDULE\",\"email\":true,\"push\":false}]}");
+        drain();
+        assertEquals("SKIPPED:USER_PREFERENCE",pushStatus(sub));
+        assertTrue(pushCalls("late").isEmpty());
+        assertNotEquals("USER_PREFERENCE",db.queryForObject("SELECT coalesce(skip_reason,'') FROM notification_deliveries WHERE recipient_user_id=? AND channel='EMAIL'",String.class,student),"email still on");
+    }
 
     @Test void subscriptionApiIsOwnerScopedAndValidated()throws Exception{
         mvc.perform(get("/notifications/push/public-key").header("Authorization",bearer(student))).andExpect(status().isOk())

@@ -110,3 +110,10 @@ test('English notices are rebuilt from type + metadata; unknown or incomplete on
   assert.equal(m.localizedNotice({ ...base, type: 'RESULT_AVAILABLE', metadata: { examTitle: 'B', gradingMode: 'MANUAL' } }, 'en').message, 'The teacher has finished grading exam “B”. View your result now.')
   assert.equal(m.localizedNotice({ ...base, type: 'SUBMISSION_RECEIVED', metadata: { examTitle: 'C', submissionType: 'AUTO_SUBMITTED' } }, 'en').title, 'Submission received')
 })
+
+test('preference rows depend on role', async () => {
+  const { preferenceRows } = await import('../src/features/notifications/notificationModel.ts')
+  const s = preferenceRows(true).map(r => r.category), staff = preferenceRows(false).map(r => r.category)
+  assert.deepEqual(s, ['SCHEDULE', 'REMINDER', 'EXAM_STATUS', 'RESULT'])
+  assert.deepEqual(staff, ['SCHEDULE', 'REMINDER', 'EXAM_STATUS', 'GRADING'])
+})
