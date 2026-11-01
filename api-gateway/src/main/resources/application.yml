@@ -41,6 +41,24 @@ spring:
           predicates:
             - Path=/exams/**
 
+        # Lưu đáp án là thao tác ghi đè (idempotent): nếu kết nối tới exam-session bị đóng
+        # giữa chừng (PrematureClose khi đang gửi body) thì gateway gửi lại thay vì trả 500.
+        - id: exam-session-answers
+          uri: lb://exam-session-service
+          predicates:
+            - Path=/sessions/*/answers
+            - Method=POST
+          filters:
+            - name: Retry
+              args:
+                retries: 2
+                methods: POST
+                exceptions: java.io.IOException, java.util.concurrent.TimeoutException
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 300ms
+                  factor: 2
+
         - id: exam-session-service
           uri: lb://exam-session-service
           predicates:
