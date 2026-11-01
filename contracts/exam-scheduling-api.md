@@ -139,3 +139,21 @@ attempt hiện hành và in-app/SMTP. Chi tiết và đường dẫn evidence n�
 `exam-scheduling-coordination.md`. Pipeline Notification → Gmail đã có SMTP ACK thật (Inbox chưa verify),
 Frontend Calendar/manual UI đã được duyệt và tích hợp. Browser push vật lý
 chưa verify; không coi backend gate hay SMTP ACK là bằng chứng cho kênh này.
+
+## Calendar sync (iCalendar) — CURRENT
+
+| Route | Auth | Response |
+| --- | --- | --- |
+| `GET /exams/calendar/feed` | JWT (mọi vai trò) | `{active, createdAt, lastUsedAt}` |
+| `POST /exams/calendar/feed` | JWT | 201 `{token, createdAt}`; tạo mới thay token cũ (link cũ 404) |
+| `DELETE /exams/calendar/feed` | JWT | 204, tắt đồng bộ |
+| `GET /exams/calendar/feed/{token}.ics` | **không JWT**; token 20–64 ký tự `[A-Za-z0-9_-]` là thông tin xác thực | `text/calendar` |
+| `GET /exams/{id}/calendar.ics` | JWT, cùng quyền xem như `/availability` | `text/calendar`, tải về |
+
+- DB chỉ lưu SHA-256 của token (`calendar_feeds`, migration V6). Feed chỉ đọc, cùng phạm vi như `GET /exams/calendar`
+  (60 ngày trước → 300 ngày sau, tối đa 100 kỳ thi), bỏ kỳ thi chưa có lịch và lượt bị gỡ (REVOKED).
+- Mỗi kỳ thi một VEVENT: `UID: exam-<id>@examini`, `SEQUENCE` = scheduleRevision, giờ UTC, `DTEND` = endAt hoặc
+  startAt + thời lượng, VALARM theo `reminderOffsetsMinutes`. Link trong mô tả: phòng chờ (Student) hoặc trang quản lý.
+- Gateway cho qua không cần JWT duy nhất mẫu `GET /exams/calendar/feed/<token>.ics` (vẫn xoá header danh tính giả);
+  exam-service từ chối nếu kèm Bearer/X-Service-Token.
+- Email lịch thi (Notification) đính kèm `lich-thi.ics` cùng UID/SEQUENCE cho EXAM_SCHEDULED, EXAM_RESCHEDULED, EXAM_REMINDER.

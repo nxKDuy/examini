@@ -38,6 +38,7 @@ public class QuestionService {
     private final ObjectMapper json;
     private final BankRegistry banks;
     private final ExamEligibilityService eligibility;
+    private final MediaService media;
 
     public Page<QuestionProjection> findAll(UUID categoryId, DifficultyLevel difficulty, QuestionType type,
             QuestionStatus status, CreationMethod method, SourceType sourceType, String text,
@@ -70,6 +71,21 @@ public class QuestionService {
         return projection(q, includeAnswers, actor);
     }
 
+    /** Readable copy of one question with its key, for the AI review (author roles who may read it). */
+    public record ReviewCopy(ImportParser.Parsed item, String passage) {}
+    @Transactional(readOnly = true)
+    public ReviewCopy reviewCopy(UUID id, QuestionActor actor) {
+        Question q = get(id);
+        policy.requireRead(q, actor);
+        policy.requireAuthor(actor);
+        var options = q.getOptions().stream().sorted(java.util.Comparator.comparingInt(o -> o.getDisplayOrder()))
+                .map(o -> new ImportParser.Option(o.getContent(), o.isCorrect(), o.getDisplayOrder())).toList();
+        var item = new ImportParser.Parsed(q.getContent(), q.getQuestionType(), q.getDifficultyLevel(), options, q.getExpectedAnswer(), q.getExplanation(),
+                null, null, 1, q.getContent(), List.of(), false);
+        var p = q.getPresentation() == null ? null : q.getPresentation().passage();
+        return new ReviewCopy(item, p == null || p.content() == null ? null : (p.title() == null ? "" : p.title() + "\n") + p.content());
+    }
+
     @Transactional
     public QuestionResponse create(CreateRequest req, QuestionActor actor) {
         policy.requireAuthor(actor);
@@ -88,6 +104,13 @@ public class QuestionService {
         return createInBank(req, bankId, actor, CreationMethod.IMPORT);
     }
 
+    /** Staged import with an explicit creation method (IMPORT for documents, AI_GENERATED for AI jobs). */
+    @Transactional
+    public QuestionResponse importDraft(CreateRequest req, UUID bankId, QuestionActor actor, CreationMethod method) {
+        if (method != CreationMethod.IMPORT && method != CreationMethod.AI_GENERATED) throw bad("Phương thức import không hợp lệ");
+        return createInBank(req, bankId, actor, method);
+    }
+
     private QuestionResponse createInBank(CreateRequest req, UUID bankId, QuestionActor actor, CreationMethod method) {
         var bank = banks.get(bankId);
         banks.requireWrite(bank, actor);
@@ -99,6 +122,7 @@ public class QuestionService {
                 .sourceType(req.sourceType() == null ? SourceType.NONE : req.sourceType())
                 .sourceRefId(req.sourceRefId()).sourceUrl(req.sourceUrl()).sourceExcerpt(req.sourceExcerpt())
                 .expectedAnswer(req.expectedAnswer()).explanation(req.explanation()==null||req.explanation().isBlank()?null:req.explanation().trim())
+                .presentation(media.normalize(req.presentation(), req.questionType()))
                 .createdBy(actor.userId()).bankId(bankId).scope(scope).creationMethod(method).updatedAt(LocalDateTime.now())
                 .build();
         replaceOptions(q, req.options());
@@ -127,6 +151,7 @@ public class QuestionService {
         if (req.expectedAnswer() != null) q.setExpectedAnswer(req.expectedAnswer());
         if (req.explanation() != null) q.setExplanation(req.explanation().isBlank()?null:req.explanation().trim());
         if (req.options() != null) replaceOptions(q, req.options());
+        if (req.presentation() != null) q.setPresentation(media.normalize(req.presentation(), q.getQuestionType()));
         validate(q);
         q.setStatus(QuestionStatus.DRAFT);
         q.setQuestionVersion(q.getQuestionVersion() + 1);
@@ -301,6 +326,13 @@ public class QuestionService {
         } catch (JsonProcessingException e) { throw new IllegalStateException("Cannot serialize question revision", e); }
     }
 
+    @Transactional(readOnly = true)
+    public List<com.datn.questionbank.dto.Presentation.Passage> passages(QuestionActor actor) {
+        policy.requireAuthor(actor);
+        return MediaService.distinctPassages(repo.findTop300ByCreatedByAndPresentationIsNotNullOrderByUpdatedAtDesc(actor.userId())
+                .stream().map(Question::getPresentation).toList(), 50);
+    }
+
     /** Internal domain operation: caller validates source visibility and target bank before copying. */
     @Transactional
     public QuestionResponse copySnapshot(QuestionResponse source, UUID bankId, SourceType sourceType, String sourceRef, QuestionActor actor) {
@@ -309,7 +341,7 @@ public class QuestionService {
         if (bank.getType() != QuestionBank.BankType.PERSONAL) throw bad("Fork target phải là PERSONAL");
         Question q = Question.builder().bankId(bankId).category(categoryService.getOrThrow(source.categoryId()))
                 .content(source.content()).questionType(source.questionType()).difficultyLevel(source.difficultyLevel())
-                .expectedAnswer(source.expectedAnswer()).explanation(source.explanation()).source(source.source()).sourceLabel(source.sourceLabel())
+                .expectedAnswer(source.expectedAnswer()).explanation(source.explanation()).presentation(source.presentation()).source(source.source()).sourceLabel(source.sourceLabel())
                 .sourceUrl(source.sourceUrl()).sourceExcerpt(source.sourceExcerpt()).sourceType(sourceType).sourceRefId(sourceRef)
                 .creationMethod(CreationMethod.COPIED).createdBy(actor.userId()).updatedAt(LocalDateTime.now()).build();
         replaceOptions(q, source.options().stream().map(o -> new OptionRequest(o.content(), Boolean.TRUE.equals(o.correct()), o.displayOrder())).toList());
@@ -340,12 +372,12 @@ public class QuestionService {
                 .questionVersion(q.getQuestionVersion()).status(q.getStatus()).scope(q.getScope())
                 .bankId(q.getBankId()).bankType(QuestionBank.BankType.valueOf(q.getScope().name()))
                 .creationMethod(q.getCreationMethod()).sourceType(q.getSourceType()).sourceRefId(q.getSourceRefId())
-                .sourceLabel(q.getSourceLabel()).sourceUrl(q.getSourceUrl()).sourceExcerpt(q.getSourceExcerpt()).expectedAnswer(q.getExpectedAnswer()).explanation(q.getExplanation())
+                .sourceLabel(q.getSourceLabel()).sourceUrl(q.getSourceUrl()).sourceExcerpt(q.getSourceExcerpt()).expectedAnswer(q.getExpectedAnswer()).explanation(q.getExplanation()).presentation(q.getPresentation())
                 .options(q.getOptions().stream().sorted(Comparator.comparingInt(QuestionOption::getDisplayOrder))
                         .map(o -> new OptionResponse(o.getId(), o.getContent(), o.isCorrect(), o.getDisplayOrder())).toList()).build();
     }
     private void validate(Question q) {
-        try { QuestionValidation.validate(q); } catch (IllegalArgumentException e) { throw bad(e.getMessage()); }
+        try { QuestionValidation.validate(q); media.check(q); } catch (IllegalArgumentException e) { throw bad(e.getMessage()); }
     }
     private void matchVersion(Question q, Long version) {
         if (version == null || q.getQuestionVersion() != version) throw conflict("Phiên bản đã thay đổi; tải lại câu hỏi");

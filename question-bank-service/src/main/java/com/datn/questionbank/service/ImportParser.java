@@ -19,7 +19,16 @@ public final class ImportParser {
     public enum Flag { OCR, LOW_CONFIDENCE, MISSING_CORRECT_ANSWER, ANSWER_NOT_IN_OPTIONS, MULTIPLE_ANSWERS,
         DUPLICATE_OPTION, OPTION_SEQUENCE_GAP, NO_ANSWER_ESSAY, CONTENT_TRUNCATED,
         /** OCR/text boundary doubts: a split or non-split that could be wrong is kept for review, never resolved by guessing. */
-        QUESTION_SPLIT_UNCERTAIN, NUMBERING_GAP, POSSIBLE_MERGED_QUESTIONS }
+        QUESTION_SPLIT_UNCERTAIN, NUMBERING_GAP, POSSIBLE_MERGED_QUESTIONS,
+        /** AI generation: every generated item carries AI_GENERATED; POSSIBLE_DUPLICATE marks a near-copy of an existing or sibling question. */
+        AI_GENERATED, POSSIBLE_DUPLICATE,
+        /** Quality gate (AiQuality): refers to a text the student never sees; an "all/none of the above" option;
+         *  options too alike to be real alternatives; the stem gives the answer away. */
+        SOURCE_REFERENCE, CATCH_ALL_OPTION, WEAK_DISTRACTORS, ANSWER_IN_STEM,
+        /** The key is clearly the longest option: test-wise students pick it without knowing the answer. */
+        LONGEST_IS_KEY,
+        /** A model re-solving the question without the key reached a different answer (AiKeyCheck). */
+        KEY_DISPUTED }
     public record Option(String content, boolean correct, short displayOrder) {}
     public record Parsed(String content, QuestionType type, DifficultyLevel difficulty, List<Option> options,
             String expectedAnswer, String explanation, Integer page, SourceMethod method, double confidence,
@@ -34,11 +43,14 @@ public final class ImportParser {
     private static final Pattern INLINE_OPTIONS = Pattern.compile("(?<=\\S)\\s+(?=A\\s*[.)]\\s+\\S.*?\\sB\\s*[.)]\\s+\\S)");
     private static final Pattern INLINE_NUMBER = Pattern.compile("(?<=\\S)\\s+(?=(\\d{1,3})\\s*[.)]\\s+(?![A-H]\\s*[.)])\\S)");
     private static final Pattern NUMBER_START = Pattern.compile("^(\\d{1,4})\\s*[.)]\\s+(.+)$");
+    private static final Pattern STATEMENT = Pattern.compile("^([a-h])\\)\\s*(\\S.*)$");
     private static final Pattern OPTION = Pattern.compile("^([A-H])\\s*[.):]\\s*(.*)$");
     // OCR often drops the space after the marker: "A.90 B.100".
     private static final Pattern INLINE_OPTION = Pattern.compile("\\s+([B-H])\\s*[.)]\\s*(?=\\S)");
     private static final Pattern ANSWER = Pattern.compile("^(?:đáp\\s*án(?:\\s*đúng)?|dap\\s*an|đa|answer|ans)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern EXPLANATION = Pattern.compile("^(?:giải\\s*thích|lời\\s*giải|hướng\\s*dẫn(?:\\s*giải)?|explanation)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    /** Optional explicit type, needed for speaking and for essays given with a marking guide: "Loại: Nói". */
+    private static final Pattern TYPE = Pattern.compile("^(?:loại(?:\\s*câu(?:\\s*hỏi)?)?|dạng(?:\\s*câu)?|type)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern DIFFICULTY = Pattern.compile("^(?:mức\\s*độ|độ\\s*khó|difficulty)\\s*[:.\\-]\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern ANSWER_LETTERS = Pattern.compile("^([A-H])(?:\\s*(?:,|;|/|&|và|and)\\s*([A-H]))*\\s*[.)]?$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern SINGLE_LETTER = Pattern.compile("(?<!\\p{L})([A-Ha-h])(?!\\p{L})");
@@ -51,7 +63,7 @@ public final class ImportParser {
         final List<String[]> options = new ArrayList<>(); // [letter, text]
         final EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
         StringBuilder answer, explanation;
-        String difficulty;
+        String difficulty, typeHint;
         Section section = Section.CONTENT;
     }
     /** A physical line, or the tail of one split at a merged boundary; uncertain = numeric split guessed from sequence only. */
@@ -99,6 +111,9 @@ public final class ImportParser {
             if (current == null) continue; // header text before the first question
             current.lines.add(line);
             Matcher m;
+            // THPT 2025 true/false statements are written "a) …", "b) …": read them as options (not inside the answer/explanation).
+            if (current.section != Section.ANSWER && current.section != Section.EXPLANATION && (m = STATEMENT.matcher(text)).matches())
+                text = Character.toUpperCase(m.group(1).charAt(0)) + ") " + m.group(2);
             if ((m = ANSWER.matcher(text)).matches()) {
                 // A second answer means two questions were merged; keep the first, never pick one silently.
                 if (current.answer != null) { current.flags.add(Flag.POSSIBLE_MERGED_QUESTIONS); current.section = Section.ANSWER; continue; }
@@ -106,6 +121,7 @@ public final class ImportParser {
             }
             else if ((m = EXPLANATION.matcher(text)).matches()) { current.explanation = new StringBuilder(m.group(1).strip()); current.section = Section.EXPLANATION; }
             else if ((m = DIFFICULTY.matcher(text)).matches()) current.difficulty = m.group(1).strip();
+            else if ((m = TYPE.matcher(text)).matches()) current.typeHint = m.group(1).strip();
             else if (OPTION.matcher(text).matches() && current.section == Section.ANSWER) {
                 // Options after the answer: the next question's header was lost. Flag; the options stay with this item for review.
                 current.flags.add(Flag.POSSIBLE_MERGED_QUESTIONS);
@@ -209,8 +225,42 @@ public final class ImportParser {
         var correct = new HashSet<Integer>();
         String expected = null;
         QuestionType type;
-        if (!d.options.isEmpty()) {
-            type = isTrueFalse(d.options) ? QuestionType.TRUE_FALSE : QuestionType.MULTIPLE_CHOICE;
+        QuestionType hinted = d.typeHint == null ? null : SheetImport.type(d.typeHint, !d.options.isEmpty());
+        String guide = null;
+        List<Option> structured = null;
+        var optionTexts = d.options.stream().map(o -> o[1]).toList();
+        int blanks = StructuredTypes.blanks(content);
+        if (d.options.isEmpty() && (hinted == QuestionType.SPEAKING || hinted == QuestionType.ESSAY)) { type = hinted; guide = answer; }
+        else if (hinted == QuestionType.MATCHING || (hinted == null && StructuredTypes.allPairs(optionTexts))) {
+            // "Nối cột": every option is "left => right" (→, -> are accepted).
+            type = QuestionType.MATCHING;
+            structured = new ArrayList<>();
+            for (int i = 0; i < optionTexts.size(); i++) {
+                String pair = StructuredTypes.normalizePair(optionTexts.get(i));
+                if (pair == null) { flags.add(Flag.LOW_CONFIDENCE); penalty += 0.3; pair = optionTexts.get(i); }
+                structured.add(new Option(pair, true, (short) i));
+            }
+            if (structured.size() < 2) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
+        }
+        else if (hinted == QuestionType.FILL_BLANK || (hinted == null && d.options.isEmpty() && blanks > 1
+                && StructuredTypes.gapAnswers(answer).size() == blanks)) {
+            // "Điền vào chỗ trống": gaps ___ in the stem; answers "Đáp án: Hà Nội; 1945" or one option per gap.
+            type = QuestionType.FILL_BLANK;
+            var gaps = d.options.isEmpty() ? StructuredTypes.gapAnswers(answer) : optionTexts;
+            structured = new ArrayList<>();
+            for (int i = 0; i < gaps.size(); i++) structured.add(new Option(gaps.get(i), true, (short) i));
+            if (structured.isEmpty() || structured.size() != blanks) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
+        }
+        else if (!d.options.isEmpty() && (hinted == QuestionType.TRUE_FALSE_GROUP
+                || (hinted == null && answer != null && d.options.size() >= 2 && !isTrueFalse(d.options) && SheetImport.truths(answer) != null && SheetImport.truths(answer).size() == d.options.size()))) {
+            // THPT 2025 "Đúng/Sai" part: statements a) b) c) d), key "a) Đ b) S …"
+            type = QuestionType.TRUE_FALSE_GROUP;
+            var truths = SheetImport.truths(answer);
+            if (truths == null || truths.size() != d.options.size()) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
+            else for (int i = 0; i < truths.size(); i++) if (truths.get(i)) correct.add(i);
+        }
+        else if (!d.options.isEmpty()) {
+            type = hinted == QuestionType.MULTIPLE_RESPONSE ? QuestionType.MULTIPLE_RESPONSE : isTrueFalse(d.options) ? QuestionType.TRUE_FALSE : QuestionType.MULTIPLE_CHOICE;
             if (d.options.size() < 2) penalty += 0.3;
             if (answer == null) { flags.add(Flag.MISSING_CORRECT_ANSWER); penalty += 0.2; }
             else {
@@ -228,13 +278,14 @@ public final class ImportParser {
                     if (index >= 0) correct.add(index);
                 }
                 if (correct.isEmpty() || correct.size() != new HashSet<>(chosen).size()) { flags.add(Flag.ANSWER_NOT_IN_OPTIONS); penalty += 0.3; }
-                if (new HashSet<>(chosen).size() > 1) { flags.add(Flag.MULTIPLE_ANSWERS); penalty += 0.2; }
+                if (new HashSet<>(chosen).size() > 1 && type != QuestionType.MULTIPLE_RESPONSE) { flags.add(Flag.MULTIPLE_ANSWERS); penalty += 0.2; }
             }
         } else if (answer != null) { type = QuestionType.SHORT_ANSWER; expected = answer; }
         else { type = QuestionType.ESSAY; flags.add(Flag.NO_ANSWER_ESSAY); penalty += 0.2; }
 
         var options = new ArrayList<Option>();
-        for (int i = 0; i < d.options.size(); i++) options.add(new Option(d.options.get(i)[1], correct.contains(i), (short) i));
+        if (structured != null) options.addAll(structured);
+        else for (int i = 0; i < d.options.size(); i++) options.add(new Option(d.options.get(i)[1], correct.contains(i), (short) i));
 
         boolean ocr = d.lines.stream().anyMatch(l -> l.method() == SourceMethod.OCR);
         if (ocr) flags.add(Flag.OCR);
@@ -243,6 +294,7 @@ public final class ImportParser {
         if (confidence < REVIEW_THRESHOLD) flags.add(Flag.LOW_CONFIDENCE);
         boolean review = ocr || flags.stream().anyMatch(f -> f != Flag.MISSING_CORRECT_ANSWER);
         String explanation = d.explanation == null || d.explanation.isEmpty() ? null : d.explanation.toString().strip();
+        if (guide != null) explanation = (explanation == null ? "" : explanation + "\n") + "Gợi ý chấm: " + guide;
         String raw = String.join("\n", d.lines.stream().map(Line::text).toList());
         return new Parsed(content, type, difficulty(d.difficulty, defaultDifficulty), options, expected, explanation,
                 d.lines.getFirst().page(), ocr ? SourceMethod.OCR : SourceMethod.TEXT, confidence,

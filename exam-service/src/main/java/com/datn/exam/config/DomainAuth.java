@@ -25,6 +25,11 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Duplicate authentication headers");
         // Authorize the mapped controller route, not the raw/percent-encoded URL.
         String mapped=String.valueOf(req.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE));
+        // Calendar apps cannot log in: the random feed token in the path is the credential (checked by the service).
+        if("GET".equals(req.getMethod()) && mapped.equals("/exams/calendar/feed/{token}.ics")) {
+            if(bearer!=null || service!=null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Calendar feeds take no other credential");
+            return true;
+        }
         if(isScheduleInternal(mapped)) {
             if(bearer!=null || service==null || internalToken.isBlank() || !MessageDigest.isEqual(internalToken.getBytes(StandardCharsets.UTF_8),service.getBytes(StandardCharsets.UTF_8)))
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Internal service authentication required");
@@ -55,6 +60,7 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
             String path=mapped;
             boolean studentPath=("GET".equals(req.getMethod()) && path.equals("/exams/{id}/integrity/policy")) || path.equals("/exams/public") || path.equals("/exams/my") || path.endsWith("/lobby") || path.endsWith("/preflight") || path.endsWith("/join") || path.startsWith("/exams/code/");
             if(!studentPath && "STUDENT".equals(role))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Teacher role required");
+            req.setAttribute("systemPrivilege",String.valueOf(claims.get("systemPrivilege",String.class)));
             req.setAttribute("actor",UUID.fromString(claims.getSubject()));req.setAttribute("actorRole",role);return true;
         }catch(ResponseStatusException e){throw e;}catch(RuntimeException e){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid access token");}
     }
@@ -62,6 +68,6 @@ public class DomainAuth implements WebMvcConfigurer, HandlerInterceptor {
         return path.matches("/exams/[^/]+/internal/start-admissions(?:/[^/]+/(?:claim|confirm|release))?|/exams/[^/]+/internal/attempt-limit|/sessions/exam/[^/]+/internal/(started|availability|recipient-progress|start-admissions/[^/]+)");
     }
     private boolean isScheduleStudentRoute(String method,String path) {
-        return ("GET".equals(method) && path.equals("/exams/calendar")) || path.matches("/exams/[^/]+/(availability|follow|participation/me)") || path.endsWith("/preview");
+        return ("GET".equals(method) && path.equals("/exams/calendar")) || path.equals("/exams/calendar/feed") || ("GET".equals(method) && path.equals("/exams/{id}/calendar.ics")) || path.matches("/exams/[^/]+/(availability|follow|participation/me)") || path.endsWith("/preview");
     }
 }

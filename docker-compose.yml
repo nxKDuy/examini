@@ -72,6 +72,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   api-gateway:
     build:
@@ -85,6 +86,10 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
+      GATEWAY_RATE_LIMIT_ENABLED: ${GATEWAY_RATE_LIMIT_ENABLED:-true}
+      GATEWAY_RATE_LIMIT_SIGN_IN_PER_MINUTE: ${GATEWAY_RATE_LIMIT_SIGN_IN_PER_MINUTE:-300}
+      # Extra origins allowed to call the API cross-site (the bundled web UI is same-origin and needs none).
+      GATEWAY_CORS_ALLOWED_ORIGINS: ${GATEWAY_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -93,6 +98,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   auth-service:
     build:
@@ -118,6 +124,14 @@ services:
       EXAM_IDENTITY_TOKEN: ${EXAM_IDENTITY_TOKEN:-}
       ORGANIZATION_IDENTITY_TOKEN: ${ORGANIZATION_IDENTITY_TOKEN:-}
       QUESTION_BANK_IDENTITY_TOKEN: ${QUESTION_BANK_IDENTITY_TOKEN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      AUTH_RESET_LOG_LINKS: ${AUTH_RESET_LOG_LINKS:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,6 +144,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   organization-service:
     build:
@@ -162,6 +177,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   question-bank-service:
     build:
@@ -181,6 +197,19 @@ services:
       QUESTION_BANK_IDENTITY_TOKEN: ${QUESTION_BANK_IDENTITY_TOKEN:-}
       ORGANIZATION_SERVICE_URL: http://organization-service:8088
       ORG_AUTHZ_QB_TOKEN: ${ORG_AUTHZ_QB_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      QB_AI_PROVIDERS: ${QB_AI_PROVIDERS:-gemini,openai,ollama,local}
+      AI_OPENAI_URL: ${AI_OPENAI_URL:-}
+      AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
+      AI_OPENAI_MODEL: ${AI_OPENAI_MODEL:-}
+      QB_AI_VERIFY_KEYS: ${QB_AI_VERIFY_KEYS:-true}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      QB_AI_WEB_KNOWLEDGE: ${QB_AI_WEB_KNOWLEDGE:-true}
+      QB_MEDIA_DIR: /data/question-media
+    volumes:
+      - question_media:/data/question-media
     depends_on:
       postgres:
         condition: service_healthy
@@ -191,6 +220,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   exam-service:
     build:
@@ -230,6 +260,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   exam-session-service:
     build:
@@ -250,6 +281,12 @@ services:
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
+      CAMERA_STORAGE_DIR: /data/camera
+      CAMERA_RETENTION_DAYS: ${CAMERA_RETENTION_DAYS:-30}
+      ANSWER_AUDIO_DIR: /data/answer-audio
+    volumes:
+      - camera_data:/data/camera
+      - answer_audio:/data/answer-audio
     depends_on:
       postgres:
         condition: service_healthy
@@ -264,6 +301,7 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
 
   grading-service:
     build:
@@ -280,7 +318,13 @@ services:
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-datn}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-demo-key}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      AI_OPENAI_URL: ${AI_OPENAI_URL:-}
+      AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
+      AI_OPENAI_MODEL: ${AI_OPENAI_MODEL:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
       JWT_SECRET: ${JWT_SECRET}
       EXAM_INTERNAL_TOKEN: ${EXAM_INTERNAL_TOKEN}
     depends_on:
@@ -290,6 +334,12 @@ services:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/actuator/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 240s
 
   analytics-service:
     build:
@@ -304,6 +354,13 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-datn_secret}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: ${JWT_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      AI_OPENAI_URL: ${AI_OPENAI_URL:-}
+      AI_OPENAI_KEY: ${AI_OPENAI_KEY:-}
+      AI_OPENAI_MODEL: ${AI_OPENAI_MODEL:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
       ANALYTICS_EXAM_PERMISSION_TOKEN: ${ANALYTICS_EXAM_PERMISSION_TOKEN:-}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-datn}
@@ -311,8 +368,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/actuator/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 240s
 
   notification-service:
     build:
@@ -358,8 +423,38 @@ services:
       interval: 20s
       timeout: 10s
       retries: 5
+      start_period: 240s
+
+  # Optional self-hosted model for AI question generation (needs ~8 GB RAM for a 7B model).
+  # Start: docker compose --profile ai up -d ollama && docker exec datn-ollama ollama pull qwen2.5:7b-instruct
+  # Then set OLLAMA_URL=http://ollama:11434 in .env and restart question-bank-service.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: datn-ollama
+    profiles: ["ai"]
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+
+  # Web app: the built SPA behind nginx; the API is proxied under /api (same origin, no CORS).
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/
+    container_name: datn-frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
 
 volumes:
+  ollama_data:
+  camera_data:
+  question_media:
+  answer_audio:
   postgres_data:
   redis_data:
   rabbitmq_data:

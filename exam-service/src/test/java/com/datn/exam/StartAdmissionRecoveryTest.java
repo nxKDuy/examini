@@ -58,7 +58,7 @@ class StartAdmissionRecoveryTest {
         assertEquals(StartAdmission.State.STARTED,recovered.getState());assertEquals(sessionId,recovered.getSessionId());
         assertNotNull(exams.findById(examId).orElseThrow().getFirstStudentStartedAt());
         var current=exams.findById(examId).orElseThrow();
-        var update=new ScheduleDto.Update(OffsetDateTime.ofInstant(current.getStartAt(),ZoneOffset.UTC),OffsetDateTime.ofInstant(current.getEndAt().plusSeconds(60),ZoneOffset.UTC),"UTC",Exam.DeadlineRule.CAPPED_AT_END,false,false,current.getReminderOffsetsMinutes(),3,"change rule");
+        var update=new ScheduleDto.Update(OffsetDateTime.ofInstant(current.getStartAt(),java.time.ZoneId.of(current.getTimezone())),OffsetDateTime.ofInstant(current.getEndAt().plusSeconds(60),java.time.ZoneId.of(current.getTimezone())),current.getTimezone(),Exam.DeadlineRule.CAPPED_AT_END,false,false,current.getReminderOffsetsMinutes(),3,"change rule");
         assertEquals(409,assertThrows(ResponseStatusException.class,()->schedules.update(examId,owner,update)).getStatusCode().value());
     }
 
@@ -69,7 +69,7 @@ class StartAdmissionRecoveryTest {
         admissions.reconcileExpired();
         assertEquals(StartAdmission.State.FAILED,admissionRepository.findById(reservation.admissionId()).orElseThrow().getState());
         var current=exams.findById(examId).orElseThrow();
-        var update=new ScheduleDto.Update(OffsetDateTime.ofInstant(current.getStartAt(),ZoneOffset.UTC),OffsetDateTime.ofInstant(current.getEndAt().plusSeconds(60),ZoneOffset.UTC),"UTC",current.getDeadlineRule(),false,false,current.getReminderOffsetsMinutes(),3,"extend");
+        var update=new ScheduleDto.Update(OffsetDateTime.ofInstant(current.getStartAt(),java.time.ZoneId.of(current.getTimezone())),OffsetDateTime.ofInstant(current.getEndAt().plusSeconds(60),java.time.ZoneId.of(current.getTimezone())),current.getTimezone(),current.getDeadlineRule(),false,false,current.getReminderOffsetsMinutes(),3,"extend");
         assertEquals(4,schedules.update(examId,owner,update).scheduleRevision());
     }
 

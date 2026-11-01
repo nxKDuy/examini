@@ -11,6 +11,7 @@ import { ErrorState, Field as FormField, LoadingState, Notice } from '../../comp
 import { errorInfo } from '../../lib/errors'
 import { formatDateTimeIn, formatOffset, viewerZone, zoneLabel, zoneOptions } from '../../lib/zone'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const RULES: DeadlineRule[] = ['FULL_DURATION', 'CAPPED_AT_END', 'REQUIRE_FULL_WINDOW']
 
@@ -128,9 +129,9 @@ function ScheduleForm({ schedule, clockOffset, status, durationMinutes, onClose,
 
       <section className="stack" aria-label={t('Thời gian')}>
         <FormField label={t('Múi giờ của kỳ thi')} htmlFor="sch-tz" hint={anchor !== null ? t('Đổi múi giờ chỉ đổi cách hiển thị giờ, không đổi thời điểm đã đặt.') : t('Giờ của máy bạn đang là {0}.', { 0: mine })}>
-          <select id="sch-tz" className="input" value={state.tz} disabled={lockedMost} onChange={e => setState(s => changeZone(s, e.target.value))}>
+          <Select id="sch-tz" className="input" value={state.tz} disabled={lockedMost} onChange={e => setState(s => changeZone(s, e.target.value))}>
             {zones.map(z => <option key={z} value={z}>{z}{z === mine ? t(' (máy bạn)') : ''}</option>)}
-          </select>
+          </Select>
         </FormField>
         <div className="grid-2">
           {timeField(t('Bắt đầu'), 'start', lockedMost)}

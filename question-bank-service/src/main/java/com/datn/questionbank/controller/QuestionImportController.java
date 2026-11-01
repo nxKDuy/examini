@@ -34,6 +34,32 @@ public class QuestionImportController {
             @RequestParam(required = false) DifficultyLevel defaultDifficulty, HttpServletRequest req) {
         return service.upload(file, categoryId, defaultDifficulty, actor(req));
     }
+    /** Templates to fill in: excel = one question per row, word = the "Câu N:" text format (also for PDF). */
+    @GetMapping("/templates/{kind}")
+    public org.springframework.http.ResponseEntity<byte[]> template(@PathVariable String kind, HttpServletRequest req) {
+        actor(req);
+        boolean excel = kind.equals("excel");
+        if (!excel && !kind.equals("word")) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không có mẫu này");
+        byte[] body = excel ? com.datn.questionbank.service.ImportTemplates.excel() : com.datn.questionbank.service.ImportTemplates.word();
+        String name = excel ? "mau-nhap-cau-hoi.xlsx" : "mau-nhap-cau-hoi.docx";
+        String type = excel ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        return org.springframework.http.ResponseEntity.ok().contentType(MediaType.parseMediaType(type))
+                .header("Content-Disposition", "attachment; filename=\"" + name + "\"").body(body);
+    }
+    /** Text of a Word/PDF/image to use as AI material (not stored). */
+    @PostMapping(value = "/ai/material", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MaterialText material(@RequestParam MultipartFile file, HttpServletRequest req) { return service.material(file, actor(req)); }
+    /** Text of a public web page or online PDF to use as AI material (not stored; SSRF-guarded). */
+    @PostMapping(value = "/ai/material-url", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public MaterialText materialUrl(@Valid @RequestBody MaterialUrl body, HttpServletRequest req) { return service.materialFromUrl(body.url(), actor(req)); }
+    /** AI generation (contracts/question-import.md "AI generation"): a JSON request instead of a file. */
+    @GetMapping("/ai/status")
+    public AiStatus aiStatus(HttpServletRequest req) { return service.aiStatus(actor(req)); }
+    @PostMapping(value = "/ai", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ImportJobResponse generate(@Valid @RequestBody AiGenerateRequest body, HttpServletRequest req) {
+        return service.generate(body, actor(req));
+    }
     @GetMapping
     public Page<ImportJobResponse> list(@PageableDefault(size = 20) Pageable pageable, HttpServletRequest req) {
         return service.list(pageable, actor(req));

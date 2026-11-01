@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final com.datn.auth.service.PasswordResetService passwordReset;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
@@ -30,6 +31,18 @@ public class AuthController {
     @Operation(summary = "Đăng nhập, nhận access + refresh token")
     public AuthResponse.TokenResponse login(@Valid @RequestBody AuthRequest.LoginRequest req) {
         return authService.login(req);
+    }
+
+    @PostMapping("/google")
+    @Operation(summary = "Đăng nhập/đăng ký bằng tài khoản Google (ID token từ Google Identity Services)")
+    public AuthResponse.TokenResponse google(@Valid @RequestBody AuthRequest.GoogleRequest req) {
+        return authService.google(req);
+    }
+
+    @GetMapping("/providers")
+    @Operation(summary = "Các cách đăng nhập đang bật")
+    public AuthResponse.ProvidersResponse providers() {
+        return authService.providers(passwordReset.available());
     }
 
     @PostMapping("/refresh")

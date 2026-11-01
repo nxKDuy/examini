@@ -21,7 +21,7 @@ import static org.mockito.Mockito.*;
 class AttemptInvalidationTest {
     @Autowired GradingService service;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
     @Autowired GradingAuditRepository audits;@Autowired GradingOutboxRepository outbox;
-    @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean GeminiClient ai;@MockBean RabbitTemplate rabbit;
+    @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean AiClient ai;@MockBean RabbitTemplate rabbit;
     UUID session,exam,user,teacher;
 
     @BeforeEach void setup() {

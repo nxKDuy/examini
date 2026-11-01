@@ -34,7 +34,11 @@ public class SessionService {
             var s=load(active.get().getId());expire(s);
             if(s.getStatus()==ExamSession.Status.IN_PROGRESS)return response(s);
         }
-        for(var s:sessions.findByExamIdAndStatus(examId,ExamSession.Status.IN_PROGRESS))expire(load(s.getId()));
+        // Lock only sessions that are actually past their deadline. Locking every running session kept them locked
+        // through the HTTP calls below, so other students' answer saves queued on those rows holding pooled
+        // connections until the pool ran dry (30 s timeouts / dropped connections while a class was starting).
+        Instant sweepAt=Instant.now();
+        for(var s:sessions.findByExamIdAndStatus(examId,ExamSession.Status.IN_PROGRESS))if(!sweepAt.isBefore(s.getExpiresAt()))expire(load(s.getId()));
         if(token.isBlank())throw error(503,"Exam service integration not configured");
         var exam=exams.authorize(examId,user,token);
         var reservation=exams.reserveStart(examId,user,token);
@@ -61,14 +65,15 @@ public class SessionService {
             throw error(409,"Kỳ thi hiện đã đạt giới hạn người đang làm bài. Vui lòng thử lại sau.");
         var questions=new ArrayList<>(exams.safe(examId,token));
         if(questions.isEmpty())throw error(409,"Published snapshot unavailable");
-        if(exam.shuffleQuestions())Collections.shuffle(questions);
-        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position()));}
+        if(exam.shuffleQuestions()){var mixed=shuffleKeepingPassages(questions,new Random());questions.clear();questions.addAll(mixed);}
+        // True/false statements keep their a), b), c), d) order, like the printed exam.
+        if(exam.shuffleOptions())for(int i=0;i<questions.size();i++){var q=questions.get(i);if(Set.of("TRUE_FALSE_GROUP","FILL_BLANK").contains(q.questionType()))continue;var options=new ArrayList<>(q.options());Collections.shuffle(options);questions.set(i,new ExamClient.Question(q.questionId(),q.questionVersion(),q.questionType(),q.content(),options,q.points(),q.position(),q.presentation()));}
         var admission=exams.claimStart(examId,reservation.admissionId(),user,token);
         Instant now=admission.startedAt();
         var s=ExamSession.builder().examId(examId).userId(user).startTime(LocalDateTime.ofInstant(now,ZoneOffset.UTC))
             .expiresAt(now.plusSeconds(exam.durationMinutes()*60L)).status(ExamSession.Status.IN_PROGRESS)
             .integrityPolicy(exam.integrityPolicy()==null?com.datn.examsession.dto.IntegrityPolicy.disabled():exam.integrityPolicy())
-            .attemptNumber(Math.toIntExact(attempts+1)).questions(questions).examTitle(exam.title()).build();
+            .attemptNumber(Math.toIntExact(attempts+1)).questions(questions).examTitle(exam.title()).practice(exam.practice()).build();
         s.setExpiresAt(admission.deadlineAt());s.setScheduleRevision(admission.scheduleRevision());s.setStartAdmissionId(admission.admissionId());
         s.setAttemptNumber(nextAttemptNumber(examId,user)); // monotonic and never reused, independent of how many rows exist
         // Immutable snapshot order is persisted for this attempt and reused on refresh.
@@ -122,6 +127,64 @@ public class SessionService {
         examLock(examId);var existing=integrityLocks.findById(examId);existing.ifPresent(integrityLocks::delete);
         return new IntegrityLockResult(examId,false,existing.isEmpty(),0,Instant.now());
     }
+    /**
+     * Shuffles question order but keeps the questions of one reading/listening passage together, in their own order,
+     * as one block where the first of them stood.
+     */
+    static List<ExamClient.Question> shuffleKeepingPassages(List<ExamClient.Question> questions,Random random){
+        var blocks=new ArrayList<List<ExamClient.Question>>();var byPassage=new HashMap<String,List<ExamClient.Question>>();
+        for(var q:questions){
+            String key=q.passageKey();
+            if(key==null){blocks.add(new ArrayList<>(List.of(q)));continue;}
+            var block=byPassage.get(key);
+            if(block==null){block=new ArrayList<>();byPassage.put(key,block);blocks.add(block);}
+            block.add(q);
+        }
+        Collections.shuffle(blocks,random);
+        return blocks.stream().flatMap(List::stream).toList();
+    }
+
+    /**
+     * MULTIPLE_RESPONSE: a JSON array of distinct option ids, e.g. ["id1","id3"].
+     * TRUE_FALSE_GROUP: a JSON object option id -> true/false; statements left out are unanswered.
+     * FILL_BLANK: a JSON object gap (option) id -> typed text, each at most 500 characters.
+     * MATCHING: a JSON object left item (option) id -> one of presentation.matchTargets.
+     */
+    static void checkStructured(com.fasterxml.jackson.databind.ObjectMapper json,ExamClient.Question q,String content){
+        boolean multi="MULTIPLE_RESPONSE".equals(q.questionType()),group="TRUE_FALSE_GROUP".equals(q.questionType());
+        boolean blanks="FILL_BLANK".equals(q.questionType()),matching="MATCHING".equals(q.questionType());
+        if(blanks||matching){checkKeyed(json,q,content,matching);return;}
+        if(!multi&&!group)return;
+        var ids=new HashSet<String>();q.options().forEach(o->ids.add(o.id().toString()));
+        com.fasterxml.jackson.databind.JsonNode node;
+        try{node=json.readTree(content);}catch(Exception e){throw error(400,"Answer must be JSON for this question type");}
+        if(multi){
+            if(node==null||!node.isArray())throw error(400,"Answer must be a list of option ids");
+            var seen=new HashSet<String>();
+            for(var v:node)if(!v.isTextual()||!ids.contains(v.asText())||!seen.add(v.asText()))throw error(400,"Option outside this question");
+        }else{
+            if(node==null||!node.isObject())throw error(400,"Answer must map statements to true/false");
+            var fields=node.fields();
+            while(fields.hasNext()){var f=fields.next();if(!ids.contains(f.getKey())||!f.getValue().isBoolean())throw error(400,"Option outside this question");}
+        }
+    }
+
+    private static void checkKeyed(com.fasterxml.jackson.databind.ObjectMapper json,ExamClient.Question q,String content,boolean matching){
+        var ids=new HashSet<String>();q.options().forEach(o->ids.add(o.id().toString()));
+        var targets=new HashSet<String>();
+        if(matching&&q.presentation()!=null&&q.presentation().get("matchTargets") instanceof java.util.Collection<?> list)list.forEach(v->targets.add(String.valueOf(v)));
+        com.fasterxml.jackson.databind.JsonNode node;
+        try{node=json.readTree(content);}catch(Exception e){throw error(400,"Answer must be JSON for this question type");}
+        if(node==null||!node.isObject())throw error(400,matching?"Answer must map items to their match":"Answer must map gaps to text");
+        var fields=node.fields();
+        while(fields.hasNext()){
+            var f=fields.next();
+            if(!ids.contains(f.getKey())||!f.getValue().isTextual())throw error(400,"Option outside this question");
+            if(matching&&!targets.contains(f.getValue().asText()))throw error(400,"Match outside this question");
+            if(!matching&&f.getValue().asText().length()>500)throw error(400,"Gap answer too long");
+        }
+    }
+
     // Do not roll back AUTO_SUBMITTED when rejecting a late answer.
     @Transactional(noRollbackFor=ResponseStatusException.class)
     public void saveAnswer(UUID sessionId,UUID userId,UUID questionId,String content){
@@ -130,9 +193,40 @@ public class SessionService {
         var q=s.getQuestions().stream().filter(v->v.questionId().equals(questionId)).findFirst().orElseThrow(()->error(400,"Question outside this exam"));
         if(content==null || content.length()>20000)throw error(400,"Invalid answer length");
         if(Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.questionType()) && !content.isEmpty() && q.options().stream().noneMatch(o->o.id().toString().equals(content)))throw error(400,"Option outside this question");
+        if("SPEAKING".equals(q.questionType()) && !content.isEmpty())throw error(400,"Speaking answers are recorded through the audio upload");
+        if(!content.isEmpty())checkStructured(json,q,content);
         var a=answers.findBySessionIdAndQuestionId(sessionId,questionId).orElseGet(()->SessionAnswer.builder().session(s).questionId(questionId).build());
+        if(a.getCheckedAt()!=null)throw error(409,"Câu này đã kiểm tra đáp án nên không sửa được");
         a.setAnswerContent(content);answers.save(a);
     }
+
+    /**
+     * Practice attempts: the verdict for one saved answer, with the key and explanation. The answer is locked afterwards,
+     * so checking cannot be used to try options one by one. Essay and speaking answers are graded by teachers, not here.
+     */
+    @Transactional(noRollbackFor=ResponseStatusException.class)
+    public PracticeCheck checkAnswer(UUID sessionId,UUID userId,UUID questionId){
+        var s=owned(sessionId,userId);expire(s);
+        if(s.getStatus()!=ExamSession.Status.IN_PROGRESS)throw error(409,"Session ended");
+        if(!s.isPractice())throw error(409,"Chỉ đề luyện tập mới xem đáp án ngay");
+        var q=s.getQuestions().stream().filter(v->v.questionId().equals(questionId)).findFirst().orElseThrow(()->error(400,"Question outside this exam"));
+        if(!PracticeScoring.checkable(q.questionType()))throw error(409,"Câu tự luận và câu nói do giáo viên chấm");
+        var a=answers.findBySessionIdAndQuestionId(sessionId,questionId).orElse(null);
+        if(a!=null&&a.getCheckedAt()!=null)return readCheck(a.getCheckResult());
+        if(a==null||a.getAnswerContent()==null||a.getAnswerContent().isBlank())throw error(400,"Hãy trả lời trước khi kiểm tra");
+        if(token.isBlank())throw error(503,"Exam service integration not configured");
+        var key=exams.keys(s.getExamId(),token).stream().filter(k->k.questionId().equals(questionId)).findFirst().orElseThrow(()->error(409,"Published snapshot unavailable"));
+        var check=PracticeScoring.check(key,a.getAnswerContent());
+        try{a.setCheckResult(json.writeValueAsString(check));}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException(e);}
+        a.setCheckedAt(LocalDateTime.now(ZoneOffset.UTC));answers.save(a);
+        return check;
+    }
+    private PracticeCheck readCheck(String raw){
+        try{return raw==null?null:json.readValue(raw,PracticeCheck.class);}catch(Exception e){return null;}
+    }
+    /** share: 0..1 of the points; parts: per option id, whether that statement/gap/pair is right; correctOptionIds for choice types. */
+    public record PracticeCheck(UUID questionId,double share,boolean correct,List<String> correctAnswers,List<UUID> correctOptionIds,
+                                Map<String,Boolean> parts,String explanation){}
     public void submitExam(UUID id,UUID user){var s=owned(id,user);expire(s);if(s.getStatus()==ExamSession.Status.IN_PROGRESS)finish(s,ExamSession.Status.SUBMITTED);}
     public void autoSubmitExam(UUID id){expire(load(id));}
     public SessionDetailDto getSessionDetails(UUID id){var s=load(id);expire(s);return new SessionDetailDto(s.getId(),s.getExamId(),s.getUserId(),s.getStatus().name(),s.getExamTitle(),s.getAttemptNumber(),s.getStartTime(),s.getEndTime(),answers.findBySessionId(id).stream().map(a->new SessionDetailDto.AnswerDto(a.getQuestionId(),a.getAnswerContent())).toList(),s.getInvalidatedAt(),s.getInvalidationReason());}
@@ -226,8 +320,12 @@ public class SessionService {
         }
         return new StaffAttemptDto(s.getId(),s.getUserId(),s.getAttemptNumber(),s.getStatus().name(),s.getStartTime(),s.getEndTime(),s.getExpiresAt(),true,s.getInvalidatedAt(),s.getInvalidatedBy(),s.getInvalidationReason());
     }
-    private StartSessionResponse response(ExamSession s){var saved=new HashMap<UUID,String>();answers.findBySessionId(s.getId()).forEach(a->saved.put(a.getQuestionId(),a.getAnswerContent()));return new StartSessionResponse(s.getId(),s.getExamId(),s.getExamTitle(),s.getStatus().name(),s.getAttemptNumber(),s.getExpiresAt(),Instant.now(),s.getQuestions(),saved);}
-    public record StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers){}
+    private StartSessionResponse response(ExamSession s){var saved=new HashMap<UUID,String>();answers.findBySessionId(s.getId()).forEach(a->saved.put(a.getQuestionId(),a.getAnswerContent()));var checks=new HashMap<UUID,PracticeCheck>();
+        if(s.isPractice())answers.findBySessionId(s.getId()).forEach(a->{if(a.getCheckedAt()!=null){var c=readCheck(a.getCheckResult());if(c!=null)checks.put(a.getQuestionId(),c);}});
+        return new StartSessionResponse(s.getId(),s.getExamId(),s.getExamTitle(),s.getStatus().name(),s.getAttemptNumber(),s.getExpiresAt(),Instant.now(),s.getQuestions(),saved,s.isPractice(),checks);}
+    public record StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers,boolean practice,Map<UUID,PracticeCheck> checks){
+        public StartSessionResponse(UUID sessionId,UUID examId,String title,String status,int attemptNumber,Instant expiresAt,Instant serverNow,List<ExamClient.Question> questions,Map<UUID,String> answers){this(sessionId,examId,title,status,attemptNumber,expiresAt,serverNow,questions,answers,false,Map.of());}
+    }
     public record ScheduleAvailability(long attempts,boolean resumable,Instant activeExpiresAt,long activeSessions,UUID latestSessionId,String latestSessionStatus){}
     public record RecipientProgress(UUID userId,boolean started,boolean submitted){}
     public record AdmissionStatus(UUID examId,UUID admissionId,UUID sessionId,boolean started){}

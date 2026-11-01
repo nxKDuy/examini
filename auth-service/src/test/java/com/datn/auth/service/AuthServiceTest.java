@@ -31,7 +31,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AuthService(users, passwords, jwt, redis);
+        service = new AuthService(users, passwords, jwt, redis, mock(GoogleTokenVerifier.class));
         when(redis.opsForValue()).thenReturn(values);
         lenient().when(users.existsByEmail(any())).thenReturn(false);
         lenient().when(passwords.encode(any())).thenReturn("encoded");

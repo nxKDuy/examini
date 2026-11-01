@@ -22,16 +22,16 @@ globalThis.window = { localStorage: globalThis.localStorage }
 const n = await import('../src/components/layout/navigation.ts')
 const names = items => items.map(i => i.label)
 
-test('Student has exactly five destinations: all five fit the dock and there is no "Khác"', () => {
+test('Student: four priority tiles (Tổng quan, Kỳ thi, Tiến bộ, Lịch) and the rest behind Khác', () => {
   const { dock, more } = n.dockFor('STUDENT')
-  assert.deepEqual(names(dock), ['Tổng quan', 'Ngân hàng công khai', 'Lịch của tôi', 'Kỳ thi của tôi', 'Tổ chức']); assert.deepEqual(more, [])
+  assert.deepEqual(names(dock), ['Tổng quan', 'Kỳ thi của tôi', 'Tiến bộ', 'Lịch của tôi']); assert.deepEqual(names(more), ['Ngân hàng công khai', 'Tổ chức'])
 })
 
 test('Teacher: four priority tiles (Tổng quan, Lịch thi, Đề thi, Chấm bài) and the rest behind Khác; Admin has its own priority set', () => {
   const t = n.dockFor('TEACHER')
   assert.deepEqual(names(t.dock), ['Tổng quan', 'Lịch thi', 'Đề thi', 'Chấm bài']); assert.deepEqual(names(t.more), ['Kho cá nhân', 'Ngân hàng công khai', 'Tổ chức'])
   const a = n.dockFor('ADMIN')
-  assert.deepEqual(names(a.dock), ['Tổng quan', 'Câu hỏi', 'Đề thi', 'Chấm bài']); assert.deepEqual(names(a.more), ['Ngân hàng công khai', 'Tổ chức', 'Lịch thi'])
+  assert.deepEqual(names(a.dock), ['Tổng quan', 'Câu hỏi', 'Đề thi', 'Chấm bài']); assert.deepEqual(names(a.more), ['Thống kê', 'Người dùng', 'Ngân hàng công khai', 'Tổ chức', 'Lịch thi'])
 })
 
 test('Dock never exceeds five tiles including Khác, and dock + sheet together are every destination exactly once (nothing lost, nothing duplicated)', () => {

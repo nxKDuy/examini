@@ -73,7 +73,7 @@ public class GradingNotifications {
             INSERT INTO notifications(id,recipient_user_id,type,title,message,entity_type,entity_id,metadata,source_event_id,source_event_type)
             VALUES(?,?,?,?,?,'EXAM_SESSION',?,CAST(? AS jsonb),?,?) ON CONFLICT(source_event_id,recipient_user_id) DO NOTHING RETURNING id""",UUID.class,
             UUID.randomUUID(),student,c.type(),c.title(),c.message(),session,write(meta),source,sourceType);
-        if(!inserted.isEmpty())deliveries.enqueue(inserted.getFirst(),student,true,now,now.plus(TTL));
+        if(!inserted.isEmpty())deliveries.enqueue(inserted.getFirst(),student,c.type(),true,now,now.plus(TTL));
     }
 
     /** Deterministic per (stream, session, revision): also the inbox dedup key. */

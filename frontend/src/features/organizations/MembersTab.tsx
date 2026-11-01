@@ -9,6 +9,7 @@ import { Badge, EmptyState, ErrorState, LoadingState, Notice, Pagination } from 
 import { formatDateTime } from '../../lib/format'
 import { useIsNarrow } from '../../lib/hooks'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const STATUS_OPTIONS = i18nMap([{ value: 'ACTIVE', label: 'Đang hoạt động' }, { value: 'REVOKED', label: 'Lịch sử: đã bị gỡ' }, { value: 'LEFT', label: 'Lịch sử: đã rời' }, { value: 'ALL', label: 'Lịch sử: tất cả' }])
 
@@ -36,15 +37,15 @@ export default function MembersTab({ org }: { org: Organization }) {
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div className="row">
           <label className="row small" style={{ gap: 6 }}>{t('Vai trò')}
-            <select className="input" value={role} onChange={e => changeFilter(() => setRole(e.target.value))} style={{ width: 'auto' }}>
+            <Select className="input" value={role} onChange={e => changeFilter(() => setRole(e.target.value))} style={{ width: 'auto' }}>
               <option value="">{t('Tất cả')}</option><option value="OWNER">{ROLE_LABEL.OWNER}</option><option value="ADMIN">{ROLE_LABEL.ADMIN}</option><option value="MEMBER">{ROLE_LABEL.MEMBER}</option>
-            </select>
+            </Select>
           </label>
           {manager && (
             <label className="row small" style={{ gap: 6 }}>{t('Trạng thái')}
-              <select className="input" value={status} onChange={e => changeFilter(() => setStatus(e.target.value))} style={{ width: 'auto' }}>
+              <Select className="input" value={status} onChange={e => changeFilter(() => setStatus(e.target.value))} style={{ width: 'auto' }}>
                 {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              </Select>
             </label>
           )}
         </div>

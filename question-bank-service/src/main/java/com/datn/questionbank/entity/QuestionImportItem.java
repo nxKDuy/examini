@@ -33,6 +33,6 @@ public class QuestionImportItem {
     @Column(nullable=false,columnDefinition="TEXT") private String errors;
     @Column(name="imported_question_id") private UUID importedQuestionId;
     @Column(name="imported_at") private LocalDateTime importedAt;
-    public enum SourceMethod { TEXT, OCR }
+    public enum SourceMethod { TEXT, OCR, AI }
     public boolean importable() { return valid && !excluded && importedQuestionId==null && (!reviewRequired || reviewed); }
 }

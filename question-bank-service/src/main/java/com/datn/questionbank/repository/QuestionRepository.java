@@ -16,4 +16,5 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select q from Question q where q.id = :id")
     Optional<Question> findForUpdate(UUID id);
+    java.util.List<com.datn.questionbank.entity.Question> findTop300ByCreatedByAndPresentationIsNotNullOrderByUpdatedAtDesc(java.util.UUID createdBy);
 }

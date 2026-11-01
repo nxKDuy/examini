@@ -1,4 +1,4 @@
-import { BookOpenCheck, Building2, CalendarDays, ClipboardCheck, FileText, LayoutDashboard, ListChecks, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { BookOpenCheck, Building2, Users, CalendarDays, ClipboardCheck, FileText, LayoutDashboard, ListChecks, ShieldCheck, TrendingUp, BarChart3, type LucideIcon } from 'lucide-react'
 import { hasPersona, isSystemAdmin, type AuthUser } from '../../store/authStore'
 import { t, i18nMap } from '../../lib/i18n'
 
@@ -21,7 +21,7 @@ export function navigationFor(audience: Audience): NavGroup[] {
   const overview: NavItem = { to: '/dashboard', label: t('Tổng quan'), icon: LayoutDashboard }
   const organizations: NavItem = { to: '/organizations', label: t('Tổ chức'), icon: Building2 }
   if (audience === 'STUDENT') {
-    return [{ items: [overview, publicBank, { to: '/calendar', label: t('Lịch của tôi'), shortLabel: t('Lịch'), icon: CalendarDays }, { to: '/my-exams', label: t('Kỳ thi của tôi'), shortLabel: t('Kỳ thi'), icon: ListChecks }, organizations] }]
+    return [{ items: [overview, publicBank, { to: '/calendar', label: t('Lịch của tôi'), shortLabel: t('Lịch'), icon: CalendarDays }, { to: '/my-exams', label: t('Kỳ thi của tôi'), shortLabel: t('Kỳ thi'), icon: ListChecks }, { to: '/progress', label: t('Tiến bộ'), icon: TrendingUp }, organizations] }]
   }
   if (audience === 'TEACHER') {
     return [
@@ -38,7 +38,7 @@ export function navigationFor(audience: Audience): NavGroup[] {
   }
   return [
     { items: [overview] },
-    { label: t('Quản trị'), items: [{ to: '/questions', label: t('Câu hỏi'), icon: ShieldCheck }, publicBank, organizations] },
+    { label: t('Quản trị'), items: [{ to: '/admin/stats', label: t('Thống kê'), icon: BarChart3 }, { to: '/admin/users', label: t('Người dùng'), icon: Users }, { to: '/questions', label: t('Câu hỏi'), icon: ShieldCheck }, publicBank, organizations] },
     { label: t('Khảo thí'), items: [
       { to: '/calendar', label: t('Lịch thi'), icon: CalendarDays },
       { to: '/exams', label: t('Đề thi'), icon: FileText },
@@ -56,7 +56,7 @@ export function navigationItems(audience: Audience): NavItem[] {
 /** Phone dock: at most 5 tiles. Up to 5 destinations all fit; otherwise the audience's priority items take 4 tiles and the rest go behind "Khác". One source for both. */
 export const DOCK_SLOTS = 5
 export const DOCK_PRIORITY: Record<Audience, string[]> = {
-  STUDENT: [],
+  STUDENT: ['/dashboard', '/my-exams', '/progress', '/calendar'],
   TEACHER: ['/dashboard', '/calendar', '/exams', '/grading'],
   ADMIN: ['/dashboard', '/questions', '/exams', '/grading'],
 }

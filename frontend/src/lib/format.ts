@@ -1,12 +1,13 @@
 import { t, i18nMap, locale } from './i18n'
-// Display helpers. Exam schedules are UTC LocalDateTime values without an offset.
+import { APP_ZONE, instantToWall, resolveWall } from './zone'
+// Display helpers. Exam schedules are UTC LocalDateTime values without an offset; they are shown in Vietnam time (APP_ZONE).
 
 // Formatters follow the UI language; one per locale, created on first use.
 const cache = new Map<string, Intl.DateTimeFormat>()
 const intl = (key: string, opts: Intl.DateTimeFormatOptions) => {
   const k = `${locale()}|${key}`
   let f = cache.get(k)
-  if (!f) { f = new Intl.DateTimeFormat(locale(), opts); cache.set(k, f) }
+  if (!f) { f = new Intl.DateTimeFormat(locale(), { timeZone: APP_ZONE, ...opts }); cache.set(k, f) }
   return f
 }
 const dateTime = { format: (d: Date) => intl('dateTime', { dateStyle: 'medium', timeStyle: 'short' }).format(d) }
@@ -27,19 +28,17 @@ export function formatDateTime(value: string | null | undefined, fallback = t('C
 
 export const formatClock = (date: Date) => timeOnly.format(date)
 
-/** UTC LocalDateTime from the server -> value for <input type="datetime-local"> in local time. */
+/** UTC LocalDateTime from the server -> value for <input type="datetime-local"> in Vietnam time. */
 export function toLocalInput(value: string | null | undefined) {
   const date = parseUtc(value)
-  if (!date) return ''
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-  return local.toISOString().slice(0, 16)
+  return date ? instantToWall(date.getTime(), APP_ZONE) : ''
 }
 
-/** Local datetime-local input -> UTC LocalDateTime expected by the Exam API. */
+/** Vietnam-time datetime-local input -> UTC LocalDateTime expected by the Exam API. */
 export function fromLocalInput(value: string): string | undefined {
   if (!value) return undefined
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 19)
+  const r = resolveWall(value.slice(0, 16), APP_ZONE)
+  return r.kind === 'valid' || r.kind === 'overlap' ? new Date(r.options[0].ms).toISOString().slice(0, 19) : undefined
 }
 
 export function formatDuration(totalSeconds: number) {
@@ -57,7 +56,7 @@ export function formatScore(value: number | null | undefined) {
 export const shortId = (id: string | null | undefined) => (id ? id.slice(0, 8) : '-')
 
 export const QUESTION_TYPE_LABEL: Record<string, string> = i18nMap({
-  MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận',
+  MULTIPLE_CHOICE: 'Trắc nghiệm', TRUE_FALSE: 'Đúng/Sai', SHORT_ANSWER: 'Trả lời ngắn', ESSAY: 'Tự luận', SPEAKING: 'Nói', MULTIPLE_RESPONSE: 'Nhiều đáp án', TRUE_FALSE_GROUP: 'Đúng/Sai nhiều ý', FILL_BLANK: 'Điền vào chỗ trống', MATCHING: 'Nối cột',
 })
 export const DIFFICULTY_LABEL: Record<string, string> = i18nMap({ EASY: 'Dễ', MEDIUM: 'Trung bình', HARD: 'Khó' })
 export const ACCESS_MODE_LABEL: Record<string, string> = i18nMap({

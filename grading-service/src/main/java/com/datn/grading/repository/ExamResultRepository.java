@@ -14,6 +14,7 @@ import java.util.UUID;
 
 public interface ExamResultRepository extends JpaRepository<ExamResult, UUID> {
     Optional<ExamResult> findBySessionId(UUID sessionId);
+    java.util.List<ExamResult> findTop100ByUserIdOrderBySubmittedAtDesc(UUID userId);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from ExamResult r where r.id=:id") Optional<ExamResult> lockById(@Param("id")UUID id);
 

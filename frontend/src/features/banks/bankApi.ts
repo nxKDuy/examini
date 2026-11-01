@@ -68,6 +68,9 @@ export const bankApi = {
   eligible: (f: EligibleFilters & { page: number; size?: number }) => api.get<Page<Question>>('/questions/eligible', { params: { ...cleanFilters(f), page: f.page, size: f.size ?? 20 } }).then(r => r.data),
   eligibleIds: (f: EligibleFilters) => api.post<{ ids: string[]; total: number; truncated: boolean }>('/questions/eligible/ids', cleanFilters(f)).then(r => r.data),
   setEligibleItems: (setId: string) => api.get<SetEligibleItems>(`/question-sets/${setId}/eligible-items`).then(r => r.data),
+  /** Exam matrix: eligible questions per topic and difficulty. */
+  matrixCounts: (body: { categoryIds: string[]; bankId?: string; questionType?: string }) =>
+    api.post<{ categoryId: string; difficulty: 'EASY' | 'MEDIUM' | 'HARD'; available: number }[]>('/questions/eligible/matrix-counts', body).then(r => r.data),
   eligibleBatch: (ids: string[]) => api.post<Question[]>('/questions/batch', ids, { params: { eligible: true, includeAnswers: false } }).then(r => r.data),
   pickerList: async (bank: Bank, params: { questionType?: string; difficulty?: string; page: number; size: number }): Promise<Page<Question>> => {
     // Publication IDs are the Exam resources, never sourceQuestionId.

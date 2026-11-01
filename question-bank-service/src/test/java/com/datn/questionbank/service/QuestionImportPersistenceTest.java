@@ -50,6 +50,7 @@ class QuestionImportPersistenceTest {
     UUID category;
     @BeforeEach void setup(){category=categories.findAll().getFirst().getId();}
     int fails(Runnable call){return assertThrows(ResponseStatusException.class,call::run).getStatusCode().value();}
+    long jobsCount(){return jdbc.queryForObject("select count(*) from question_import_jobs",java.util.Map.of(),Long.class);}
 
     static final String TEMPLATE="""
             Câu 1: Thủ đô của Việt Nam là?
@@ -98,6 +99,73 @@ class QuestionImportPersistenceTest {
     List<ImportItemResponse> items(UUID job,ItemFilter filter){return imports.items(job,filter,PageRequest.of(0,100),owner).getContent();}
     static boolean tesseract(){try{return new ProcessBuilder("tesseract","--version").start().waitFor()==0;}catch(Exception e){return false;}}
 
+    @Test void importCanActivateRightAwayWithoutReview() throws Exception {
+        var job=run("kich-hoat.docx",docx(TEMPLATE,false),category);
+        var ready=items(job.id(),ItemFilter.IMPORTABLE);assertEquals(1,ready.size());
+        var result=imports.importItems(job.id(),new ImportRequest(List.of(ready.getFirst().id()),null,true),owner);
+        var q=questionRepo.findById(result.imported().getFirst().questionId()).orElseThrow();
+        assertEquals(QuestionStatus.ACTIVE,q.getStatus());assertEquals(CreationMethod.IMPORT,q.getCreationMethod());
+        // Invalid items are still never imported, activated or not.
+        assertEquals(List.of("ALREADY_IMPORTED","INVALID"),imports.importItems(job.id(),new ImportRequest(null,null,true),owner).skipped().stream().map(SkippedItem::reason).toList());
+    }
+
+    @Test void excelAndWordTemplatesImportEveryQuestionTypeIncludingSpeaking() throws Exception {
+        var sheet=run("mau.xlsx",ImportTemplates.excel(),category);
+        assertEquals(Status.READY,sheet.status());assertEquals(FileKind.XLSX,sheet.fileKind());
+        var rows=items(sheet.id(),ItemFilter.ALL);
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP,QuestionType.FILL_BLANK,QuestionType.MATCHING),
+                rows.stream().map(ImportItemResponse::questionType).toList());
+        assertTrue(rows.get(0).options().get(0).correct());assertEquals(4,rows.get(0).options().size());
+        assertTrue(rows.get(1).options().get(0).correct());assertEquals("Đúng",rows.get(1).options().get(0).content());
+        assertEquals("14",rows.get(2).expectedAnswer());assertEquals(DifficultyLevel.HARD,rows.get(3).difficultyLevel());
+        assertTrue(rows.get(3).explanation().contains("Gợi ý chấm"));
+        assertTrue(rows.stream().allMatch(ImportItemResponse::valid));
+        var mr=rows.get(5).options();assertEquals(List.of(true,false,true,false),mr.stream().map(ImportOption::correct).toList());
+        var tfg=rows.get(6).options();assertEquals(List.of(true,true,false,true),tfg.stream().map(ImportOption::correct).toList());
+        var result=imports.importItems(sheet.id(),null,owner);assertEquals(9,result.imported().size());
+        var matching=questionRepo.findById(result.imported().get(8).questionId()).orElseThrow();
+        assertEquals("Việt Nam => Hà Nội",matching.getOptions().get(0).getContent());
+        var speaking=questionRepo.findById(result.imported().get(4).questionId()).orElseThrow();
+        assertEquals(QuestionType.SPEAKING,speaking.getQuestionType());assertEquals(120,speaking.getPresentation().maxRecordSeconds());
+
+        var word=run("mau.docx",ImportTemplates.word(),category);
+        assertEquals(Status.READY,word.status());
+        var wordRows=items(word.id(),ItemFilter.ALL);
+        assertEquals(List.of(true,false,true,false),wordRows.get(5).options().stream().map(ImportOption::correct).toList());
+        assertEquals(List.of("Đồ thị cắt trục tung tại điểm (0; 3).","Hàm số đạt giá trị nhỏ nhất bằng −1.","Hàm số đồng biến trên (−∞; 2).","Phương trình y = 0 có hai nghiệm x = 1 và x = 3."),
+                wordRows.get(6).options().stream().map(ImportOption::content).toList());
+        assertEquals(List.of(true,true,false,true),wordRows.get(6).options().stream().map(ImportOption::correct).toList());
+        assertTrue(wordRows.stream().allMatch(ImportItemResponse::valid),()->wordRows.toString());
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SHORT_ANSWER,QuestionType.ESSAY,QuestionType.SPEAKING,QuestionType.MULTIPLE_RESPONSE,QuestionType.TRUE_FALSE_GROUP,QuestionType.FILL_BLANK,QuestionType.MATCHING),
+                items(word.id(),ItemFilter.ALL).stream().map(ImportItemResponse::questionType).toList());
+
+        String csv="\uFEFFCâu hỏi;Loại;Độ khó;A;B;Đáp án\nMặt trời mọc ở hướng nào?;trắc nghiệm;dễ;Đông;Tây;A\nThiếu đáp án;Trắc nghiệm;;X;Y;\n";
+        var c=run("cau-hoi.csv",csv.getBytes(java.nio.charset.StandardCharsets.UTF_8),category);
+        assertEquals(FileKind.CSV,c.fileKind());
+        var csvRows=items(c.id(),ItemFilter.ALL);assertEquals(2,csvRows.size());
+        assertTrue(csvRows.get(0).valid());assertTrue(csvRows.get(1).flags().contains("MISSING_CORRECT_ANSWER"));
+        assertEquals(DifficultyLevel.MEDIUM,csvRows.get(1).difficultyLevel()); // default difficulty
+
+        // The web "Export → Excel/CSV" file (same columns, comma separated, quoted cells) imports back unchanged.
+        String exported="\uFEFFCâu hỏi,Loại,Độ khó,A,B,C,D,E,F,G,H,Đáp án,Giải thích\r\n"
+                +"\"Thủ đô, \"\"Việt Nam\"\"?\",Trắc nghiệm,Dễ,Hà Nội,Huế,,,,,,,A,Vì đúng\r\n"
+                +"Trái Đất tròn,Đúng/Sai,Trung bình,,,,,,,,,Sai,\r\n"
+                +"\"Bài đọc\nNgày xưa\n\nKể lại\",Nói,Khó,,,,,,,,,Phát âm,\r\n";
+        var back=items(run("xuat.csv",exported.getBytes(java.nio.charset.StandardCharsets.UTF_8),category).id(),ItemFilter.ALL);
+        assertEquals(List.of(QuestionType.MULTIPLE_CHOICE,QuestionType.TRUE_FALSE,QuestionType.SPEAKING),back.stream().map(ImportItemResponse::questionType).toList());
+        assertEquals("Thủ đô, \"Việt Nam\"?",back.get(0).content());assertTrue(back.get(0).options().get(0).correct());
+        assertTrue(back.get(1).options().get(1).correct());assertEquals(DifficultyLevel.HARD,back.get(2).difficultyLevel());
+        assertTrue(back.stream().allMatch(ImportItemResponse::valid));
+    }
+
+    @Test void aiMaterialIsTheDocumentTextAndNothingIsStored() throws Exception {
+        long before=jobsCount();
+        var m=imports.material(new MockMultipartFile("file","bai.docx","application/octet-stream",ImportTemplates.word()),owner);
+        assertTrue(m.text().contains("Câu 1"));assertFalse(m.truncated());assertEquals("bai.docx",m.fileName());
+        assertEquals(before,jobsCount());
+        assertEquals(400,fails(()->imports.material(new MockMultipartFile("file","a.csv","text/csv","a,b".getBytes()),owner)));
+    }
+
     @Test void docxReviewEditValidateAndImportAsPersonalDraftWithAudit() throws Exception {
         var job=run("de-kiem-tra.docx",docx(TEMPLATE,true),category);
         assertEquals(Status.READY,job.status());assertEquals(FileKind.DOCX,job.fileKind());assertEquals(2,job.pageCount());
@@ -126,7 +194,7 @@ class QuestionImportPersistenceTest {
         assertEquals("de-kiem-tra.docx · trang 2",created.getSourceLabel());assertEquals("import:"+job.id()+":"+second.id(),created.getSourceRefId());
         assertEquals(DifficultyLevel.HARD,created.getDifficultyLevel());assertEquals("2 chỉ chia hết cho 1 và 2",created.getExplanation());
         assertEquals(owner.userId(),created.getCreatedBy());
-        var again=imports.importItems(job.id(),new ImportRequest(List.of(second.id(),UUID.randomUUID()),null),owner);
+        var again=imports.importItems(job.id(),new ImportRequest(List.of(second.id(),UUID.randomUUID()),null,null),owner);
         assertEquals(List.of("ALREADY_IMPORTED","NOT_IN_JOB"),again.skipped().stream().map(SkippedItem::reason).toList());
         assertEquals(409,fails(()->imports.update(job.id(),second.id(),new ItemUpdate(fixed.version()+1,"x",null,null,null,null,null,null,null,null),owner)));
         var actions=jdbc.queryForList("SELECT action FROM question_import_events WHERE job_id=:job ORDER BY id",new MapSqlParameterSource("job",job.id()),String.class);
@@ -168,6 +236,17 @@ class QuestionImportPersistenceTest {
         assertEquals(409,fails(()->imports.importItems(noTemplate.id(),null,owner)));
         http.perform(get("/question-imports").header("X-Service-Token","isolated-test-service-token").header("X-Question-Owner-Id",owner.userId()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test void adminStatsShowQuestionsAndAiUsageToSystemAdministratorsOnly() throws Exception {
+        run("mau.xlsx",ImportTemplates.excel(),category);
+        var admin="Bearer "+io.jsonwebtoken.Jwts.builder().subject(UUID.randomUUID().toString()).claim("type","access").claim("role","ADMIN").claim("systemPrivilege","ADMIN")
+                .expiration(new Date(System.currentTimeMillis()+60000)).signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+                        "test-only-jwt-key-32-bytes-or-longer-never-production".getBytes(java.nio.charset.StandardCharsets.UTF_8))).compact();
+        http.perform(get("/questions/admin/stats").header("Authorization",admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.importJobs").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1))).andExpect(jsonPath("$.perDay.length()").value(30))
+                .andExpect(jsonPath("$.ai.jobs").isNumber());
+        http.perform(get("/questions/admin/stats").header("Authorization",jwt(owner))).andExpect(status().isForbidden());
     }
 
     String jwt(QuestionActor actor){

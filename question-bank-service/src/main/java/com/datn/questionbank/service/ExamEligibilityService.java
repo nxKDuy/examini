@@ -75,6 +75,16 @@ public class ExamEligibilityService {
   var ids=jdbc.query("SELECT id FROM ("+ELIGIBLE+") eligible"+where+" ORDER BY RANDOM() LIMIT :limit",parameters,(row,n)->row.getObject("id",UUID.class));
   return new EligibleRandomResponse(ids,request.count(),available);
  }
+ /** Exam matrix: eligible counts grouped by category and difficulty, in the same universe as the blueprint picks. */
+ public List<MatrixCount> matrixCounts(MatrixCountsRequest request,QuestionActor actor) {
+  var categories=new LinkedHashSet<>(request.categoryIds()==null?List.<UUID>of():request.categoryIds());
+  if(categories.isEmpty()||categories.size()>50||categories.contains(null))throw error(HttpStatus.BAD_REQUEST,"Cần 1..50 chủ đề");
+  var filter=new EligibleFilter(request.bankId(),null,request.questionType(),null,null);
+  var parameters=parameters(filter,actor).addValue("categories",categories.stream().map(UUID::toString).toList());
+  return jdbc.query("SELECT category,difficulty_level,COUNT(*) n FROM ("+ELIGIBLE+") eligible"+where(filter)
+    +" AND category IN (:categories) GROUP BY category,difficulty_level ORDER BY category,difficulty_level",parameters,
+   (row,n)->new MatrixCount(UUID.fromString(row.getString("category")),Question.DifficultyLevel.valueOf(row.getString("difficulty_level")),row.getLong("n")));
+ }
  /** Exam Builder browsing: ACTIVE/published eligible resources only, Safe DTO (no key). */
  public Page<QuestionProjection> page(EligibleFilter filter,Pageable pageable,QuestionActor actor) {
   if(pageable.getPageSize()>100)throw error(HttpStatus.BAD_REQUEST,"size tối đa 100");

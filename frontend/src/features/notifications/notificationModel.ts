@@ -6,7 +6,7 @@ export type NotificationIcon = 'calendar-plus' | 'calendar-clock' | 'calendar-x'
 const ICONS: Record<string, NotificationIcon> = {
   EXAM_SCHEDULED: 'calendar-plus', EXAM_RESCHEDULED: 'calendar-clock', EXAM_UNSCHEDULED: 'calendar-x', EXAM_OPENED: 'play', EXAM_CLOSED: 'lock',
   EXAM_REMINDER: 'bell', RESULT_AVAILABLE: 'result', SUBMISSION_RECEIVED: 'send', QUESTION_APPROVED: 'approved', QUESTION_REJECTED: 'rejected',
-  EXAM_MEMBER_INVITED: 'member', EXAM_ASSIGNED: 'assigned',
+  EXAM_MEMBER_INVITED: 'member', EXAM_ASSIGNED: 'assigned', RESULT_REGRADED: 'result', GRADING_REVIEW_REQUIRED: 'send',
 }
 export const notificationIcon = (type: string): NotificationIcon => ICONS[type] ?? 'bell' // new types render generically
 
@@ -22,8 +22,10 @@ export function notificationTarget(n: Pick<AppNotification, 'entityType' | 'enti
   return '/dashboard'
 }
 
-const rtf = new Intl.RelativeTimeFormat('vi', { numeric: 'always' })
+const rtfs = new Map<string, Intl.RelativeTimeFormat>()
+const rtfFor = (loc: string) => { let f = rtfs.get(loc); if (!f) { f = new Intl.RelativeTimeFormat(loc.slice(0, 2), { numeric: 'always' }); rtfs.set(loc, f) } return f }
 export function relativeTime(iso: string, nowMs: number): string {
+  const rtf = rtfFor(locale())
   const diff = Math.round((Date.parse(iso) - nowMs) / 1000)
   const s = Math.abs(diff)
   if (s < 45) return t('vừa xong')
@@ -95,4 +97,38 @@ export function englishNotice(n: Pick<AppNotification, 'type' | 'metadata' | 'cr
 /** Title/message in the UI language: Vietnamese is the server text; English is rebuilt when the type is known. */
 export function localizedNotice(n: AppNotification, lang: 'vi' | 'en') {
   return (lang === 'en' && englishNotice(n)) || { title: n.title, message: n.message }
+}
+
+export interface PreferenceRow { category: 'SCHEDULE' | 'REMINDER' | 'EXAM_STATUS' | 'RESULT' | 'GRADING'; label: string; hint: string }
+const PREF_ROWS: PreferenceRow[] = [
+  { category: 'SCHEDULE', label: 'Lịch thi', hint: 'Đặt, đổi hoặc gỡ lịch thi' },
+  { category: 'REMINDER', label: 'Nhắc giờ thi', hint: 'Nhắc trước giờ bắt đầu' },
+  { category: 'EXAM_STATUS', label: 'Mở/đóng kỳ thi', hint: 'Khi kỳ thi mở hoặc đóng' },
+  { category: 'RESULT', label: 'Kết quả', hint: 'Công bố điểm, chấm lại' },
+  { category: 'GRADING', label: 'Cần chấm tay', hint: 'Bài tự luận chờ giáo viên chấm' },
+]
+/** Students never get grading-review notices; staff never get their own result notices. */
+export const preferenceRows = (student: boolean) => PREF_ROWS.filter(r => (student ? r.category !== 'GRADING' : r.category !== 'RESULT'))
+
+export type InboxGroup = 'SCHEDULE' | 'RESULT' | 'OTHER'
+export const INBOX_GROUPS: { value: InboxGroup | undefined; label: string }[] = [
+  { value: undefined, label: 'Mọi loại' }, { value: 'SCHEDULE', label: 'Lịch & kỳ thi' }, { value: 'RESULT', label: 'Kết quả & chấm' }, { value: 'OTHER', label: 'Khác' },
+]
+
+const dayKey = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` }
+/** Splits a newest-first list into local-day sections: "Hôm nay", "Hôm qua", then dated headings. Order is kept. */
+export function groupByDay<T extends { createdAt: string }>(items: T[], nowMs: number): { key: string; label: string; items: T[] }[] {
+  const today = dayKey(nowMs), yesterday = dayKey(nowMs - 86_400_000)
+  const out: { key: string; label: string; items: T[] }[] = []
+  for (const it of items) {
+    const ms = Date.parse(it.createdAt), k = dayKey(ms)
+    let sec = out[out.length - 1]
+    if (!sec || sec.key !== k) {
+      const label = k === today ? t('Hôm nay') : k === yesterday ? t('Hôm qua')
+        : new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'numeric', ...(new Date(ms).getFullYear() !== new Date(nowMs).getFullYear() ? { year: 'numeric' } : {}) }).format(new Date(ms))
+      sec = { key: k, label, items: [] }; out.push(sec)
+    }
+    sec.items.push(it)
+  }
+  return out
 }

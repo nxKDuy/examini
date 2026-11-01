@@ -5,6 +5,10 @@ echo ==========================================
 echo  Khoi dong DATN (Docker Desktop)
 echo ==========================================
 
+rem Khoa bi mat luu ma hoa tren repo (.env.enc): giai ma ra .env neu chua co.
+if not exist .env if exist .env.enc call :unlock
+if not exist .env (echo Chua co file .env. & pause & exit /b 1)
+
 echo [1/4] Backend (Docker Compose)...
 docker compose -p datn up -d --wait --wait-timeout 60 postgres
 if errorlevel 1 (echo Loi khi khoi dong Postgres. & pause & exit /b 1)
@@ -45,6 +49,19 @@ echo  Teacher: teacher@examini.local, teacher2@examini.local  / Test@1234
 echo  Student: student@examini.local, student2..3@examini.local / Test@1234
 echo ==========================================
 pause
+exit /b 0
+
+:unlock
+set "OSSL=openssl"
+where openssl >nul 2>&1 || set "OSSL=%ProgramFiles%\Git\usr\bin\openssl.exe"
+if exist .env.key (
+  "%OSSL%" enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -a -A -d -in .env.enc -out .env -pass file:.env.key
+) else (
+  echo Nhap mat khau giai ma khoa EXAMINI:
+  "%OSSL%" enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -a -A -d -in .env.enc -out .env
+)
+if errorlevel 1 (del .env 2>nul & echo Sai mat khau hoac thieu openssl ^(cai Git for Windows^). & pause & exit /b 1)
+echo Da giai ma .env
 exit /b 0
 
 :reg

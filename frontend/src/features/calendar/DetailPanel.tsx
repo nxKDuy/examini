@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, ExternalLink, FileCheck2, Lock, PlayCircle, RotateCcw, Unlock, X } from 'lucide-react'
+import { CalendarClock, CalendarPlus, ExternalLink, FileCheck2, Lock, PlayCircle, RotateCcw, Unlock, X } from 'lucide-react'
 import './calendar.css'
 import type { CalendarItem } from './calendarApi'
 import { countdownLine, isManager, isTeacherItem, reasonText, relationLabel, RULE_HELP, ruleLabel, toMs, windowText } from './calendarModel'
@@ -9,6 +9,7 @@ import { StateBadge } from './ExamCard'
 import FollowButton from './FollowButton'
 import LifecycleDialog, { type LifecycleKind } from './LifecycleDialog'
 import ScheduleDialog from './ScheduleDialog'
+import { googleEventUrl, syncApi } from './calendarSync'
 import { Notice } from '../../components/ui'
 import { useModalFocus } from '../../components/useModalFocus'
 import { examApi } from '../exams/examApi'
@@ -45,6 +46,8 @@ export default function DetailPanel({ item, nowMs, viewerTz, narrow, onClose }: 
   })
 
   const examPath = teacher ? `/exams/${item.examId}` : `/exam/lobby/${item.examId}`
+
+  const googleLink = googleEventUrl(item, window.location.origin + examPath)
   const sessionActive = item.latestSessionStatus === 'IN_PROGRESS' && item.latestSessionId
   const sessionDone = item.latestSessionId && item.latestSessionStatus && item.latestSessionStatus !== 'IN_PROGRESS'
   const endMs = toMs(item.endAt)
@@ -98,6 +101,10 @@ export default function DetailPanel({ item, nowMs, viewerTz, narrow, onClose }: 
               {(!item.participant || item.followed) && <FollowButton examId={item.examId} followed={item.followed} size="md" onError={text => setMessage({ tone: 'danger', text })} />}
             </>
           )}
+          {item.startAt && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-ghost" onClick={() => void syncApi.downloadExam(item.examId, item.examTitle).catch(e => setMessage({ tone: 'danger', text: errorText(e) }))}><CalendarPlus size={16} aria-hidden /> {t('Thêm vào lịch (.ics)')}</button>
+            {googleLink && <a className="btn btn-ghost" href={googleLink} target="_blank" rel="noreferrer"><ExternalLink size={16} aria-hidden /> {t('Google Calendar')}</a>}
+          </div>}
           <Link to={examPath} className="btn btn-ghost"><ExternalLink size={16} aria-hidden /> {t('Xem đầy đủ')}</Link>
         </div>
       </div>

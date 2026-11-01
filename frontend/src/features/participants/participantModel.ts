@@ -89,3 +89,15 @@ export function isInvalidatedConflict(error: unknown): boolean {
   const e = error as { response?: { status?: number; data?: { detail?: string } } }
   return e?.response?.status === 409 && /RESULT_INVALIDATED/.test(e.response.data?.detail ?? '')
 }
+
+/** Member ids to add from an organization: active members only, without the caller, unique, in the listed order. */
+export function orgMemberIds(members: { userId: string; status: string }[], selfId?: string): string[] {
+  return [...new Set(members.filter(m => m.status === 'ACTIVE' && m.userId !== selfId).map(m => m.userId))]
+}
+
+/** Splits ids into server-sized batches (1..MAX_BATCH each). */
+export function chunk<T>(items: T[], size = MAX_BATCH): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+  return out
+}

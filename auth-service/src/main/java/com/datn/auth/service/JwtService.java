@@ -50,6 +50,8 @@ public class JwtService {
         return Jwts.builder()
                 .subject(userId.toString())
                 .claim("type", "refresh")
+                // Unique id: two sign-ins within the same second must not produce the same (still valid) token.
+                .id(UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshExpiryMs))
                 .signWith(key)

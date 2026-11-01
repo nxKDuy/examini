@@ -89,6 +89,11 @@ public class Question {
     @Column(columnDefinition = "TEXT")
     private String explanation;
 
+    /** Media, reading passage and per-type limits; null for a plain text question. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private com.datn.questionbank.dto.Presentation presentation;
+
     @Column(name = "question_version", nullable = false)
     @Builder.Default
     private long questionVersion = 1;
@@ -109,7 +114,17 @@ public class Question {
     private List<QuestionOption> options = new ArrayList<>();
 
     public enum QuestionType {
-        MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY
+        MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY,
+        /** Answered with a voice recording; graded by a teacher. */
+        SPEAKING,
+        /** Several options may be correct; the student ticks all of them (all-or-nothing). */
+        MULTIPLE_RESPONSE,
+        /** 2-8 statements each judged true/false (THPT 2025 format); option.correct = the statement is true. */
+        TRUE_FALSE_GROUP,
+        /** The stem marks gaps with ___; option i holds the accepted answers of gap i ("a | b"). Partial credit per gap. */
+        FILL_BLANK,
+        /** Each option is a pair "left => right"; the student matches every left item. Partial credit per pair. */
+        MATCHING
     }
 
     public enum DifficultyLevel {

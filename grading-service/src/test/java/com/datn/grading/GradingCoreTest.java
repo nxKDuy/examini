@@ -33,10 +33,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"spring.datasource.url=jdbc:postgresql://localhost:5432/grading_test","spring.datasource.username=postgres","spring.datasource.password=","eureka.client.enabled=false","spring.cloud.discovery.enabled=false","jwt.secret=unit-test-only-signing-key-32-bytes-minimum","exam.internal-token=test-internal","spring.rabbitmq.listener.simple.auto-startup=false","grading.events.outbox-initial-delay-ms=3600000","grading.events.outbox-poll-ms=3600000","grading.events.max-attempts=4","grading.events.retry-base-ms=1000","grading.events.retry-max-ms=3000"})
 @AutoConfigureMockMvc
 class GradingCoreTest {
-    @Autowired GradingService service;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
+    @Autowired GradingService service;
+    @Autowired StudentProgressService progress;@Autowired ExamResultRepository results;@Autowired ResultPublicationRepository publications;
     @Autowired GradingAuditRepository audits;@Autowired GradingOutboxRepository outbox;@Autowired GradingOutboxRelay relay;@Autowired ObjectMapper json;
     @Autowired MockMvc mvc;
-    @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean GeminiClient ai;@MockBean RabbitTemplate rabbit;
+    @MockBean ExamClient exams;@MockBean ExamSessionClient sessions;@MockBean AiClient ai;@MockBean RabbitTemplate rabbit;
     UUID session,exam,user,teacher;
 
     @BeforeEach void setup(){
@@ -70,7 +71,7 @@ class GradingCoreTest {
     @Test void duplicateEventsEssayFallbackAndOutboxAreIdempotent()throws Exception{
         var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);var now=LocalDateTime.now();
         when(sessions.get(session,"test-internal")).thenReturn(new ExamSessionClient.SessionDetailDto(session,exam,user,"SUBMITTED","Exam",1,now.minusMinutes(5),now,List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Essay"))));
-        when(exams.key(exam,"test-internal")).thenReturn(List.of(objective,essay));when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        when(exams.key(exam,"test-internal")).thenReturn(List.of(objective,essay));when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));
         var pool=Executors.newFixedThreadPool(2);try{var a=pool.submit(()->service.processSubmittedExam(session.toString()));var b=pool.submit(()->service.processSubmittedExam(session.toString()));a.get();b.get();}finally{pool.shutdownNow();}
         var result=results.findBySessionId(session).orElseThrow();assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2.5f,result.getTotalScore());assertEquals(5,result.getMaxScore());assertNull(result.getGradedAt());assertEquals(1,result.getPendingManualItemCount());
         assertEquals(1,results.findAll().size());assertEquals(Set.of("grading.result.recorded.v1","grading.review.required"),outbox.findAll().stream().map(GradingOutboxEvent::getRoutingKey).collect(java.util.stream.Collectors.toSet()));
@@ -81,8 +82,81 @@ class GradingCoreTest {
         var studentResult=service.student(session,user);assertEquals("NEEDS_REVIEW",studentResult.status());assertNull(studentResult.score());assertEquals(exam,studentResult.examId());assertEquals(1,studentResult.attemptNumber());
     }
 
+    @Test void speakingRecordingsAlwaysWaitForATeacherAndSilenceScoresZero(){
+        var spoken=question("SPEAKING",null,0);var silent=question("SPEAKING",null,1);
+        submitted(List.of(spoken,silent),List.of(new ExamSessionClient.AnswerDto(spoken.questionId(),"{\"audio\":true,\"seconds\":30,\"bytes\":1000,\"type\":\"audio/webm\"}")));
+        var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
+        assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());
+        assertNull(items.get(0).autoScore());assertTrue(items.get(0).needsReview());verify(ai,never()).gradeEssay(anyString(),any(),anyString(),anyFloat());
+        assertEquals(0f,items.get(1).autoScore());assertFalse(items.get(1).needsReview());
+        var reviewed=service.saveDraft(result.getId(),new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(spoken.questionId(),1.5f,"Phát âm tốt"))),teacher);assertEquals("PENDING",reviewed.status());
+    }
+
+    @Test void multipleResponseIsAllOrNothingAndTrueFalseGroupFollowsTheThptScale(){
+        var o=List.of(new ExamClient.Option(UUID.randomUUID(),"2",0,true),new ExamClient.Option(UUID.randomUUID(),"4",1,false),new ExamClient.Option(UUID.randomUUID(),"7",2,true),new ExamClient.Option(UUID.randomUUID(),"9",3,false));
+        var image=Map.<String,Object>of("media",List.of(Map.of("id",UUID.randomUUID().toString(),"kind","IMAGE")));
+        var multi=new ExamClient.Question(UUID.randomUUID(),1,"MULTIPLE_RESPONSE","Số nguyên tố?",o,new BigDecimal("1"),null,null,0,image);
+        var wrong=new ExamClient.Question(UUID.randomUUID(),1,"MULTIPLE_RESPONSE","Số nguyên tố? (thiếu)",o,new BigDecimal("1"),null,null,1);
+        var group=new ExamClient.Question(UUID.randomUUID(),1,"TRUE_FALSE_GROUP","Hàm số",o,new BigDecimal("1"),null,null,2);
+        String ids="[\""+o.get(2).id()+"\",\""+o.get(0).id()+"\"]", half="[\""+o.get(0).id()+"\"]";
+        // a) Đ right, b) Đ wrong, c) Đ right, d) unanswered -> 2 right -> 0.25
+        String judged="{\""+o.get(0).id()+"\":true,\""+o.get(1).id()+"\":true,\""+o.get(2).id()+"\":true}";
+        submitted(List.of(multi,wrong,group),List.of(new ExamSessionClient.AnswerDto(multi.questionId(),ids),new ExamSessionClient.AnswerDto(wrong.questionId(),half),new ExamSessionClient.AnswerDto(group.questionId(),judged)));
+        var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
+        assertEquals(1f,items.get(0).autoScore());assertEquals("2; 7",items.get(0).selectedOptionContent());assertEquals(image,items.get(0).presentation());
+        assertEquals(0f,items.get(1).autoScore());
+        assertEquals(0.25f,items.get(2).autoScore());assertEquals("a) Đúng; b) Đúng; c) Đúng; d) —",items.get(2).selectedOptionContent());
+        assertEquals(ExamResult.Status.GRADED,result.getStatus());assertEquals(1.25f,result.getTotalScore());
+        assertEquals(List.of(0f,.1f,.25f,.5f,1f),java.util.stream.IntStream.rangeClosed(0,4).mapToObj(k->{
+            var m=new HashMap<String,Boolean>();for(int i=0;i<4;i++)m.put(o.get(i).id().toString(),i<k==o.get(i).correct());
+            try{return ObjectiveScoring.score(group,new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(m));}catch(Exception e){throw new RuntimeException(e);}}).toList());
+        assertEquals(List.of("a) 2 — Đúng","b) 4 — Sai","c) 7 — Đúng","d) 9 — Sai"),ObjectiveScoring.key(group));
+    }
+
+    @Test void fillBlankAndMatchingGivePartialCreditPerGapAndPair(){
+        var gaps=List.of(new ExamClient.Option(UUID.randomUUID(),"Hà Nội | Ha Noi",0,true),new ExamClient.Option(UUID.randomUUID(),"1945",1,true));
+        var fill=new ExamClient.Question(UUID.randomUUID(),1,"FILL_BLANK","Thủ đô là ___, năm ___.",gaps,new BigDecimal("2"),null,null,0);
+        var pairs=List.of(new ExamClient.Option(UUID.randomUUID(),"Việt Nam => Hà Nội",0,true),new ExamClient.Option(UUID.randomUUID(),"Pháp => Paris",1,true),
+                new ExamClient.Option(UUID.randomUUID(),"Nhật Bản => Tokyo",2,true),new ExamClient.Option(UUID.randomUUID(),"Ai Cập => Cairo",3,true));
+        var match=new ExamClient.Question(UUID.randomUUID(),1,"MATCHING","Nối nước với thủ đô",pairs,new BigDecimal("1"),null,null,1);
+        // Gap 1 with other case and spaces is right, gap 2 is wrong -> 1 of 2.
+        String filled="{\""+gaps.get(0).id()+"\":\"  ha   noi \",\""+gaps.get(1).id()+"\":\"1954\"}";
+        // Two pairs right, one swapped, one unanswered -> 2 of 4.
+        String matched="{\""+pairs.get(0).id()+"\":\"Hà Nội\",\""+pairs.get(1).id()+"\":\"Tokyo\",\""+pairs.get(2).id()+"\":\"Paris\",\""+pairs.get(3).id()+"\":\"Cairo\"}";
+        String twoOfFour="{\""+pairs.get(0).id()+"\":\"Hà Nội\",\""+pairs.get(1).id()+"\":\"Tokyo\",\""+pairs.get(3).id()+"\":\"Cairo\"}";
+        assertEquals(1f,ObjectiveScoring.score(fill,filled));
+        assertEquals(.5f,ObjectiveScoring.score(match,twoOfFour));
+        assertEquals(.5f,ObjectiveScoring.score(match,matched));
+        assertEquals(0f,ObjectiveScoring.score(match,"not json"));
+        submitted(List.of(fill,match),List.of(new ExamSessionClient.AnswerDto(fill.questionId(),filled),new ExamSessionClient.AnswerDto(match.questionId(),twoOfFour)));
+        var result=results.findBySessionId(session).orElseThrow();var items=service.detail(result.getId(),teacher).items();
+        assertEquals(1f,items.get(0).autoScore());assertEquals("(1) ha   noi; (2) 1954",items.get(0).selectedOptionContent());
+        assertEquals(.5f,items.get(1).autoScore());assertEquals("Việt Nam → Hà Nội; Pháp → Tokyo; Nhật Bản → —; Ai Cập → Cairo",items.get(1).selectedOptionContent());
+        assertEquals(ExamResult.Status.GRADED,result.getStatus());assertEquals(1.5f,result.getTotalScore());
+        assertEquals(List.of("(1) Hà Nội / Ha Noi","(2) 1945"),ObjectiveScoring.key(fill));
+        assertEquals("Việt Nam → Hà Nội",ObjectiveScoring.key(match).getFirst());
+    }
+
+    @Test void myProgressShowsOnlyWhatThePolicyAllowsAndGivesStudyTips(){
+        var mc=question("MULTIPLE_CHOICE",null,0);var tf=question("TRUE_FALSE",null,1);
+        submitted(List.of(mc,tf),List.of(new ExamSessionClient.AnswerDto(mc.questionId(),mc.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(tf.questionId(),tf.options().get(1).id().toString())));
+        var p=progress.progress(user);
+        assertEquals(1,p.items().size());var item=p.items().getFirst();
+        assertEquals("PUBLISHED",item.phase());assertEquals(2.5f,item.score());assertEquals(50f,item.percent());
+        assertEquals(50f,p.overview().averagePercent());assertEquals(List.of("MULTIPLE_CHOICE","TRUE_FALSE"),p.overview().byType().stream().map(t->t.questionType()).toList());
+        assertEquals(100f,p.overview().byType().get(0).percent());assertEquals(0f,p.overview().byType().get(1).percent());
+        var tips=progress.insights(user,true,"vi");
+        assertEquals("RULES",tips.source());assertTrue(tips.summary().contains("50%"));assertFalse(tips.aiAvailable());
+        assertTrue(progress.progress(UUID.randomUUID()).items().isEmpty());
+        // Score hidden by policy: listed, but no score, percent or breakdown.
+        when(exams.resultPolicy(eq(exam),eq("test-internal"))).thenReturn(policy(true,false,false,true,true,true,"CLOSED"));
+        var hidden=progress.progress(user);
+        assertNull(hidden.items().getFirst().percent());assertNull(hidden.overview().averagePercent());assertTrue(hidden.overview().byType().isEmpty());
+        assertTrue(progress.insights(user,false,"en").summary().startsWith("No published scores"));
+    }
+
     @Test void aiEssayScoreIsSuggestionAndTeacherMustResolve(){
-        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenReturn(new GeminiClient.GeminiGradeResponse(.8f,"AI suggestion"));
+        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenReturn(new AiClient.GradeSuggestion(.8f,"AI suggestion","gemini:test"));
         submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
         var result=results.findBySessionId(session).orElseThrow();var item=service.detail(result.getId(),teacher).items().getFirst();
         assertEquals(ExamResult.Status.NEEDS_REVIEW,result.getStatus());assertEquals(2f,item.autoScore());assertNull(item.awardedPoints());assertTrue(item.needsReview());assertNull(result.getReleasedRevision());assertEquals("NEEDS_REVIEW",service.student(session,user).status());
@@ -90,7 +164,7 @@ class GradingCoreTest {
     }
 
     @Test void manualDraftFinalizeRegradeHistoryAndVisibilityPolicy()throws Exception{
-        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));
         submitted(List.of(objective,essay),List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Own essay")));
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();
         assertEquals(400,assertThrows(ResponseStatusException.class,()->service.finalizeResult(resultId,1,teacher)).getStatusCode().value());
@@ -119,7 +193,7 @@ class GradingCoreTest {
     }
 
     @Test void publishedSnapshotEventsAreFrozenPrivateSafeAndBackfillIdempotent()throws Exception{
-        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));
+        var objective=question("MULTIPLE_CHOICE",null,0);var essay=question("ESSAY",null,1);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));
         submitted(List.of(objective,essay),List.of(new ExamSessionClient.AnswerDto(objective.questionId(),objective.options().get(0).id().toString()),new ExamSessionClient.AnswerDto(essay.questionId(),"Own essay")));
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();
         service.saveDraft(resultId,new SubmissionDto.SaveDraftRequest(1,"Overall secret",List.of(new SubmissionDto.ItemGrade(essay.questionId(),2f,"Essay feedback secret"))),teacher);
@@ -177,7 +251,7 @@ class GradingCoreTest {
     }
 
     @Test void concurrentDraftUsesOptimisticRevisionAndReturnsOneConflict()throws Exception{
-        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),anyString())).thenThrow(new IllegalStateException("Unavailable"));submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
+        var essay=question("ESSAY",null,0);when(ai.gradeEssay(anyString(),any(),anyString(),anyFloat())).thenThrow(new IllegalStateException("Unavailable"));submitted(List.of(essay),List.of(new ExamSessionClient.AnswerDto(essay.questionId(),"Essay")));
         UUID resultId=results.findBySessionId(session).orElseThrow().getId();var request=new SubmissionDto.SaveDraftRequest(1,null,List.of(new SubmissionDto.ItemGrade(essay.questionId(),2f,"Reviewed")));
         var gate=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);List<Future<Integer>> calls=new ArrayList<>();
         try{for(int i=0;i<2;i++)calls.add(pool.submit(()->{gate.await();try{service.saveDraft(resultId,request,teacher);return 200;}catch(ResponseStatusException e){return e.getStatusCode().value();}}));gate.countDown();assertEquals(List.of(200,409),calls.stream().map(f->{try{return f.get();}catch(Exception e){throw new RuntimeException(e);}}).sorted().toList());}finally{pool.shutdownNow();}

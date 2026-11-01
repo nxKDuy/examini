@@ -97,7 +97,7 @@ export default function ExamLobbyPage() {
   }
 
   return (
-    <div className="stack-lg" style={{ maxWidth: 880 }}>
+    <div className="stack-lg">
       <PageHeader title={a.examTitle} crumbs={[{ label: tt('Kỳ thi của tôi'), to: '/my-exams' }, { label: preview ? tt('Xem trước') : tt('Phòng chờ') }]}
         description={<span className="row"><StateBadge state={a.calendarState} />{exam && <span>{EXAM_TYPE_LABEL[exam.type]}</span>}</span>} />
 
@@ -118,6 +118,13 @@ export default function ExamLobbyPage() {
         </Notice>
       )}
 
+      <div className="lobby-grid">
+      <div className="stack-lg lobby-main">
+      {finishedId && (
+        <Notice tone="success" title={tt('Lượt gần nhất đã kết thúc')} action={<Link to={`/exam/result/${finishedId}`} className="btn btn-secondary btn-sm"><FileCheck2 size={16} aria-hidden /> {tt('Xem kết quả')}</Link>}>
+          {tt('Lượt gần nhất của bạn đã được nộp.')}
+        </Notice>
+      )}
       {mine && revoked && <RevokedNotice mine={mine} />}
       {mine && <StudentAttempts examId={id!} mine={mine} />}
 
@@ -153,17 +160,15 @@ export default function ExamLobbyPage() {
           {monitored(exam?.integrityPolicy) && <li>{tt('Kỳ thi có ghi nhận tín hiệu trình duyệt:')} {policySummary(exam!.integrityPolicy)}{tt('. Tín hiệu là dữ liệu ghi nhận, không phải kết luận gian lận.')}</li>}
         </ul>
       </Section>
+      </div>
 
-      {finishedId && (
-        <Notice tone="success" title={tt('Lượt gần nhất đã kết thúc')} action={<Link to={`/exam/result/${finishedId}`} className="btn btn-secondary btn-sm"><FileCheck2 size={16} aria-hidden /> {tt('Xem kết quả')}</Link>}>
-          {tt('Lượt gần nhất của bạn đã được nộp.')}
-        </Notice>
-      )}
+      <aside className="stack-lg lobby-side" aria-label={tt('Bắt đầu làm bài')}>
 
       {!preview && !resumeId && !revoked && (
         <section className="card card-body stack">
           {why ? <Notice tone="info" title={tt('Chưa bắt đầu được')}>{why}</Notice> : <p className="small">{tt('Kỳ thi đang mở cho bạn. Bấm Bắt đầu khi sẵn sàng.')}</p>}
           {a.canStart && <label className="check"><input type="checkbox" checked={ready} onChange={e => setReady(e.target.checked)} /><span>{tt('Tôi đã đọc hướng dẫn và sẵn sàng bắt đầu.')}</span></label>}
+          {a.canStart && <p className="xsmall muted hide-sm" style={{ margin: 0 }}>{tt('Mẹo trên máy tính: phím A–D chọn đáp án, ← → chuyển câu, F đánh dấu câu cần xem lại.')}</p>}
           {needsFullscreen && !fsUnsupported && a.canStart && <p className="small">{t('Kỳ thi yêu cầu toàn màn hình: bấm Bắt đầu sẽ bật toàn màn hình rồi mới tạo lượt làm bài.')}</p>}
           {fsUnsupported && <Notice tone="warning" title={t('Trình duyệt không hỗ trợ toàn màn hình')}>{t('Kỳ thi này yêu cầu làm bài ở chế độ toàn màn hình nhưng trình duyệt hiện tại không có chức năng này. Hãy dùng trình duyệt máy tính bản mới (Chrome, Edge, Firefox hoặc Safari). Lượt làm bài chưa được tạo.')}</Notice>}
           {fsProblem && <Notice tone="danger" live title={t('Chưa bật được toàn màn hình')}
@@ -178,6 +183,8 @@ export default function ExamLobbyPage() {
           </div>
         </section>
       )}
+      </aside>
+      </div>
       {preview && error && <Notice tone="danger" live>{error}</Notice>}
     </div>
   )

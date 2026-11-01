@@ -1,7 +1,11 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, Hourglass, PenLine, PlayCircle } from 'lucide-react'
+import { MediaList, PassageView } from '../question-bank/media/QuestionMedia'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { CheckCircle2, ChevronDown, Dumbbell, Hourglass, PenLine, PlayCircle, Sparkles } from 'lucide-react'
 import { examApi, type ResultItem } from './examApi'
+import { errorText } from '../../lib/errors'
+import { useLangStore } from '../../lib/i18n'
 import { attemptsFor } from './attemptHints'
 import { useAuthStore } from '../../store/authStore'
 import { ResultStatusBadge } from '../../components/status'
@@ -30,12 +34,14 @@ export default function ExamResultPage() {
   const history = [...(r.history ?? [])].sort((a, b) => b.resultRevision - a.resultRevision)
 
   return (
-    <div className="stack-lg" style={{ maxWidth: 780 }}>
+    <div className="stack-lg">
       <PageHeader title={r.title || t('Kết quả bài thi')} crumbs={[{ label: t('Kỳ thi của tôi'), to: '/my-exams' }, { label: t('Kết quả') }]}
         description={<span className="row"><ResultStatusBadge status={r.status} />{phase === 'PUBLISHED' && <Badge tone="success">{t('Đã công bố')}</Badge>}{r.attemptNumber ? <span className="small muted">{t('Lần làm #')}{r.attemptNumber}</span> : null}</span>} />
 
       {r.invalidated && <Notice tone="danger" title={t('Lượt làm bài này đã bị vô hiệu hóa')} live>{t('Lý do:')} {r.invalidationReason?.trim() || t('không ghi')}{t('. Kết quả này không được tính là kết quả hợp lệ. Nếu cần thi lại, hãy liên hệ giáo viên để được cấp thêm lượt.')}</Notice>}
 
+      <div className="lobby-grid">
+      <aside className="stack-lg lobby-side result-side" aria-label={t('Điểm của bạn')}>
       {phase === 'PUBLISHED' && (
         <Section title={t('Điểm của bạn')}>
           {hasScore ? (
@@ -54,7 +60,12 @@ export default function ExamResultPage() {
           </p>
         </Section>
       )}
+      {phase === 'PUBLISHED' && r.feedback && (
+        <Section title={t('Nhận xét của giáo viên')}><p className="prewrap small">{r.feedback}</p></Section>
+      )}
+      </aside>
 
+      <div className="stack-lg lobby-main">
       {phase === 'WAITING' && (
         <Notice tone="info" title={t('Bài làm đã được ghi nhận')} live><span className="row" style={{ gap: 6 }}><Hourglass size={14} aria-hidden /> {t('Hệ thống đang chấm bài. Trang tự cập nhật khi có kết quả.')}</span></Notice>
       )}
@@ -69,17 +80,7 @@ export default function ExamResultPage() {
       )}
       {phase === 'UNKNOWN' && <Notice tone="info" title={t('Trạng thái bài làm')} live>{t('Chưa có kết quả để hiển thị.')}</Notice>}
 
-      {phase === 'PUBLISHED' && r.feedback && (
-        <Section title={t('Nhận xét của giáo viên')}><p className="prewrap small">{r.feedback}</p></Section>
-      )}
-
-      {phase === 'PUBLISHED' && questions.length > 0 && (
-        <Section title={t('Chi tiết từng câu')} bodyClassName="">
-          <ol className="stack" style={{ listStyle: 'none', margin: 0, padding: 16 }}>
-            {questions.map(q => <QuestionResult key={q.questionId} q={q} />)}
-          </ol>
-        </Section>
-      )}
+      {phase === 'PUBLISHED' && questions.length > 0 && <QuestionList sessionId={id!} questions={questions} />}
 
       {phase === 'PUBLISHED' && history.length > 0 && (
         <details className="card">
@@ -97,28 +98,122 @@ export default function ExamResultPage() {
         </details>
       )}
       <div><Link to="/my-exams" className="btn btn-secondary">{t('Về Kỳ thi của tôi')}</Link></div>
+      </div>
+      </div>
     </div>
   )
 }
 
-function QuestionResult({ q }: { q: ResultItem }) {
+type Verdict = 'right' | 'partial' | 'wrong' | 'blank' | 'unknown'
+function verdictOf(q: ResultItem, answered: boolean): Verdict {
+  if (!answered) return 'blank'
+  if (q.awardedPoints === undefined || q.awardedPoints === null || q.pointValue === undefined || q.pointValue === null) return 'unknown'
+  if (q.awardedPoints >= q.pointValue - 1e-4) return 'right'
+  return q.awardedPoints > 1e-4 ? 'partial' : 'wrong'
+}
+const VERDICT_LABEL: Record<Verdict, () => string> = { right: () => t('Đúng'), partial: () => t('Đúng một phần'), wrong: () => t('Sai'), blank: () => t('Bỏ trống'), unknown: () => '' }
+
+/** Per-question review with a "mistakes only" filter, so a student goes straight to what to learn. */
+function QuestionList({ sessionId, questions }: { sessionId: string; questions: ResultItem[] }) {
+  useT()
+  const [onlyMistakes, setOnlyMistakes] = useState(false)
+  const rows = questions.map(q => ({ q, v: verdictOf(q, !!studentAnswerText(q.questionType, q.answer, q.answerDisplay)) }))
+  const mistakes = rows.filter(r => r.v === 'wrong' || r.v === 'partial' || r.v === 'blank').length
+  const shown = onlyMistakes ? rows.filter(r => r.v !== 'right') : rows
+  return (
+    <Section title={t('Chi tiết từng câu')} bodyClassName=""
+      description={mistakes ? t('{0}/{1} câu chưa đạt điểm tối đa.', { 0: mistakes, 1: rows.length }) : undefined}
+      actions={mistakes > 0 ? <label className="check small"><input type="checkbox" checked={onlyMistakes} onChange={e => setOnlyMistakes(e.target.checked)} /> {t('Chỉ xem câu sai')}</label> : undefined}>
+      <ol className="stack" style={{ listStyle: 'none', margin: 0, padding: 16 }}>
+        {shown.map(({ q, v }) => <QuestionResult key={q.questionId} q={q} verdict={v} sessionId={sessionId} />)}
+      </ol>
+    </Section>
+  )
+}
+
+function QuestionResult({ q, verdict, sessionId }: { q: ResultItem; verdict: Verdict; sessionId: string }) {
   useT()
   const mine = studentAnswerText(q.questionType, q.answer, q.answerDisplay)
   const correct = readableAnswers(q.correctAnswers)
   return (
-    <li className="card card-pad stack-sm" style={{ boxShadow: 'none' }}>
+    <li className="card card-pad stack-sm result-q" data-verdict={verdict} style={{ boxShadow: 'none' }}>
       <div className="spread">
-        <span className="small">{t('Câu')} {q.position} · {QUESTION_TYPE_LABEL[q.questionType] ?? q.questionType}</span>
+        <span className="small">{t('Câu')} {q.position + 1} · {QUESTION_TYPE_LABEL[q.questionType] ?? q.questionType}{VERDICT_LABEL[verdict]() && <span className="result-verdict"> · {VERDICT_LABEL[verdict]()}</span>}</span>
         {q.awardedPoints !== undefined && <span className="mono small">{formatScore(q.awardedPoints)}{q.pointValue !== undefined ? `/${formatScore(q.pointValue)}` : ''}</span>}
       </div>
+      <PassageView presentation={q.presentation} />
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{q.questionContent}</p>
+      <MediaList media={q.presentation?.media} label={t('Câu {0}', { 0: q.position + 1 })} />
       <div className="small" style={{ padding: '8px 10px', background: 'var(--color-subtle)' }}>
         <span className="xsmall muted">{t('Bài làm của bạn')}</span>
         <p className="prewrap">{mine ? (mine.unresolved ? <em>{mine.text}</em> : mine.text) : <em className="muted">{t('Không trả lời')}</em>}</p>
       </div>
-      {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(' · ')}</p></div>}
+      {correct.length > 0 && <div className="small"><span className="xsmall muted">{t('Đáp án đúng')}</span><p className="prewrap">{correct.join(['TRUE_FALSE_GROUP', 'FILL_BLANK', 'MATCHING'].includes(q.questionType) ? '\n' : ' · ')}</p></div>}
       {q.explanation?.trim() && <div className="small" aria-label={t('Giải thích')}><span className="xsmall muted">{t('Giải thích')}</span><p className="prewrap">{q.explanation}</p></div>}
       {q.feedback && <div className="small"><span className="xsmall muted">{t('Nhận xét')}</span><p className="prewrap">{q.feedback}</p></div>}
+      {correct.length > 0 && verdict !== 'right' && verdict !== 'unknown' && <>
+        <AskTutor sessionId={sessionId} questionId={q.questionId} />
+        <PracticeMore sessionId={sessionId} questionId={q.questionId} />
+      </>}
     </li>
+  )
+}
+
+/** "Why was I wrong?": a short explanation of this question for this student (AI when available, else the key + teacher note). */
+function AskTutor({ sessionId, questionId }: { sessionId: string; questionId: string }) {
+  useT()
+  const lang = useLangStore(s => s.lang)
+  const ask = useMutation({ mutationFn: () => examApi.explain(sessionId, questionId, lang) })
+  if (!ask.data) return (
+    <div className="row" style={{ gap: 8 }}>
+      <button type="button" className="btn btn-secondary btn-sm" disabled={ask.isPending} aria-busy={ask.isPending} onClick={() => ask.mutate()}>
+        <Sparkles size={14} aria-hidden /> {ask.isPending ? t('Đang hỏi AI…') : t('Vì sao mình sai? Hỏi AI giải thích')}</button>
+      {ask.isError && <span className="field-error">{errorText(ask.error)}</span>}
+    </div>
+  )
+  return (
+    <div className="tutor" role="status">
+      <div className="xsmall muted row" style={{ gap: 6 }}><Sparkles size={13} aria-hidden /> {ask.data.source === 'AI' ? t('Gia sư AI giải thích riêng cho bài làm của bạn') : t('Giải thích từ đáp án và lời giải của giáo viên')}</div>
+      <p className="prewrap small">{ask.data.explanation}</p>
+      {ask.data.tips.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{ask.data.tips.map(tip => <li key={tip}>{tip}</li>)}</ul>}
+    </div>
+  )
+}
+
+/** "Luyện thêm câu tương tự": one new AI question on the same skill; pick an option to see right/wrong and why. */
+function PracticeMore({ sessionId, questionId }: { sessionId: string; questionId: string }) {
+  useT()
+  const lang = useLangStore(s => s.lang)
+  const [picked, setPicked] = useState<number | null>(null)
+  const gen = useMutation({ mutationFn: () => examApi.practice(sessionId, questionId, lang), onMutate: () => setPicked(null) })
+  const p = gen.data
+  return (
+    <div className="stack-sm">
+      {!p && <div className="row" style={{ gap: 8 }}>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={gen.isPending} aria-busy={gen.isPending} onClick={() => gen.mutate()}>
+          <Dumbbell size={14} aria-hidden /> {gen.isPending ? t('AI đang soạn câu…') : t('Luyện thêm câu tương tự')}</button>
+        {gen.isError && <span className="field-error">{errorText(gen.error)}</span>}
+      </div>}
+      {p && (
+        <fieldset className="practice-q">
+          <legend className="xsmall muted row" style={{ gap: 6 }}><Dumbbell size={13} aria-hidden /> {t('Câu luyện tập do AI tạo (không tính điểm)')}</legend>
+          <p className="prewrap small" style={{ color: 'var(--color-ink)', margin: 0 }}>{p.question}</p>
+          <div className="stack-sm">
+            {p.options.map((o, i) => (
+              <button key={i} type="button" className="practice-opt" disabled={picked !== null}
+                data-state={picked === null ? undefined : i === p.answer ? 'right' : i === picked ? 'wrong' : undefined} onClick={() => setPicked(i)}>
+                <span className="option-key" aria-hidden>{String.fromCharCode(65 + i)}</span><span>{o}</span>
+              </button>
+            ))}
+          </div>
+          {picked !== null && <div role="status" className="small">
+            <strong style={{ color: picked === p.answer ? '#15803d' : '#c2410c' }}>{picked === p.answer ? t('Chính xác!') : t('Chưa đúng, đáp án là {0}.', { 0: String.fromCharCode(65 + p.answer) })}</strong>
+            {p.explanation && <> {p.explanation}</>}
+          </div>}
+          {picked !== null && <div><button type="button" className="btn btn-secondary btn-sm" disabled={gen.isPending} aria-busy={gen.isPending} onClick={() => gen.mutate()}>
+            <Dumbbell size={14} aria-hidden /> {gen.isPending ? t('AI đang soạn câu…') : t('Câu khác')}</button></div>}
+        </fieldset>
+      )}
+    </div>
   )
 }

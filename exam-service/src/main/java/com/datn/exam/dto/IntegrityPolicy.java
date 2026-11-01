@@ -3,11 +3,17 @@ package com.datn.exam.dto;
 /** Browser signals are evidence; only the configured aggregate budget may end one attempt. */
 public record IntegrityPolicy(boolean monitorTabSwitch, boolean monitorWindowBlur,
         boolean requireFullscreen, boolean monitorCopy, boolean monitorPaste,
-        boolean monitorNetwork, WarningPolicy warningPolicy, Integer warningEventLimit) {
+        boolean monitorNetwork, WarningPolicy warningPolicy, Integer warningEventLimit,
+        /** Camera proctoring: video recording, face presence/identity checks and snapshots for the proctor. Evidence only. */
+        boolean requireCamera) {
     public static final int DEFAULT_WARNING_EVENT_LIMIT=5,MIN_WARNING_EVENT_LIMIT=1,MAX_WARNING_EVENT_LIMIT=100;
     public enum WarningPolicy { LOG_ONLY, WARN_ONLY }
     public IntegrityPolicy {
         if(warningEventLimit==null)warningEventLimit=DEFAULT_WARNING_EVENT_LIMIT;
+    }
+    public IntegrityPolicy(boolean monitorTabSwitch,boolean monitorWindowBlur,boolean requireFullscreen,
+            boolean monitorCopy,boolean monitorPaste,boolean monitorNetwork,WarningPolicy warningPolicy,Integer warningEventLimit) {
+        this(monitorTabSwitch,monitorWindowBlur,requireFullscreen,monitorCopy,monitorPaste,monitorNetwork,warningPolicy,warningEventLimit,false);
     }
     public IntegrityPolicy(boolean monitorTabSwitch,boolean monitorWindowBlur,boolean requireFullscreen,
             boolean monitorCopy,boolean monitorPaste,boolean monitorNetwork,WarningPolicy warningPolicy) {

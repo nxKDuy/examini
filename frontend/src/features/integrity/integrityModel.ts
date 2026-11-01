@@ -6,13 +6,15 @@ export const MIN_LIMIT = 1
 export const MAX_LIMIT = 100
 export const DISABLED_POLICY: IntegrityPolicy = {
   monitorTabSwitch: false, monitorWindowBlur: false, requireFullscreen: false, monitorCopy: false, monitorPaste: false,
-  monitorNetwork: false, warningPolicy: 'LOG_ONLY', warningEventLimit: DEFAULT_LIMIT,
+  monitorNetwork: false, warningPolicy: 'LOG_ONLY', warningEventLimit: DEFAULT_LIMIT, requireCamera: false,
 }
 
 /** Smart default for a NEW exam only (scope D): every monitor on, warnings shown, threshold 5. Saved exams are never changed. */
 export const NEW_EXAM_POLICY: IntegrityPolicy = {
   monitorTabSwitch: true, monitorWindowBlur: true, requireFullscreen: true, monitorCopy: true, monitorPaste: true,
   monitorNetwork: true, warningPolicy: 'WARN_ONLY', warningEventLimit: DEFAULT_LIMIT,
+  // Camera needs a device camera and consent, so the teacher turns it on per exam.
+  requireCamera: false,
 }
 
 /** Signals that count toward the per-attempt budget (contract A): network, recovery and COPY/PASTE are audit only. */
@@ -27,10 +29,11 @@ export const SIGNAL_LABEL: Record<SignalType, string> = i18nMap({
 export const MONITORS: { key: keyof IntegrityPolicy; label: string; hint: string }[] = i18nMap([
   { key: 'monitorTabSwitch', label: 'Chuyển tab', hint: 'Ghi nhận khi trang bài thi bị ẩn. Có tính vào ngưỡng.' },
   { key: 'monitorWindowBlur', label: 'Rời cửa sổ', hint: 'Ghi nhận khi cửa sổ trình duyệt mất tiêu điểm. Có tính vào ngưỡng.' },
-  { key: 'requireFullscreen', label: 'Yêu cầu toàn màn hình', hint: 'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng.' },
+  { key: 'requireFullscreen', label: 'Yêu cầu toàn màn hình', hint: 'Nhắc thí sinh bật toàn màn hình; ghi nhận khi thoát. Có tính vào ngưỡng. Điện thoại không hỗ trợ (iPhone) vẫn làm bài được và vẫn bị ghi nhận khi rời trang.' },
   { key: 'monitorNetwork', label: 'Mất kết nối mạng', hint: 'Chỉ ghi nhận để đối chiếu, không tính vào ngưỡng. Thí sinh vẫn làm bài khi mất mạng.' },
-  { key: 'monitorCopy', label: 'Sao chép', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
-  { key: 'monitorPaste', label: 'Dán', hint: 'Chỉ ghi nhận, không tính vào ngưỡng. Không lưu nội dung.' },
+  { key: 'monitorCopy', label: 'Sao chép', hint: 'Chặn sao chép, cắt và chuột phải trong bài; ghi nhận nhưng không tính vào ngưỡng. Không lưu nội dung.' },
+  { key: 'requireCamera', label: 'Giám sát bằng camera', hint: 'Quay video (nén) suốt bài làm, kiểm tra khuôn mặt khớp ảnh lúc bắt đầu, có người khác hoặc rời màn hình; cảnh báo thí sinh ngay và gửi ảnh chụp kèm lý do cho giám thị. Không tính vào ngưỡng.' },
+  { key: 'monitorPaste', label: 'Dán', hint: 'Chặn dán và kéo thả chữ vào bài; ghi nhận nhưng không tính vào ngưỡng. Không lưu nội dung.' },
 ])
 
 export const monitored = (p: IntegrityPolicy | null | undefined) =>

@@ -44,7 +44,7 @@ public class Exam {
 
     @Column(name="start_at") private Instant startAt;
     @Column(name="end_at") private Instant endAt;
-    @Column(name="timezone",nullable=false,length=64) @Builder.Default private String timezone="UTC";
+    @Column(name="timezone",nullable=false,length=64) @Builder.Default private String timezone="Asia/Ho_Chi_Minh"; // Vietnam by default; instants stay UTC
     @Enumerated(EnumType.STRING) @Column(name="deadline_rule",nullable=false,length=32)
     @Builder.Default private DeadlineRule deadlineRule=DeadlineRule.FULL_DURATION;
     @Column(name="auto_open",nullable=false) @Builder.Default private boolean autoOpen=false;

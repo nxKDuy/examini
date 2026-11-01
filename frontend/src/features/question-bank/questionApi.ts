@@ -1,6 +1,23 @@
 import api from '../../lib/api'
 
-export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY'
+export type QuestionType = 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' | 'ESSAY' | 'SPEAKING' | 'MULTIPLE_RESPONSE' | 'TRUE_FALSE_GROUP' | 'FILL_BLANK' | 'MATCHING'
+export type MediaKind = 'IMAGE' | 'AUDIO'
+export interface MediaRef { id: string; kind: MediaKind; name?: string | null }
+export interface Passage { key: string; title?: string | null; content: string; media?: MediaRef[] | null }
+/** How a question is shown: attached image/audio, option images, a shared reading passage and per-type limits. */
+export interface Presentation {
+  media?: MediaRef[] | null
+  /** Option displayOrder -> image media id. */
+  optionMedia?: Record<string, string> | null
+  passage?: Passage | null
+  maxPlays?: number | null
+  minWords?: number | null
+  maxWords?: number | null
+  maxRecordSeconds?: number | null
+  /** MATCHING in an exam: the right-hand items, alphabetical (added by exam-service, never stored in the bank). */
+  matchTargets?: string[] | null
+}
+export interface UploadedMedia { id: string; kind: MediaKind; contentType: string; size: number; name: string }
 export type QuestionStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type SourceType = 'NONE' | 'USER_DOCUMENT' | 'EXTERNAL_WEB' | 'ORGANIZATION_BANK' | 'PUBLIC_BANK' | 'SYSTEM_BANK'
 export interface Subject { id: string; name: string; description: string }
@@ -15,12 +32,14 @@ export interface Question {
   creationMethod: 'MANUAL' | 'IMPORT' | 'AI_GENERATED' | 'COPIED'; sourceType: SourceType
   sourceRefId?: string | null; sourceLabel?: string | null; sourceUrl?: string | null; sourceExcerpt?: string | null
   expectedAnswer?: string | null; explanation?: string | null
+  presentation?: Presentation | null
 }
 export interface QuestionInput {
   categoryId: string; content: string; questionType: QuestionType; difficultyLevel: Question['difficultyLevel']
   options: { content: string; correct: boolean; displayOrder: number }[]; expectedAnswer: string
   sourceType: SourceType; sourceRefId: string; sourceLabel: string; sourceUrl: string; sourceExcerpt: string
   explanation?: string | null
+  presentation?: Presentation | null
   questionVersion?: number
 }
 export interface Page<T> { content: T[]; totalElements: number; totalPages: number; number: number }
@@ -31,7 +50,16 @@ export interface Filters {
 export interface Version { versionNumber: number; createdAt: string; changedBy: string; question: Question }
 export interface Review { id: string; questionVersion: number; reviewerId: string; decision: 'APPROVED' | 'REJECTED'; reviewNote: string | null; reviewedAt: string }
 export interface ImportResult { totalRows: number; imported: number; failed: number; errors: string[] }
+export interface AiReview { keyCheck: 'AGREES' | 'DISPUTED' | 'UNCHECKED'; issues: string[]; suggestion: string | null; aiAvailable: boolean }
+
+export interface MatrixPlan { cells: { categoryId: string; level: string; count: number }[]; points: Partial<Record<'EASY' | 'MEDIUM' | 'HARD', number>>; notes: string[] }
+
 export const questionBankApi = {
+  /** AI reads a sentence describing the exam and fills the matrix over the given topics. */
+  matrixPlan: (body: { description: string; questionType?: string; topics: { categoryId: string; name: string; available: Partial<Record<string, number>> }[] }) =>
+    api.post<MatrixPlan>('/questions/ai/matrix-plan', body, { timeout: 60_000 }).then(r => r.data),
+  /** AI review of one question; nothing is saved. */
+  aiReview: (id: string) => api.post<AiReview>(`/questions/${id}/ai-review`, undefined, { timeout: 90_000 }).then(r => r.data),
   getSubjects: () => api.get<Subject[]>('/subjects').then(r => r.data),
   createSubject: (data: { name: string; description?: string }) => api.post<Subject>('/subjects', data).then(r => r.data),
   deleteSubject: (id: string) => api.delete(`/subjects/${id}`),
@@ -45,6 +73,12 @@ export const questionBankApi = {
   archive: (q: Question) => api.delete(`/questions/${q.id}`, { params: { questionVersion: q.questionVersion } }),
   getVersions: (id: string, includeAnswers = false) => api.get<Version[]>(`/questions/${id}/versions`, { params: { includeAnswers } }).then(r => r.data),
   getReviews: (id: string) => api.get<Review[]>(`/questions/${id}/reviews`).then(r => r.data),
+  uploadMedia: (file: Blob, name = 'file') => {
+    const form = new FormData(); form.append('file', file, name)
+    return api.post<UploadedMedia>('/question-media', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+  },
+  mediaBlob: (id: string) => api.get<Blob>(`/question-media/${id}`, { responseType: 'blob' }).then(r => r.data),
+  passages: () => api.get<Passage[]>('/questions/passages').then(r => r.data),
   importCsv: (file: File, categoryId: string) => {
     const form = new FormData(); form.append('file', file)
     return api.post<ImportResult>('/questions/import/csv', form, {

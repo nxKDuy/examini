@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Dialog } from '../../components/Dialog'
 import { Field, Notice } from '../../components/ui'
 import { errorText } from '../../lib/errors'
 import { participantApi, type AddResponse, type StaffAttempt } from './participantApi'
-import { MAX_BATCH, grantQuantityError, invalidateReady, newRequestId, outcomeSummary, parseBatch, retryInput, OUTCOME_LABEL } from './participantModel'
+import { orgApi, type Member } from '../organizations/orgApi'
+import { useAuthStore } from '../../store/authStore'
+import { MAX_BATCH, chunk, orgMemberIds, grantQuantityError, invalidateReady, newRequestId, outcomeSummary, parseBatch, retryInput, OUTCOME_LABEL } from './participantModel'
 import { Badge } from '../../components/ui'
 import { t, useT } from '../../lib/i18n'
 
@@ -20,7 +22,9 @@ export function AddParticipantsDialog({ examId, onClose, onChanged }: { examId: 
     onSuccess: r => { setResponse(r); setText(retryInput(r.results)); setTouched(false); onChanged() },
   })
   const summary = response ? outcomeSummary(response.results) : null
-  function submit(e: React.FormEvent) { e.preventDefault(); setTouched(true); if (parsed.ok && !add.isPending) add.mutate() }
+  const busy = add.isPending
+  function submit(e: React.FormEvent) { e.preventDefault(); setTouched(true); if (parsed.ok && !busy) add.mutate() }
+  function fromOrg(r: AddResponse) { setResponse(r); setText(retryInput(r.results)); setTouched(false); onChanged() }
   return (
     <Dialog title={t('Thêm thí sinh')} size="lg" onClose={onClose} busy={add.isPending}
       description={t('Dán mã người dùng hoặc email của học sinh, mỗi dòng một giá trị, tối đa {0}. Mỗi lần chỉ dùng một loại. Tài khoản phải đã có trên EXAMINI.', { 0: MAX_BATCH })}
@@ -29,6 +33,7 @@ export function AddParticipantsDialog({ examId, onClose, onChanged }: { examId: 
         <button type="submit" form="pt-add-form" className="btn btn-primary" disabled={add.isPending || text.trim() === ''}>{add.isPending ? t('Đang thêm…') : response ? t('Thêm lại các dòng còn lại') : t('Thêm thí sinh')}</button>
       </>}>
       <form id="pt-add-form" onSubmit={submit} className="stack">
+        <FromOrganization examId={examId} disabled={busy} onAdded={fromOrg} />
         {add.isError && <Notice tone="danger" live title={t('Chưa thêm được')}>{errorText(add.error)} {t('Danh sách bạn nhập vẫn được giữ lại; thử lại khi sẵn sàng.')}</Notice>}
         <Field label={t('Danh sách')} htmlFor="pt-add-text" hint={parsed.ok ? `${t('{0} dòng hợp lệ ({1})', { 0: parsed.count, 1: parsed.kind === 'ids' ? t('mã người dùng') : 'email' })}${parsed.duplicates ? t(', bỏ {0} dòng trùng', { 0: parsed.duplicates }) : ''}.` : text.trim() ? undefined : t('Ví dụ: một mã UUID hoặc một email trên mỗi dòng.')}
           error={touched && !parsed.ok ? parsed.error : undefined}>
@@ -53,6 +58,51 @@ export function AddParticipantsDialog({ examId, onClose, onChanged }: { examId: 
         )}
       </form>
     </Dialog>
+  )
+}
+
+/** Adds every active member of one of the caller's organizations (all pages, in batches of {MAX_BATCH}); teachers in it come back as "not a student". */
+function FromOrganization({ examId, disabled, onAdded }: { examId: string; disabled: boolean; onAdded: (r: AddResponse) => void }) {
+  useT()
+  const self = useAuthStore(s => s.user?.id)
+  const [orgId, setOrgId] = useState('')
+  const orgs = useQuery({ queryKey: ['organizations', 'mine-active'], queryFn: () => orgApi.list({ status: 'ACTIVE', size: 50 }), staleTime: 60_000 })
+  const run = useMutation({
+    mutationFn: async () => {
+      const members: Member[] = []
+      for (let page = 0; ; page++) {
+        const p = await orgApi.members(orgId, { status: 'ACTIVE', page, size: 50 })
+        members.push(...p.items)
+        if (page + 1 >= p.totalPages) break
+      }
+      const ids = orgMemberIds(members, self)
+      if (!ids.length) throw new Error(t('Tổ chức này chưa có thành viên nào khác ngoài bạn.'))
+      const results: AddResponse['results'] = []
+      let counts: AddResponse['counts'] | undefined
+      for (const part of chunk(ids)) { const r = await participantApi.add(examId, { userIds: part }); results.push(...r.results); counts = r.counts }
+      return { results, counts: counts! }
+    },
+    onSuccess: onAdded,
+  })
+  const list = orgs.data?.items ?? []
+  if (orgs.isSuccess && !list.length) return null
+  const chosen = list.find(o => o.id === orgId)
+  return (
+    <fieldset className="stack-sm" style={{ border: '1px solid var(--color-border)', padding: '10px 12px', margin: 0 }}>
+      <legend className="small" style={{ padding: '0 4px', fontWeight: 600 }}>{t('Thêm từ tổ chức')}</legend>
+      {run.isError && <Notice tone="danger" live>{errorText(run.error)}</Notice>}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label htmlFor="pt-org" className="sr-only">{t('Tổ chức')}</label>
+        <select id="pt-org" className="input" style={{ flex: '1 1 220px', minWidth: 0 }} value={orgId} onChange={e => setOrgId(e.target.value)} disabled={orgs.isLoading || run.isPending || disabled}>
+          <option value="">{orgs.isLoading ? t('Đang tải tổ chức…') : t('Chọn tổ chức của bạn')}</option>
+          {list.map(o => <option key={o.id} value={o.id}>{o.name}{o.activeMemberCount != null ? ` (${o.activeMemberCount})` : ''}</option>)}
+        </select>
+        <button type="button" className="btn btn-secondary" disabled={!orgId || run.isPending || disabled} onClick={() => run.mutate()}>
+          {run.isPending ? t('Đang thêm…') : t('Thêm tất cả thành viên')}
+        </button>
+      </div>
+      <p className="xsmall muted" style={{ margin: 0 }}>{chosen ? t('Mọi thành viên đang hoạt động của "{0}" sẽ được thêm, trừ bạn. Tài khoản không phải học sinh sẽ được báo riêng.', { 0: chosen.name }) : t('Thêm nhanh cả lớp nếu học sinh đã tham gia tổ chức của bạn.')}</p>
+    </fieldset>
   )
 }
 

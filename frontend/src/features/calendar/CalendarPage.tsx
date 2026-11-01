@@ -10,6 +10,7 @@ import ScheduleExamPicker from './ScheduleExamPicker'
 import { useGridCalendar, useIsNarrow, useNow, useViewerZone } from './useCalendar'
 import { audienceOf } from '../../components/layout/navigation'
 import { ErrorState, LoadingState, Notice, PageHeader } from '../../components/ui'
+import CalendarSync from './CalendarSync'
 import { useAuthStore } from '../../store/authStore'
 import { instantToDay, zoneLabel } from '../../lib/zone'
 import { PushPrompt } from '../notifications/PushControls'
@@ -67,6 +68,7 @@ export default function CalendarPage() {
         actions={teacher && <button type="button" className="btn btn-primary" onClick={() => setScheduling(true)}><CalendarPlus size={16} aria-hidden /> {t('Đặt lịch cho đề')}</button>} />
 
       <PushPrompt />
+      <CalendarSync />
 
       <div className="cal-layout" data-panel={selected ? 'open' : 'closed'}>
         <div style={{ minWidth: 0 }} className="stack-sm">

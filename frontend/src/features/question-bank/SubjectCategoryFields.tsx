@@ -2,6 +2,7 @@ import { useEffect, useId } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { questionBankApi } from './questionApi'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 /** Subject -> category pickers. Category list loads per subject; an existing category resolves its subject. */
 export default function SubjectCategoryFields({ subjectId, categoryId, onSubject, onCategory, allowAll, required, disabled }: {
@@ -16,6 +17,8 @@ export default function SubjectCategoryFields({ subjectId, categoryId, onSubject
     enabled: !!categoryId && !subjectId, staleTime: 300_000,
   })
   useEffect(() => { if (!subjectId && resolved.data?.subjectId) onSubject(resolved.data.subjectId) }, [subjectId, resolved.data, onSubject])
+  // A preselected category is shown as loading until its subject is known, never as an empty "Choose subject".
+  const resolving = !!categoryId && !subjectId && !resolved.isError
   const categories = useQuery({
     queryKey: ['categories', subjectId], queryFn: () => questionBankApi.getCategories(subjectId), enabled: !!subjectId, staleTime: 300_000,
   })
@@ -23,21 +26,22 @@ export default function SubjectCategoryFields({ subjectId, categoryId, onSubject
     <>
       <div className="field">
         <label className="field-label" htmlFor={sid}>{t('Môn học')}{required && <span aria-hidden style={{ color: 'var(--color-danger)' }}> *</span>}</label>
-        <select id={sid} className="input" value={subjectId} disabled={disabled} required={required}
+        <Select id={sid} className="input" value={subjectId} disabled={disabled || resolving} required={required}
           onChange={e => { onSubject(e.target.value); onCategory('') }}>
-          <option value="">{allowAll ? t('Tất cả môn học') : t('Chọn môn học')}</option>
+          <option value="">{resolving ? t('Đang tải…') : allowAll ? t('Tất cả môn học') : t('Chọn môn học')}</option>
           {subjects.data?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        </Select>
         {subjects.isError && <span className="field-error">{t('Không tải được danh sách môn học.')}</span>}
+        {resolved.isError && <span className="field-error">{t('Không tìm thấy danh mục đã chọn; hãy chọn lại môn học và danh mục.')}</span>}
         {subjects.data?.length === 0 && <span className="field-hint">{t('Chưa có môn học nào trong hệ thống.')}</span>}
       </div>
       <div className="field">
         <label className="field-label" htmlFor={cid}>{t('Danh mục')}{required && <span aria-hidden style={{ color: 'var(--color-danger)' }}> *</span>}</label>
-        <select id={cid} className="input" value={categoryId} disabled={disabled || !subjectId} required={required}
+        <Select id={cid} className="input" value={categoryId} disabled={disabled || !subjectId} required={required}
           onChange={e => onCategory(e.target.value)}>
-          <option value="">{allowAll ? t('Tất cả danh mục') : subjectId ? t('Chọn danh mục') : t('Chọn môn học trước')}</option>
+          <option value="">{resolving ? t('Đang tải…') : allowAll ? t('Tất cả danh mục') : subjectId ? t('Chọn danh mục') : t('Chọn môn học trước')}</option>
           {categories.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        </Select>
         {categories.isError && <span className="field-error">{t('Không tải được danh mục.')}</span>}
       </div>
     </>

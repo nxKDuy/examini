@@ -7,6 +7,7 @@ import { orgApi } from '../organizations/orgApi'
 import { bankApi } from './bankApi'
 import { isAuthorLookupFailure, submitTargets } from './bankModel'
 import { t, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 interface Shared { questionId: string; version: number; onClose: () => void; onDone: (message: string) => void }
 
@@ -47,8 +48,8 @@ export function SubmitToOrgDialog({ questionId, version, onClose, onDone }: Shar
         <Notice tone="info">{t('Phiên bản sẽ gửi:')} <strong>{version}</strong>{t('. Sửa câu hỏi sau khi gửi không đổi bản đã gửi.')}</Notice>
         {orgs.isLoading ? <LoadingState rows={1} /> : orgs.isError ? <ErrorState error={orgs.error} onRetry={() => void orgs.refetch()} />
           : targets.length === 0 ? <p className="small muted">{t('Bạn chưa ở tổ chức nào đang hoạt động mà bạn được gửi câu hỏi vào.')}</p>
-          : <Field label={t('Tổ chức')} htmlFor="submit-org" required><select id="submit-org" className="input" value={orgId} onChange={e => setOrgId(e.target.value)} data-autofocus>
-              <option value="">{t('Chọn tổ chức')}</option>{targets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></Field>}
+          : <Field label={t('Tổ chức')} htmlFor="submit-org" required><Select id="submit-org" className="input" value={orgId} onChange={e => setOrgId(e.target.value)} data-autofocus>
+              <option value="">{t('Chọn tổ chức')}</option>{targets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</Select></Field>}
       </div>
     </Dialog>
   )

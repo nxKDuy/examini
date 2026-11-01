@@ -14,6 +14,7 @@ import { errorText } from '../../lib/errors'
 import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL, formatDateTime } from '../../lib/format'
 import { useIsNarrow } from '../../lib/hooks'
 import { t as tt, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 /** Organization question bank inside one organization. Every button comes from the caller's capabilities; an ARCHIVED organization only has BANK_READ. */
 export default function OrgBankTab({ org }: { org: Organization }) {
@@ -59,8 +60,8 @@ function ApprovedList({ bankId, onOpen }: { bankId: string; onOpen: (id: string)
   return (
     <div className="stack">
       <div className="bk-filters">
-        <label className="row small" style={{ gap: 6 }}>{tt('Loại')}<select className="input" style={{ width: 'auto' }} value={type} onChange={e => reset(() => setType(e.target.value))}><option value="">{tt('Tất cả')}</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-        <label className="row small" style={{ gap: 6 }}>{tt('Độ khó')}<select className="input" style={{ width: 'auto' }} value={difficulty} onChange={e => reset(() => setDifficulty(e.target.value))}><option value="">{tt('Tất cả')}</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+        <label className="row small" style={{ gap: 6 }}>{tt('Loại')}<Select className="input" style={{ width: 'auto' }} value={type} onChange={e => reset(() => setType(e.target.value))}><option value="">{tt('Tất cả')}</option>{Object.entries(QUESTION_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></label>
+        <label className="row small" style={{ gap: 6 }}>{tt('Độ khó')}<Select className="input" style={{ width: 'auto' }} value={difficulty} onChange={e => reset(() => setDifficulty(e.target.value))}><option value="">{tt('Tất cả')}</option>{Object.entries(DIFFICULTY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></label>
       </div>
       <div>
         <section className="card" aria-label={tt('Câu hỏi đã duyệt')} style={{ overflow: 'hidden', minWidth: 0 }}>
@@ -129,8 +130,8 @@ function ContributionList({ org, bankId, tab }: { org: Organization; bankId: str
   return (
     <div className="stack">
       {tab === 'history' && (
-        <label className="row small" style={{ gap: 6 }}>{tt('Trạng thái')}<select className="input" style={{ width: 'auto' }} value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(0); setSelectedId(null) }}>
-          <option value="">{tt('Tất cả trạng thái')}</option><option value="APPROVED">{tt('Đã duyệt')}</option><option value="REJECTED">{tt('Bị từ chối')}</option><option value="PENDING_REVIEW">{tt('Chờ duyệt')}</option></select></label>
+        <label className="row small" style={{ gap: 6 }}>{tt('Trạng thái')}<Select className="input" style={{ width: 'auto' }} value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(0); setSelectedId(null) }}>
+          <option value="">{tt('Tất cả trạng thái')}</option><option value="APPROVED">{tt('Đã duyệt')}</option><option value="REJECTED">{tt('Bị từ chối')}</option><option value="PENDING_REVIEW">{tt('Chờ duyệt')}</option></Select></label>
       )}
       <div className="bk-layout" data-panel={selected ? 'open' : 'closed'}>
         <section className="card" aria-label={ORG_BANK_TAB_LABEL[tab]} style={{ overflow: 'hidden', minWidth: 0 }}>

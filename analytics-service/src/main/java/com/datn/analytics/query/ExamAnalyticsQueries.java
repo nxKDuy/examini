@@ -116,6 +116,48 @@ public class ExamAnalyticsQueries {
     }
 
     public List<QuestionStats> questions(UUID examId) {
+        var d = discrimination(examId);
+        return questionRows(examId).stream().map(q -> q.withDiscrimination(d.get(q.questionId() + ":" + q.questionVersion()))).toList();
+    }
+
+    public static final int MIN_FOR_DISCRIMINATION = 10;
+
+    /** Upper-lower 27 % discrimination per question version over GRADED, valid attempts (see QuestionStats). */
+    java.util.Map<String, BigDecimal> discrimination(UUID examId) {
+        var rows = jdbc.queryForList("""
+                SELECT o.session_id, o.question_id, o.question_version, o.awarded_points / o.point_value AS share,
+                       r.total_score * 100 / r.max_score AS pct
+                FROM question_outcome_projection o JOIN exam_result_projection r ON r.session_id = o.session_id
+                WHERE o.exam_id = :exam AND r.status = 'GRADED' AND r.max_score > 0 AND o.outcome <> 'PENDING_REVIEW'
+                  AND NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = o.session_id)
+                """, new MapSqlParameterSource("exam", examId));
+        var pct = new java.util.HashMap<UUID, Double>();
+        var shares = new java.util.HashMap<String, java.util.Map<UUID, Double>>();
+        for (var r : rows) {
+            UUID s = (UUID) r.get("session_id");
+            pct.put(s, ((Number) r.get("pct")).doubleValue());
+            shares.computeIfAbsent(r.get("question_id") + ":" + r.get("question_version"), k -> new java.util.HashMap<>())
+                    .put(s, ((Number) r.get("share")).doubleValue());
+        }
+        var out = new java.util.HashMap<String, BigDecimal>();
+        if (pct.size() < MIN_FOR_DISCRIMINATION) return out;
+        var ranked = pct.entrySet().stream().sorted(java.util.Map.Entry.<UUID, Double>comparingByValue().reversed()).map(java.util.Map.Entry::getKey).toList();
+        int k = Math.max(1, (int) Math.round(ranked.size() * 0.27));
+        var upper = ranked.subList(0, k);
+        var lower = ranked.subList(ranked.size() - k, ranked.size());
+        for (var e : shares.entrySet()) {
+            Double hi = mean(e.getValue(), upper), lo = mean(e.getValue(), lower);
+            if (hi != null && lo != null) out.put(e.getKey(), BigDecimal.valueOf(hi - lo).setScale(3, java.math.RoundingMode.HALF_UP));
+        }
+        return out;
+    }
+    private static Double mean(java.util.Map<UUID, Double> values, List<UUID> group) {
+        double sum = 0; int n = 0;
+        for (UUID s : group) { Double v = values.get(s); if (v != null) { sum += v; n++; } }
+        return n == 0 ? null : sum / n;
+    }
+
+    private List<QuestionStats> questionRows(UUID examId) {
         return jdbc.query("""
                 SELECT question_id, question_version, min(question_type) AS question_type, min(position) AS position, max(point_value) AS point_value,
                        count(*) AS attempts,
@@ -199,4 +241,47 @@ public class ExamAnalyticsQueries {
     }
 
     private static Instant instant(Timestamp t) { return t == null ? null : t.toInstant(); }
+
+    /** System-wide activity over the last {@code days} days (administrators only; see AdminOverview). */
+    public AdminOverview adminOverview(int days) {
+        var since = new MapSqlParameterSource("since", Timestamp.from(Instant.now().minus(java.time.Duration.ofDays(days))));
+        String valid = " NOT EXISTS (SELECT 1 FROM attempt_invalidation i WHERE i.session_id = %s.session_id)";
+        long attempts = jdbc.queryForObject("SELECT count(*) FROM attempt_started s WHERE started_at >= :since AND " + valid.formatted("s"), since, Long.class);
+        long activeExams = jdbc.queryForObject("SELECT count(DISTINCT exam_id) FROM attempt_started s WHERE started_at >= :since", since, Long.class);
+        long activeStudents = jdbc.queryForObject("SELECT count(DISTINCT candidate_id) FROM attempt_started s WHERE started_at >= :since", since, Long.class);
+        var results = jdbc.queryForMap("""
+                SELECT count(*) AS submissions, count(*) FILTER (WHERE status = 'GRADED') AS graded,
+                       count(*) FILTER (WHERE status <> 'GRADED') AS needs_review
+                FROM exam_result_projection r WHERE submitted_at >= :since AND """ + valid.formatted("r"), since);
+        long invalidated = jdbc.queryForObject("SELECT count(*) FROM attempt_invalidation WHERE invalidated_at >= :since", since, Long.class);
+        var published = jdbc.queryForMap("""
+                SELECT count(*) AS n, round(avg(total_score * 100 / max_score), 2) AS avg_pct
+                FROM published_result_projection p WHERE released_at >= :since AND max_score > 0 AND NOT invalidated AND """ + valid.formatted("p"), since);
+        var buckets = new long[BUCKETS];
+        jdbc.query("""
+                SELECT LEAST(width_bucket(total_score * 100 / max_score, 0, 100, :buckets), :buckets) AS bucket, count(*) AS n
+                FROM published_result_projection p WHERE released_at >= :since AND max_score > 0 AND NOT invalidated AND """ + valid.formatted("p") + " GROUP BY 1",
+                new MapSqlParameterSource(since.getValues()).addValue("buckets", BUCKETS),
+                rs -> { int b = rs.getInt("bucket"); if (b >= 1 && b <= BUCKETS) buckets[b - 1] = rs.getLong("n"); });
+        var distribution = new ArrayList<ScoreBucket>();
+        for (int i = 0; i < BUCKETS; i++) distribution.add(new ScoreBucket(i * 10, (i + 1) * 10, buckets[i]));
+        var perDay = new java.util.TreeMap<java.time.LocalDate, long[]>();
+        var zone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        var today = java.time.LocalDate.now(zone);
+        for (int i = days - 1; i >= 0; i--) perDay.put(today.minusDays(i), new long[2]);
+        jdbc.query("SELECT (started_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS d, count(*) AS n FROM attempt_started s WHERE started_at >= :since GROUP BY 1", since,
+                rs -> { var a = perDay.get(rs.getDate("d").toLocalDate()); if (a != null) a[0] = rs.getLong("n"); });
+        jdbc.query("SELECT (submitted_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS d, count(*) AS n FROM exam_result_projection r WHERE submitted_at >= :since AND " + valid.formatted("r") + " GROUP BY 1", since,
+                rs -> { var a = perDay.get(rs.getDate("d").toLocalDate()); if (a != null) a[1] = rs.getLong("n"); });
+        var top = jdbc.query("""
+                SELECT s.exam_id, count(*) AS attempts, count(DISTINCT s.candidate_id) AS students,
+                       (SELECT round(avg(p.total_score * 100 / p.max_score), 2) FROM published_result_projection p
+                        WHERE p.exam_id = s.exam_id AND p.max_score > 0 AND NOT p.invalidated) AS avg_pct
+                FROM attempt_started s WHERE started_at >= :since GROUP BY s.exam_id ORDER BY attempts DESC, s.exam_id LIMIT 8
+                """, since, (rs, i) -> new ExamActivity(rs.getObject("exam_id", UUID.class), rs.getLong("attempts"), rs.getLong("students"), rs.getBigDecimal("avg_pct")));
+        return new AdminOverview(days, attempts, ((Number) results.get("submissions")).longValue(), ((Number) results.get("graded")).longValue(),
+                ((Number) results.get("needs_review")).longValue(), activeExams, activeStudents, invalidated, (BigDecimal) published.get("avg_pct"),
+                ((Number) published.get("n")).longValue(), perDay.entrySet().stream().map(e -> new DayCount(e.getKey(), e.getValue()[0], e.getValue()[1])).toList(),
+                top, distribution);
+    }
 }

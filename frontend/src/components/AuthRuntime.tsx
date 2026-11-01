@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore'
 import { reconcilePush } from '../features/notifications/pushClient'
 import { watchPushCleanup } from '../features/notifications/pushAuthWatcher'
 import { t, useT } from '../lib/i18n'
+import { SWITCH_NOTICE_KEY, watchOtherTabs } from '../features/auth/crossTab'
 
 export function FullPageLoader({ label = t('Đang xác thực phiên đăng nhập…') }: { label?: string }) {
   useT()
@@ -13,6 +14,12 @@ export function FullPageLoader({ label = t('Đang xác thực phiên đăng nh�
       <p role="status" className="row muted small"><span className="brand-mark" aria-hidden>E</span>{label}</p>
     </div>
   )
+}
+
+/** Reload into the account another tab signed in with (a full reload drops every screen of the old account). */
+function switchTo() {
+  try { sessionStorage.setItem(SWITCH_NOTICE_KEY, '1') } catch { /* the notice is optional */ }
+  window.location.assign('/dashboard')
 }
 
 export default function AuthRuntime({ children }: { children: ReactNode }) {
@@ -36,7 +43,17 @@ export default function AuthRuntime({ children }: { children: ReactNode }) {
       }
     })
     void authApi.restoreSession()
-    return unsubscribe
+    // One account per browser: follow sign-in, refresh and sign-out from other tabs.
+    const stopTabs = watchOtherTabs({
+      restore: otherAccount => {
+        if (otherAccount) { switchTo(); return }
+        void authApi.restoreSession().then(() => {
+          if (useAuthStore.getState().user && /^\/(login|register)\/?$/.test(window.location.pathname)) window.location.assign('/dashboard')
+        })
+      },
+      switched: switchTo,
+    })
+    return () => { unsubscribe(); stopTabs() }
   }, [queryClient])
   if (!ready) return <FullPageLoader />
   return children

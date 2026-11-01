@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { authApi } from './authApi'
 import { errorInfo } from '../../lib/errors'
 import { Field, Notice } from '../../components/ui'
 import { AuthCard } from './AuthCard'
+import GoogleSignIn from './GoogleSignIn'
 import { t, useT } from '../../lib/i18n'
 
 export default function LoginPage() {
@@ -15,6 +17,13 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const providers = useQuery({ queryKey: ['auth-providers'], queryFn: authApi.providers, staleTime: 300_000, retry: false })
+  const resetDone = location.state?.notice === 'PASSWORD_RESET'
+
+  const goOn = () => {
+    const from = location.state?.from
+    navigate(typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true })
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -22,8 +31,7 @@ export default function LoginPage() {
     setError('')
     try {
       await authApi.login(form)
-      const from = location.state?.from
-      navigate(typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true })
+      goOn()
     } catch (err) {
       const info = errorInfo(err)
       setError(info.status === 401 ? t('Email hoặc mật khẩu không đúng.') : info.message)
@@ -40,7 +48,10 @@ export default function LoginPage() {
           <input id="login-email" type="email" className="input" autoComplete="email" required autoFocus
             value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
         </Field>
-        <Field label={t('Mật khẩu')} htmlFor="login-password">
+        {resetDone && <Notice tone="success" live>{t('Đã đặt mật khẩu mới. Hãy đăng nhập lại.')}</Notice>}
+        <Field label={t('Mật khẩu')} htmlFor="login-password"
+          hint={providers.data?.passwordReset ? <Link to="/forgot-password">{t('Quên mật khẩu?')}</Link>
+            : providers.data ? t('Quên mật khẩu? Liên hệ quản trị viên để nhận liên kết đặt lại.') : undefined}>
           <div style={{ position: 'relative' }}>
             <input id="login-password" type={showPwd ? 'text' : 'password'} className="input" autoComplete="current-password" required
               style={{ paddingRight: 44 }} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
@@ -55,6 +66,7 @@ export default function LoginPage() {
           <LogIn size={18} aria-hidden /> {loading ? t('Đang đăng nhập…') : t('Đăng nhập hệ thống')}
         </button>
       </form>
+      <GoogleSignIn onDone={goOn} />
     </AuthCard>
   )
 }

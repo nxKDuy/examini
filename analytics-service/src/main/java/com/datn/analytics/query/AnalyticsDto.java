@@ -105,7 +105,47 @@ public final class AnalyticsDto {
             long unanswered,
             long pendingReview,
             BigDecimal correctRate,
-            BigDecimal averageAwardedPoints
+            BigDecimal averageAwardedPoints,
+            /**
+             * Discrimination index D = mean score share of the top 27 % of graded candidates minus that of the bottom
+             * 27 % (by total percent). -1..1; null with fewer than 10 graded candidates. Below 0.2 the question
+             * separates strong and weak students poorly; negative usually means a wrong key or an ambiguous stem.
+             */
+            BigDecimal discrimination
+    ) {
+        public QuestionStats(UUID questionId, long questionVersion, String questionType, int position, BigDecimal pointValue, long attempts,
+                             long answered, long correct, long partial, long incorrect, long unanswered, long pendingReview,
+                             BigDecimal correctRate, BigDecimal averageAwardedPoints) {
+            this(questionId, questionVersion, questionType, position, pointValue, attempts, answered, correct, partial, incorrect,
+                 unanswered, pendingReview, correctRate, averageAwardedPoints, null);
+        }
+        public QuestionStats withDiscrimination(BigDecimal d) {
+            return new QuestionStats(questionId, questionVersion, questionType, position, pointValue, attempts, answered, correct, partial,
+                    incorrect, unanswered, pendingReview, correctRate, averageAwardedPoints, d);
+        }
+    }
+
+    /** One finding about a question (position as frozen in the exam). */
+    public record QuestionFlag(int position, String questionType, String issue, String detail) {}
+
+    /**
+     * Teacher-facing reading of an exam's results. source = RULES (always available, computed from the statistics) or
+     * AI (the same facts rewritten by a language model; never invents numbers: it only receives these aggregates,
+     * no question text and no student identity).
+     */
+    public record ExamInsights(
+            UUID examId, String source, String model, String level, String summary,
+            List<String> strengths, List<String> concerns, List<String> actions, List<QuestionFlag> flags,
+            boolean aiAvailable, Instant generatedAt
+    ) {}
+
+    public record DayCount(java.time.LocalDate day, long attempts, long submissions) {}
+    public record ExamActivity(UUID examId, long attempts, long students, BigDecimal averagePercent) {}
+    /** System-wide activity for administrators (systemPrivilege ADMIN); invalidated attempts excluded. */
+    public record AdminOverview(
+            int days, long attempts, long submissions, long graded, long needsReview, long activeExams, long activeStudents,
+            long invalidated, BigDecimal publishedAveragePercent, long publishedResults, List<DayCount> perDay,
+            List<ExamActivity> topExams, List<ScoreBucket> publishedDistribution
     ) {}
 
     /** One attempt result. score is null until GRADED; invalidated results stay listed for trace only. */

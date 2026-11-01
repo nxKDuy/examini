@@ -33,7 +33,7 @@ public class ExamRecipientClient {
             String status=r.path("status").asText();
             if(!List.of("DRAFT","PUBLISHED","OPEN","CLOSED").contains(status))throw new IllegalArgumentException("status");
             return new Snapshot(UUID.fromString(r.path("examId").asText()),r.path("examTitle").asText(),status,count(r,"scheduleRevision"),count(r,"lifecycleRevision"),count(r,"recipientRevision"),
-                SchedulingEvents.optionalInstant(r,"startAt"),SchedulingEvents.optionalInstant(r,"endAt"),r.path("timezone").asText("UTC"),
+                SchedulingEvents.optionalInstant(r,"startAt"),SchedulingEvents.optionalInstant(r,"endAt"),r.path("timezone").asText("Asia/Ho_Chi_Minh"),
                 r.path("deadlineRule").asText("FULL_DURATION"),offsets(r),List.copyOf(byUser.values()));
         }catch(IllegalArgumentException e){throw new ProviderException(ProviderException.Kind.INVALID,"Exam recipients response invalid");}
     }

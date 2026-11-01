@@ -22,6 +22,11 @@ notification:
 
 server:
   port: 8087
+  tomcat:
+    # Gateway giữ pool kết nối (max-life-time 60s); không để Tomcat tự cắt sau 100 request
+    # vì gây PrematureClose khi gateway đang gửi body.
+    max-keep-alive-requests: -1
+    keep-alive-timeout: 30s
 
 spring:
   application:

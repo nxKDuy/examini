@@ -24,6 +24,7 @@ public class ExamCore {
     private final com.datn.exam.client.SessionClient sessions;
     private final ExamEventPublisher events;
     private final java.time.Clock clock;
+    private final jakarta.persistence.EntityManager entityManager;
     @Value("${exam.internal-token:}") private String internalToken="";
     @Value("${exam.capacity.platform-limit:100}") private int platformLimit = 100;
     @Value("${question-bank.internal-token:}") private String questionToken = "";
@@ -170,24 +171,36 @@ public class ExamCore {
     public int effectiveAttemptLimit(Exam e,UUID user) {
         return Math.addExact(e.getAttemptLimit(),participants.findByExamIdAndUserId(e.getId(),user).map(ExamParticipant::getExtraAttempts).orElse(0));
     }
+    /**
+     * Joining checks eligibility with Session over HTTP. That call runs before the exam row is locked: holding the
+     * lock across it serialised every join of an exam behind a network round-trip and, when a class joined at once,
+     * exhausted the connection pool (30 s timeouts → 500). The lock now only covers the capacity check and insert.
+     */
     public Exam join(UUID id, UUID user, String code) {
-        Exam e=load(id);if(user==null)throw error(401,"Authentication required");
-        if(e.getStatus()!=Exam.Status.PUBLISHED && e.getStatus()!=Exam.Status.OPEN)throw error(409,"Exam is not available to join");
+        if(user==null)throw error(401,"Authentication required");
+        Exam e=exams.findById(id).orElseThrow(() -> error(404,"Exam not found"));
         Instant now=clock.instant();
-        if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))throw error(409,"Join is not available before startAt");
-        if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Exam schedule has ended");
+        joinable(e,now);
         var row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
         if(row!=null && !row.isActive()) throw error(403,"PARTICIPATION_REVOKED");
         if(e.getAccessMode()==Exam.AccessMode.ASSIGNED && row==null) throw error(403,"Not assigned");
         if(e.getAccessMode()==Exam.AccessMode.JOIN_CODE && row==null && !e.getCode().equals(code)) throw error(403,"Invalid join code");
         checkAttempts(e,user,row);
-        if(row==null) {
-            if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>=e.getMaxParticipants()) throw error(409,"Participant capacity full");
-            participants.saveAndFlush(new ExamParticipant(e.getId(),user,e.getAccessMode().name(),null,now));
-            recipientChanged(e,"JOINED",user);
-            events.participantChanged(e,user,"JOINED",user,null,null,counts(e.getId()));
-        }
+        if(row!=null) return e;
+        entityManager.refresh(e,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        joinable(e,now);
+        row=participants.findByExamIdAndUserId(e.getId(),user).orElse(null);
+        if(row!=null) { if(!row.isActive()) throw error(403,"PARTICIPATION_REVOKED"); return e; }
+        if(participants.countByExamIdAndStatus(e.getId(),ExamParticipant.Status.ACTIVE)>=e.getMaxParticipants()) throw error(409,"Participant capacity full");
+        participants.saveAndFlush(new ExamParticipant(e.getId(),user,e.getAccessMode().name(),null,now));
+        recipientChanged(e,"JOINED",user);
+        events.participantChanged(e,user,"JOINED",user,null,null,counts(e.getId()));
         return e;
+    }
+    private void joinable(Exam e,Instant now){
+        if(e.getStatus()!=Exam.Status.PUBLISHED && e.getStatus()!=Exam.Status.OPEN)throw error(409,"Exam is not available to join");
+        if(e.getStartAt()!=null && now.isBefore(e.getStartAt()))throw error(409,"Join is not available before startAt");
+        if(e.getEndAt()!=null && !now.isBefore(e.getEndAt()))throw error(409,"Exam schedule has ended");
     }
     private void checkAttempts(Exam e,UUID user,ExamParticipant row){
         if(internalToken.isBlank())throw error(503,"Session integration not configured");
@@ -267,15 +280,24 @@ public class ExamCore {
             if(q==null || !Boolean.TRUE.equals(q.eligible()) || q.questionVersion()==null || q.questionVersion()<1)
                 throw error(409,"Question is missing, ineligible or unversioned: "+id);
             if(points==null || points.signum()<=0)throw error(400,"Positive points required");
-            if(q.content()==null || q.content().isBlank() || !Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY").contains(q.questionType()))
+            if(q.content()==null || q.content().isBlank() || !Set.of("MULTIPLE_CHOICE","TRUE_FALSE","SHORT_ANSWER","ESSAY","SPEAKING","MULTIPLE_RESPONSE","TRUE_FALSE_GROUP","FILL_BLANK","MATCHING").contains(q.questionType()))
                 throw error(409,"Incomplete snapshot");
             var options=q.options()==null?List.<Snapshot.Option>of():q.options();
             if(Set.of("MULTIPLE_CHOICE","TRUE_FALSE").contains(q.questionType()) &&
                (options.size()<2 || ("TRUE_FALSE".equals(q.questionType()) && options.size()!=2) || options.stream().filter(Snapshot.Option::correct).count()!=1 ||
                 options.stream().anyMatch(o->o.id()==null || o.content()==null) || options.stream().map(Snapshot.Option::id).distinct().count()!=options.size()))
                 throw error(409,"Invalid objective grading key");
+            // Several correct options / statements judged one by one: at least 2 options with ids; MULTIPLE_RESPONSE needs a correct one.
+            if(Set.of("MULTIPLE_RESPONSE","TRUE_FALSE_GROUP").contains(q.questionType()) &&
+               (options.size()<2 || options.size()>26 || ("TRUE_FALSE_GROUP".equals(q.questionType()) && options.size()>8)
+                || ("MULTIPLE_RESPONSE".equals(q.questionType()) && options.stream().noneMatch(Snapshot.Option::correct))
+                || options.stream().anyMatch(o->o.id()==null || o.content()==null) || options.stream().map(Snapshot.Option::id).distinct().count()!=options.size()))
+                throw error(409,"Invalid objective grading key");
+            // FILL_BLANK: one option per ___ gap. MATCHING: 2-10 "left => right" pairs with distinct sides.
+            if(Set.of("FILL_BLANK","MATCHING").contains(q.questionType()) && !StructuredKey.valid(q.questionType(),q.content(),options))
+                throw error(409,"Invalid objective grading key");
             if("SHORT_ANSWER".equals(q.questionType()) && (q.expectedAnswer()==null || q.expectedAnswer().isBlank()))throw error(409,"Missing short-answer key");
-            snapshots.add(new Snapshot(id,q.questionVersion(),q.questionType(),q.content(),options,points,q.expectedAnswer(),q.explanation(),pos++));
+            snapshots.add(new Snapshot(id,q.questionVersion(),q.questionType(),q.content(),options,points,q.expectedAnswer(),q.explanation(),pos++,q.presentation()));
         }
         BigDecimal total=snapshots.stream().map(Snapshot::points).reduce(BigDecimal.ZERO,BigDecimal::add);
         if(e.getPassingScore()!=null && (!Float.isFinite(e.getPassingScore()) || e.getPassingScore()<0 || e.getPassingScore()>total.floatValue()))throw error(400,"Invalid passing score");

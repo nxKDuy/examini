@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Copy, PenLine } from 'lucide-react'
+import { ArrowLeft, Copy, PenLine, Sparkles } from 'lucide-react'
 import { gradingApi, type GradeItem, type ResultPolicy, type SubmissionDetail } from './gradingApi'
 import {
   canEdit, canRegrade, canRelease, formFromDetail, isAutoGraded, isChoiceAnswer, isDirty, isInvalidated, isStaleRevision, itemProblems, previewTotal, publicationOf, scoreDelta, studentName,
@@ -15,6 +15,10 @@ import { Badge, ErrorState, Field, LoadingState, Notice } from '../../components
 import { errorText } from '../../lib/errors'
 import { QUESTION_TYPE_LABEL, formatDateTime, formatDuration, formatScore } from '../../lib/format'
 import { t, useT } from '../../lib/i18n'
+import { examApi } from '../exams/examApi'
+import { spokenAnswer } from '../question-bank/media/mediaModel'
+import { useBlobUrl } from '../question-bank/media/useBlobUrl'
+import { MediaList, PassageView } from '../question-bank/media/QuestionMedia'
 
 interface Loaded { rev: number; initial: GradeForm; form: GradeForm }
 const make = (d: SubmissionDetail): Loaded => { const f = formFromDetail(d); return { rev: d.resultRevision, initial: f, form: structuredClone(f) } }
@@ -130,7 +134,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
               <span className="small">{t('Câu cần chấm tay:')}</span>
               {d.items.filter(i => i.needsReview).map(i => {
                 const open = unresolved.some(u => u.questionId === i.questionId)
-                return <button key={i.questionId} type="button" data-open={open} onClick={() => jump(i.questionId)} aria-label={t('Câu {0}{1}', { 0: i.position, 1: open ? ', chưa chấm' : ', đã chấm' })}>{i.position}</button>
+                return <button key={i.questionId} type="button" data-open={open} onClick={() => jump(i.questionId)} aria-label={t('Câu {0}{1}', { 0: i.position + 1, 1: open ? ', chưa chấm' : ', đã chấm' })}>{i.position + 1}</button>
               })}
             </div>
           )}
@@ -145,7 +149,7 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
         {!editable && !attemptInvalid && <Notice tone="info">{t('Bài đã hoàn tất chấm nên chỉ xem. Muốn sửa điểm, dùng Chấm lại ở khung bên cạnh (bắt buộc có lý do).')}</Notice>}
         <ol className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {d.items.map(i => (
-            <ItemCard key={i.questionId} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}
+            <ItemCard key={i.questionId} submissionId={d.id} sessionId={d.sessionId ?? null} item={i} form={form.items[i.questionId]} problem={problems[i.questionId]} editable={editable && !busy}
               initial={loaded.initial.items[i.questionId]} onChange={patch => setItem(i.questionId, patch)} />
           ))}
         </ol>
@@ -217,8 +221,8 @@ export default function SubmissionWorkspace({ id, policy, narrow, onDirty, onBac
   )
 }
 
-function ItemCard({ item, form, initial, problem, editable, onChange }: {
-  item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
+function ItemCard({ submissionId, sessionId, item, form, initial, problem, editable, onChange }: {
+  submissionId: string; sessionId: string | null; item: GradeItem; form: GradeForm['items'][string]; initial: GradeForm['items'][string]
   problem?: { score?: string; reason?: string }; editable: boolean; onChange: (patch: Partial<GradeForm['items'][string]>) => void
 }) {
   useT()
@@ -228,19 +232,24 @@ function ItemCard({ item, form, initial, problem, editable, onChange }: {
   return (
     <li id={fid} className="grade-item" data-review={item.needsReview}>
       <div className="spread">
-        <span className="small">{t('Câu')} {item.position} · {QUESTION_TYPE_LABEL[item.questionType]} {t('· phiên bản')} {item.questionVersion}</span>
+        <span className="small">{t('Câu')} {item.position + 1} · {QUESTION_TYPE_LABEL[item.questionType]} {t('· phiên bản')} {item.questionVersion}</span>
         <span className="row">
           {item.needsReview && <Badge tone="warning" icon={<PenLine size={12} aria-hidden />}>{t('Cần chấm tay')}</Badge>}
           <span className="mono small">{t('Điểm hiện có')} {formatScore(item.awardedPoints)}/{formatScore(item.pointValue)}</span>
         </span>
       </div>
+      <PassageView presentation={item.presentation} />
       <p className="prewrap small" style={{ color: 'var(--color-ink)' }}>{item.questionContent}</p>
+      <MediaList media={item.presentation?.media} label={t('Câu {0}', { 0: item.position + 1 })} />
       <div className="grade-answer small">
         <span className="xsmall muted">{t('Bài làm của thí sinh')}</span>
-        <p className="prewrap">{response?.trim() ? response : <em className="muted">{t('Không trả lời')}</em>}</p>
+        {item.questionType === 'SPEAKING'
+          ? <SpokenResponse sessionId={sessionId} questionId={item.questionId} value={item.answerContent} />
+          : <p className="prewrap">{response?.trim() ? response : <em className="muted">{t('Không trả lời')}</em>}</p>}
       </div>
+      {item.questionType === 'ESSAY' && editable && !!response?.trim() && <AiSuggest submissionId={submissionId} item={item} form={form} onChange={onChange} />}
       <p className="xsmall muted">
-        {item.questionType === 'ESSAY' ? t('Gợi ý tự động (chỉ tham khảo): {0}', { 0: formatScore(item.autoScore) }) : t('Điểm tự động: {0}', { 0: formatScore(item.autoScore) })}
+        {item.questionType === 'ESSAY' || item.questionType === 'SPEAKING' ? t('Gợi ý tự động (chỉ tham khảo): {0}', { 0: formatScore(item.autoScore) }) : t('Điểm tự động: {0}', { 0: formatScore(item.autoScore) })}
         {item.manualScore !== null && t(' · Đã chấm tay: {0}', { 0: formatScore(item.manualScore) })}
         {item.manualGradedAt && ` · ${formatDateTime(item.manualGradedAt, '')}`}
       </p>
@@ -259,5 +268,49 @@ function ItemCard({ item, form, initial, problem, editable, onChange }: {
         </Field>
       )}
     </li>
+  )
+}
+
+/** AI score suggestion for an essay: the one made at submission, or asked now (when AI was down then). Applying fills the form only. */
+function AiSuggest({ submissionId, item, form, onChange }: {
+  submissionId: string; item: GradeItem; form: GradeForm['items'][string]; onChange: (patch: Partial<GradeForm['items'][string]>) => void
+}) {
+  useT()
+  const ask = useMutation({ mutationFn: () => gradingApi.aiSuggest(submissionId, item.questionId) })
+  const s = ask.data ? { score: ask.data.score, feedback: ask.data.feedback } : item.autoScore !== null ? { score: item.autoScore, feedback: item.feedback ?? '' } : null
+  if (!s) return (
+    <div className="row" style={{ gap: 8 }}>
+      <button type="button" className="btn btn-secondary btn-sm" disabled={ask.isPending} aria-busy={ask.isPending} onClick={() => ask.mutate()}>
+        <Sparkles size={14} aria-hidden /> {ask.isPending ? t('AI đang đọc bài…') : t('Hỏi AI gợi ý điểm')}</button>
+      {ask.isError && <span className="field-error">{errorText(ask.error)}</span>}
+    </div>
+  )
+  const score = String(Math.round(s.score * 4) / 4)
+  return (
+    <div className="ai-suggest">
+      <div className="spread"><span className="xsmall row" style={{ gap: 6 }}><Sparkles size={13} aria-hidden /> {t('Gợi ý của AI (chỉ tham khảo)')}</span>
+        <strong className="mono">{formatScore(Number(score))}/{formatScore(item.pointValue)}</strong></div>
+      {s.feedback && <p className="prewrap small">{s.feedback}</p>}
+      <div><button type="button" className="btn btn-secondary btn-sm" disabled={form.score === score && form.feedback === s.feedback}
+        onClick={() => onChange({ score, feedback: s.feedback || form.feedback })}>{t('Dùng gợi ý này')}</button>
+        <span className="xsmall muted" style={{ marginLeft: 8 }}>{t('Điểm được làm tròn 0,25; bạn vẫn sửa được trước khi lưu.')}</span></div>
+    </div>
+  )
+}
+
+/** Plays the student's recording of a SPEAKING question (fetched with the grader's token). */
+function SpokenResponse({ sessionId, questionId, value }: { sessionId: string | null; questionId: string; value: string | null }) {
+  useT()
+  const meta = spokenAnswer(value)
+  const audio = useBlobUrl(['answer-audio', sessionId, questionId, meta?.bytes], () => examApi.answerAudioBlob(sessionId!, questionId), !!meta && !!sessionId)
+  if (!meta) return <p><em className="muted">{t('Không trả lời')}</em></p>
+  if (!sessionId) return <p className="muted">{t('Bài ghi âm {0}', { 0: formatDuration(meta.seconds) })}</p>
+  return (
+    <div className="stack-sm" style={{ gap: 4 }}>
+      <span className="xsmall muted">{t('Bài ghi âm {0}', { 0: formatDuration(meta.seconds) })}</span>
+      {audio.url ? <audio controls preload="metadata" src={audio.url} style={{ width: '100%' }} aria-label={t('Bài ghi âm của thí sinh')} />
+        : audio.loading ? <span className="xsmall muted">{t('Đang tải bản ghi…')}</span>
+        : <span className="field-error">{errorText(audio.error)}</span>}
+    </div>
   )
 }

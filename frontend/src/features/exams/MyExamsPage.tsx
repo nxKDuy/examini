@@ -69,11 +69,13 @@ export default function MyExamsPage() {
           : sorted.map(e => {
             const item = byId.get(e.id)
             const w = item ? windowText(item, viewerTz) : null
+            // A submitted paper goes straight to its result (score, review, AI tutor); anything else to the lobby.
+            const done = !!item?.latestSessionId && ['SUBMITTED', 'AUTO_SUBMITTED', 'CLOSED'].includes(item.calendarState) && !!item.latestSessionStatus && item.latestSessionStatus !== 'IN_PROGRESS'
             return (
-              <Link key={e.id} to={`/exam/lobby/${e.id}`} className="list-item" style={{ textDecoration: 'none' }}>
+              <Link key={e.id} to={done ? `/exam/result/${item!.latestSessionId}` : `/exam/lobby/${e.id}`} className="list-item" style={{ textDecoration: 'none' }}>
                 <div className="spread">
                   <strong style={{ color: '#000', fontWeight: 400, fontSize: '1.1rem' }}>{e.title}</strong>
-                  {item && <StateBadge state={item.calendarState} />}
+                  <span className="row" style={{ gap: 10 }}>{done && <span className="small" style={{ color: 'var(--color-accent)' }}>{t('Xem kết quả')} →</span>}{item && <StateBadge state={item.calendarState} />}</span>
                 </div>
                 <div className="xsmall muted" style={{ marginTop: 4 }}>
                   {item ? cardMetrics(item, nowMs).join(' · ') : t('{0} phút · {1} câu · {2} điểm', { 0: e.durationMinutes, 1: e.questionIds.length, 2: e.totalScore ?? 0 })}

@@ -73,6 +73,12 @@ public class ExamController {
     @PostMapping("/{id}/participants/{user}/attempt-grants") public ParticipantDto.GrantResponse grant(@PathVariable UUID id,@PathVariable UUID user,@RequestAttribute UUID actor,@RequestBody ParticipantDto.GrantRequest req){return participantService.grant(id,user,actor,req);}
     @GetMapping("/{id}/participants/{user}/attempt-grants") public List<ParticipantDto.GrantHistory> grants(@PathVariable UUID id,@PathVariable UUID user,@RequestAttribute UUID actor){return participantService.grantHistory(id,user,actor);}
     @GetMapping("/{id}/participation/me") public ParticipantDto.Mine participation(@PathVariable UUID id,@RequestAttribute UUID actor){return participantService.mine(id,actor);}
+    /** Paper exam: the frozen questions with answer keys, for printing and mixing exam codes. Owner/manager only, audited. */
+    @GetMapping("/{id}/paper") public List<com.datn.exam.dto.Snapshot> paper(@PathVariable UUID id,@RequestAttribute UUID actor){
+        var e=core.load(id);core.require(e,actor,true);
+        if(e.getSnapshots().isEmpty())throw ExamCore.error(409,"Xuất bản đề trước khi in");
+        core.audit(e,actor,"PAPER_EXPORTED","questions="+e.getSnapshots().size());
+        return e.getSnapshots().stream().sorted(java.util.Comparator.comparingInt(com.datn.exam.dto.Snapshot::position)).toList();}
     @GetMapping("/{id}/audit") public List<ExamAudit> audit(@PathVariable UUID id,@RequestAttribute UUID actor){core.require(core.load(id),actor,false);return audits.findByExamIdOrderByTimestampAsc(id);}
     @GetMapping("/public") public List<ExamDto.Response> publicExams(@RequestAttribute UUID actor){return exams.findByAccessModeAndStatusIn(Exam.AccessMode.PUBLIC,List.of(Exam.Status.PUBLISHED,Exam.Status.OPEN)).stream().map(ExamDto.Response::from).toList();}
     @GetMapping("/my") public List<ExamDto.Response> my(@RequestAttribute UUID actor){return schedules.myExams(actor).stream().map(ExamDto.Response::from).toList();}

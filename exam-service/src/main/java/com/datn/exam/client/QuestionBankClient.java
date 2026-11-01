@@ -16,14 +16,18 @@ public interface QuestionBankClient {
     record EligibleRandomRequest(UUID bankId,UUID categoryId,String questionType,String difficulty,int count,List<UUID> excludeQuestionIds){}
     record EligibleRandom(List<UUID> ids,int requested,long available){}
     record Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
-                    Boolean eligible,String bankType,String publicationStatus,String explanation) {
+                    Boolean eligible,String bankType,String publicationStatus,String explanation,java.util.Map<String,Object> presentation) {
+        public Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
+                        Boolean eligible,String bankType,String publicationStatus,String explanation) {
+            this(id,questionVersion,status,questionType,content,options,expectedAnswer,eligible,bankType,publicationStatus,explanation,null);
+        }
         public Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer,
                         Boolean eligible,String bankType,String publicationStatus) {
-            this(id,questionVersion,status,questionType,content,options,expectedAnswer,eligible,bankType,publicationStatus,null);
+            this(id,questionVersion,status,questionType,content,options,expectedAnswer,eligible,bankType,publicationStatus,null,null);
         }
         // Legacy/missing provider eligibility must never imply permission to publish.
         public Question(UUID id,Long questionVersion,String status,String questionType,String content,List<Snapshot.Option> options,String expectedAnswer) {
-            this(id,questionVersion,status,questionType,content,options,expectedAnswer,null,null,null,null);
+            this(id,questionVersion,status,questionType,content,options,expectedAnswer,null,null,null,null,null);
         }
     }
 }

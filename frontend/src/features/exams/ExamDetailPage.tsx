@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, Check, ClipboardCheck, Lock, Pencil, PlayCircle, RefreshCw, RotateCcw, Send, Trash2, UserPlus } from 'lucide-react'
-import { examApi, type Exam, type MemberRole, type Policy } from './examApi'
+import { CalendarClock, Check, ClipboardCheck, Lock, Pencil, PlayCircle, Printer, RefreshCw, RotateCcw, Send, Trash2, UserPlus } from 'lucide-react'
+import { examApi, type Exam, type MemberRole, type PaperQuestion, type Policy } from './examApi'
+import { keyLines } from '../question-bank/structuredModel'
 import type { Question } from '../question-bank/questionApi'
 import { bankApi } from '../banks/bankApi'
 import PolicyFields from './PolicyFields'
@@ -19,6 +20,8 @@ import { offsetLabel, normalizeReminders } from '../calendar/scheduleModel'
 import ScheduleDialog from '../calendar/ScheduleDialog'
 import LifecycleDialog, { type LifecycleKind } from '../calendar/LifecycleDialog'
 import ExamAnalyticsPanel from './ExamAnalyticsPanel'
+import { useParticipantNames } from '../participants/useParticipantNames'
+import { PersonCell } from '../participants/PersonCell'
 import IntegrityTab from '../integrity/IntegrityTab'
 import IntegrityLockControl from '../integrity/IntegrityLockControl'
 import { policySummary } from '../integrity/integrityModel'
@@ -27,6 +30,7 @@ import { Badge, EmptyState, ErrorState, Field, LoadingState, Notice, PageHeader,
 import { UPSTREAM_GENERIC, errorInfo, errorText } from '../../lib/errors'
 import { ACCESS_MODE_LABEL, EXAM_TYPE_LABEL, MEMBER_ROLE_LABEL, QUESTION_TYPE_LABEL, formatDateTime, formatScore, shortId } from '../../lib/format'
 import { t, useT, i18nMap } from '../../lib/i18n'
+import Select from '../../components/Select'
 
 const LIFECYCLE = ['DRAFT', 'PUBLISHED', 'OPEN', 'CLOSED'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -51,7 +55,8 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   const navigate = useNavigate()
   const location = useLocation()
   const flash = location.state as { notice?: string; tone?: 'success' | 'warning' } | null
-  const [tab, setTab] = useState<Tab>('overview')
+  // ?tab=analytics (links from the dashboard) opens a tab directly.
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).get('tab') as Tab | null) ?? 'overview')
   const [confirm, setConfirm] = useState<Transition | null>(null)
   const [lifecycle, setLifecycle] = useState<LifecycleKind | null>(null)
   const [editing, setEditing] = useState(false)
@@ -73,6 +78,8 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   })
   const gradingBadge = gradingOverview.data?.needsReview ?? 0
   const questions = useQuery({ queryKey: ['questions', 'draft-resources', exam.id, exam.status, exam.questionIds], queryFn: () => bankApi.eligibleBatch(exam.questionIds), enabled: exam.status === 'DRAFT' && exam.questionIds.length > 0, retry: false })
+  // Published exams: the frozen snapshot (same source as the printed paper), so the teacher reads the real questions.
+  const paper = useQuery({ queryKey: ['exam', exam.id, 'paper'], queryFn: () => examApi.paper(exam.id), enabled: manage && exam.status !== 'DRAFT', retry: false, staleTime: 300_000 })
   const ineligible = (exam.status === 'DRAFT' ? questions.data ?? [] : []).map((q, i) => ({ n: i + 1, q })).filter(x => x.q.eligible !== true)
   const ineligibleText = ineligible.map(x => t('Câu {0} ({1}, phiên bản {2})', { 0: x.n, 1: QUESTION_STATUS[x.q.status]?.label ?? x.q.status, 2: x.q.questionVersion })).join(', ')
   const invalidate = () => Promise.all([qc.invalidateQueries({ queryKey: ['exam', exam.id] }), qc.invalidateQueries({ queryKey: ['exams'] })])
@@ -116,6 +123,7 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
           {exam.status === 'PUBLISHED' && <button type="button" className="btn btn-primary" onClick={() => setConfirm('open')}><PlayCircle size={16} aria-hidden /> {t('Mở kỳ thi')}</button>}
           {(exam.status === 'OPEN' || exam.status === 'PUBLISHED') && <button type="button" className="btn btn-danger" onClick={() => setLifecycle('close')}><Lock size={16} aria-hidden /> {t('Đóng kỳ thi')}</button>}
           {exam.status === 'CLOSED' && <button type="button" className="btn btn-secondary" onClick={() => setLifecycle('reopen')}><RotateCcw size={16} aria-hidden /> {t('Mở lại')}</button>}
+          {exam.status !== 'DRAFT' && <Link to={`/exams/${exam.id}/print`} className="btn btn-secondary"><Printer size={16} aria-hidden /> {t('In đề / mã đề')}</Link>}
           {(exam.status === 'OPEN' || exam.status === 'CLOSED') && <Link to={`/grading?examId=${exam.id}`} className="btn btn-secondary"><ClipboardCheck size={16} aria-hidden /> {t('Chấm bài')}{gradingBadge > 0 && <span className="badge badge-warning" style={{ marginLeft: 6 }} aria-label={t('{0} bài cần chấm tay', { 0: gradingBadge })}>{gradingBadge}</span>}</Link>}
           </>}
           {canLock && <IntegrityLockControl exam={exam} onDone={text => setMessage({ tone: 'success', text })} />}
@@ -150,13 +158,13 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
         ))}
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'overview' && <Overview exam={exam} questions={exam.status === 'DRAFT' ? exam.questionIds.map(id => questions.data?.find(q => q.id === id)) : []} schedule={schedule.data?.s} viewerTz={viewerTz} onSchedule={() => setTab('schedule')} />}
+        {tab === 'overview' && <Overview exam={exam} questions={exam.status === 'DRAFT' ? exam.questionIds.map(id => questions.data?.find(q => q.id === id)) : exam.questionIds.map(id => frozen(paper.data?.find(p => p.questionId === id)))} schedule={schedule.data?.s} viewerTz={viewerTz} onSchedule={() => setTab('schedule')} />}
         {tab === 'schedule' && <ScheduleTab exam={exam} manage={manage} schedule={schedule.data?.s} loading={schedule.isLoading} error={schedule.error} onRetry={() => void schedule.refetch()} viewerTz={viewerTz} onEdit={() => setEditing(true)} />}
         {tab === 'participation' && <Participation exam={exam} manage={manage} />}
         {tab === 'collaborators' && <Collaborators exam={exam} owner={role === 'OWNER'} members={members} />}
         {tab === 'attempts' && <Attempts exam={exam} />}
         {tab === 'integrity' && staff && <IntegrityTab examId={exam.id} policy={exam.integrityPolicy} manage={manage} live={exam.status === 'OPEN'} />}
-        {tab === 'analytics' && manage && <ExamAnalyticsPanel examId={exam.id} actorId={actorId} />}
+        {tab === 'analytics' && manage && <ExamAnalyticsPanel examId={exam.id} actorId={actorId} examTitle={exam.title} />}
         {tab === 'audit' && <Audit exam={exam} />}
       </div>
 
@@ -183,7 +191,19 @@ function Detail({ exam, role, members }: { exam: Exam; role?: string; members: R
   )
 }
 
-function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: Exam; questions: (Question | undefined)[]; schedule?: Schedule; viewerTz: string; onSchedule: () => void }) {
+/** Row view of a question: the bank question (draft) or the frozen snapshot (published), with its key in short form. */
+interface RowQuestion { content: string; questionType: Question['questionType']; status?: Question['status']; key?: string }
+function frozen(p: PaperQuestion | undefined): RowQuestion | undefined {
+  if (!p) return undefined
+  const opts = [...p.options].sort((a, b) => a.displayOrder - b.displayOrder)
+  const letters = opts.map((o, i) => (o.correct ? String.fromCharCode(65 + i) : '')).filter(Boolean).join(', ')
+  const key = p.questionType === 'TRUE_FALSE_GROUP' ? opts.map((o, i) => `${String.fromCharCode(97 + i)}) ${o.correct ? t('Đ') : t('S')}`).join('  ')
+    : p.questionType === 'FILL_BLANK' || p.questionType === 'MATCHING' ? keyLines(p.questionType, opts).join('; ')
+    : opts.length ? letters : (p.expectedAnswer ?? '')
+  return { content: p.content, questionType: p.questionType as Question['questionType'], key }
+}
+
+function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: Exam; questions: (RowQuestion | Question | undefined)[]; schedule?: Schedule; viewerTz: string; onSchedule: () => void }) {
   useT()
   const w = schedule ? windowText(schedule, viewerTz) : null
   return (
@@ -202,10 +222,10 @@ function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: E
         {exam.description && <div className="stack-sm" style={{ marginTop: 16 }}><span className="field-label">{t('Hướng dẫn cho thí sinh')}</span><p className="prewrap small">{exam.description}</p></div>}
       </Section>
       <Section title={t('Câu hỏi và điểm')} bodyClassName=""
-        description={exam.status === 'DRAFT' ? t('Đề thi quyết định điểm cho từng câu.') : t('Phiên bản câu hỏi đã được cố định khi xuất bản. Chỉ hiển thị mã câu hỏi và điểm; không lấy câu hiện tại để thay bản chụp.')}>
+        description={exam.status === 'DRAFT' ? t('Đề thi quyết định điểm cho từng câu.') : t('Nội dung và đáp án là bản chụp cố định lúc xuất bản; sửa câu trong kho không làm đổi đề này.')}>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th scope="col">#</th><th scope="col">{t('Câu hỏi')}</th><th scope="col">{t('Loại')}</th><th scope="col" style={{ textAlign: 'right' }}>{t('Điểm')}</th></tr></thead>
+            <thead><tr><th scope="col">#</th><th scope="col">{t('Câu hỏi')}</th><th scope="col">{t('Loại')}</th>{exam.status !== 'DRAFT' && <th scope="col">{t('Đáp án')}</th>}<th scope="col" style={{ textAlign: 'right' }}>{t('Điểm')}</th></tr></thead>
             <tbody>
               {exam.questions.map((item, i) => {
                 const q = questions[i]
@@ -213,7 +233,8 @@ function Overview({ exam, questions, schedule, viewerTz, onSchedule }: { exam: E
                   <tr key={item.questionId}>
                     <td className="mono muted">{i + 1}</td>
                     <td><div className="truncate-2" style={{ maxWidth: 640 }}>{q ? q.content : <span className="muted">{t('Câu hỏi')} {shortId(item.questionId)} {exam.status === 'DRAFT' ? t('(chưa xác minh được nội dung)') : t('(bản chụp đã xuất bản)')}</span>}</div></td>
-                    <td className="small">{q ? <>{QUESTION_TYPE_LABEL[q.questionType]}{exam.status === 'DRAFT' && <div style={{ marginTop: 4 }}><QuestionStatusBadge status={q.status} /></div>}</> : '-'}</td>
+                    <td className="small" style={{ whiteSpace: 'nowrap' }}>{q ? <>{QUESTION_TYPE_LABEL[q.questionType] ?? q.questionType}{exam.status === 'DRAFT' && q.status && <div style={{ marginTop: 4 }}><QuestionStatusBadge status={q.status} /></div>}</> : '-'}</td>
+                    {exam.status !== 'DRAFT' && <td className="small"><div className="truncate-2" style={{ maxWidth: 260 }}>{q && 'key' in q && q.key ? q.key : <span className="muted">{q?.questionType === 'ESSAY' || q?.questionType === 'SPEAKING' ? t('Chấm tay') : '–'}</span>}</div></td>}
                     <td className="mono" style={{ textAlign: 'right' }}>{formatScore(item.weight)}</td>
                   </tr>
                 )
@@ -308,9 +329,9 @@ function Collaborators({ exam, owner, members }: { exam: Exam; owner: boolean; m
             <div className="grid-2" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(160px, 1fr)' }}>
               <Field label={t('Mã người dùng của giáo viên')} htmlFor="invite-user"><input id="invite-user" className="input mono" value={userId} onChange={e => setUserId(e.target.value)} /></Field>
               <Field label={t('Vai trò')} htmlFor="invite-role">
-                <select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as MemberRole)}>
+                <Select id="invite-role" className="input" value={role} onChange={e => setRole(e.target.value as MemberRole)}>
                   <option value="MANAGER">{t('Quản lý')}</option><option value="PROCTOR">{t('Giám thị')}</option>
-                </select>
+                </Select>
               </Field>
             </div>
             <div><button type="submit" className="btn btn-secondary" disabled={run.isPending || !userId.trim()}><UserPlus size={16} aria-hidden /> {t('Gửi lời mời')}</button></div>
@@ -339,6 +360,7 @@ function Attempts({ exam }: { exam: Exam }) {
   useT()
   const sessions = useQuery({ queryKey: ['exam-sessions', exam.id], queryFn: () => examApi.sessions(exam.id), refetchInterval: exam.status === 'OPEN' ? 15_000 : false })
   const active = sessions.data?.filter(s => s.status === 'IN_PROGRESS').length ?? 0
+  const names = useParticipantNames(exam.id)
   return (
     <Section title={t('Lượt làm bài')} bodyClassName=""
       description={sessions.data ? t('{0} lượt · {1}/{2} phiên đang làm', { 0: sessions.data.length, 1: active, 2: exam.maxConcurrentSessions }) : undefined}
@@ -349,7 +371,7 @@ function Attempts({ exam }: { exam: Exam }) {
             <thead><tr><th scope="col">{t('Thí sinh')}</th><th scope="col">{t('Lượt')}</th><th scope="col">{t('Trạng thái')}</th><th scope="col">{t('Hiệu lực')}</th><th scope="col">{t('Bắt đầu')}</th><th scope="col">{t('Hết giờ')}</th></tr></thead>
             <tbody>{sessions.data!.map(s => (
               <tr key={s.sessionId}>
-                <td className="mono small">{shortId(s.userId)}</td><td className="mono">{s.attemptNumber}</td><td><SessionStatusBadge status={s.status} /></td>
+                <td className="small"><PersonCell names={names.data} userId={s.userId} /></td><td className="mono">{s.attemptNumber}</td><td><SessionStatusBadge status={s.status} /></td>
                 <td className="small">{s.invalidated ? <><Badge tone="danger">{t('Đã vô hiệu')}</Badge>{s.invalidationReason && <span className="xsmall muted" style={{ display: 'block' }}>{s.invalidationReason}</span>}</> : t('Hợp lệ')}</td>
                 <td className="small">{formatDateTime(s.startedAt)}</td><td className="small">{formatDateTime(s.expiresAt)}</td>
               </tr>
@@ -365,6 +387,7 @@ const AUDIT_LABEL: Record<string, string> = i18nMap({
   MANAGER_INVITED: 'Mời Quản lý', PROCTOR_INVITED: 'Mời Giám thị', MANAGER_ADDED: 'Quản lý chấp nhận lời mời', PROCTOR_ADDED: 'Giám thị chấp nhận lời mời',
   MANAGER_REMOVED: 'Xóa Quản lý', PROCTOR_REMOVED: 'Xóa Giám thị',
   INTEGRITY_POLICY_UPDATED: 'Cập nhật giám sát trình duyệt', EXAM_INTEGRITY_LOCKED: 'Khóa toàn kỳ thi', EXAM_INTEGRITY_UNLOCKED: 'Mở khóa kỳ thi',
+  PAPER_EXPORTED: 'Mở bản in đề kèm đáp án',
 })
 
 function Audit({ exam }: { exam: Exam }) {

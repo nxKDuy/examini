@@ -10,6 +10,10 @@ import { useIsNarrow } from '../../lib/hooks'
 import { formatDateTime, shortId } from '../../lib/format'
 import '../participants/participants.css'
 import { t as tt, useT } from '../../lib/i18n'
+import Select from '../../components/Select'
+import CameraReview from './camera/CameraReview'
+import { nameOf, useParticipantNames, type NameMap } from '../participants/useParticipantNames'
+import { PersonCell } from '../participants/PersonCell'
 
 const TYPES = Object.keys(SIGNAL_LABEL) as SignalType[]
 
@@ -25,24 +29,30 @@ export default function IntegrityTab({ examId, policy, manage, live }: { examId:
     queryKey: ['integrity', 'exam-events', examId, type, page], queryFn: () => integrityApi.examEvents(examId, { type: type || undefined, page }),
     refetchInterval: live ? 15_000 : false, retry: false,
   })
+  const names = useParticipantNames(examId)
   const needle = student.trim().toLowerCase()
-  const rows = (events.data?.content ?? []).filter(e => !needle || e.userId.toLowerCase().startsWith(needle))
+  const rows = (events.data?.content ?? []).filter(e => {
+    if (!needle) return true
+    const p = names.data?.get(e.userId)
+    return e.userId.toLowerCase().startsWith(needle) || Boolean(p && (p.name.toLowerCase().includes(needle) || p.email?.toLowerCase().includes(needle)))
+  })
 
   return (
     <div className="stack-lg">
       <Section title={tt('Giám sát trình duyệt')} description={tt('Cấu hình đã cố định: {0}.', { 0: policySummary(policy) })}>
         <p className="small muted">{tt('Tín hiệu do trình duyệt của thí sinh báo về, là dữ liệu ghi nhận và không phải kết luận gian lận. Chỉ giáo viên có vai trò trong kỳ thi xem được.')}</p>
       </Section>
+      {policy?.requireCamera && <CameraReview examId={examId} live={live} />}
       <Section title={tt('Tín hiệu đã ghi nhận')} bodyClassName=""
         description={events.data ? tt('{0} tín hiệu · theo thời điểm máy chủ nhận', { 0: events.data.totalElements }) : undefined}
         actions={<button type="button" className="btn btn-ghost btn-sm" onClick={() => void events.refetch()} disabled={events.isFetching}><RefreshCw size={14} aria-hidden /> {tt('Làm mới')}</button>}>
         <div className="card-body filter-row">
           <label className="field"><span className="field-label">{tt('Loại tín hiệu')}</span>
-            <select className="input" value={type} onChange={e => { setType(e.target.value as SignalType | ''); setPage(0) }}>
+            <Select className="input" value={type} onChange={e => { setType(e.target.value as SignalType | ''); setPage(0) }}>
               <option value="">{tt('Tất cả')}</option>{TYPES.map(t => <option key={t} value={t}>{SIGNAL_LABEL[t]}</option>)}
-            </select></label>
-          <label className="field filter-grow"><span className="field-label">{tt('Thí sinh (mã)')}</span>
-            <input className="input" type="search" value={student} placeholder={tt('Nhập đầu mã người dùng')} onChange={e => setStudent(e.target.value)} /></label>
+            </Select></label>
+          <label className="field filter-grow"><span className="field-label">{tt('Thí sinh')}</span>
+            <input className="input" type="search" value={student} placeholder={tt('Tên, email hoặc đầu mã người dùng')} onChange={e => setStudent(e.target.value)} /></label>
         </div>
         {needle && <p className="card-body xsmall muted" style={{ paddingTop: 0 }}>{tt('Lọc theo thí sinh áp dụng cho trang đang xem.')}</p>}
         <div className="pt-layout" data-panel={selected ? 'open' : 'closed'}>
@@ -53,21 +63,21 @@ export default function IntegrityTab({ examId, policy, manage, live }: { examId:
                 <thead><tr><th scope="col">{tt('Thời gian nhận')}</th><th scope="col">{tt('Thí sinh')}</th><th scope="col">{tt('Tín hiệu')}</th><th scope="col">{tt('Chi tiết')}</th></tr></thead>
                 <tbody>{rows.map(e => <tr key={e.id} aria-selected={selected?.sessionId === e.sessionId}>
                   <td className="small">{formatDateTime(e.receivedAt)}</td>
-                  <td><button type="button" className="pt-row-btn mono small" onClick={() => setSelected(e)}>{shortId(e.userId)}</button></td>
+                  <td><button type="button" className="pt-row-btn small" onClick={() => setSelected(e)}><PersonCell names={names.data} userId={e.userId} /></button></td>
                   <td className="small">{SIGNAL_LABEL[e.type] ?? e.type}{BUDGET_SIGNALS.includes(e.type) && <span className="xsmall muted"> {tt('· tính ngưỡng')}</span>}</td>
                   <td className="xsmall muted">{metadataText(e.metadata)}</td>
                 </tr>)}</tbody>
               </table></div>}
             {events.data && events.data.totalPages > 1 && <Pagination label={tt('Phân trang tín hiệu')} page={page} totalPages={events.data.totalPages} onChange={setPage} />}
           </div>
-          {selected && <SessionPanel key={selected.sessionId} examId={examId} event={selected} manage={manage} narrow={narrow} onClose={() => setSelected(null)} />}
+          {selected && <SessionPanel key={selected.sessionId} names={names.data} examId={examId} event={selected} manage={manage} narrow={narrow} onClose={() => setSelected(null)} />}
         </div>
       </Section>
     </div>
   )
 }
 
-function SessionPanel({ examId, event, manage, narrow, onClose }: { examId: string; event: SignalEvent; manage: boolean; narrow: boolean; onClose: () => void }) {
+function SessionPanel({ names, examId, event, manage, narrow, onClose }: { names?: NameMap; examId: string; event: SignalEvent; manage: boolean; narrow: boolean; onClose: () => void }) {
   useT()
   const panelRef = useRef<HTMLElement>(null), headingRef = useRef<HTMLHeadingElement>(null)
   const [granting, setGranting] = useState(false)
@@ -79,7 +89,7 @@ function SessionPanel({ examId, event, manage, narrow, onClose }: { examId: stri
   const counts = summary.data ? TYPES.filter(t => (summary.data!.counts[t] ?? 0) > 0) : []
   const budget = summary.data ? BUDGET_SIGNALS.reduce((n, t) => n + (summary.data!.counts[t] ?? 0), 0) : null
   const ended = integrityEnded(audit.data?.content ?? [])
-  const name = tt('Thí sinh {0}', { 0: shortId(event.userId) })
+  const name = names?.get(event.userId) ? nameOf(names, event.userId) : tt('Thí sinh {0}', { 0: shortId(event.userId) })
 
   return (
     <>

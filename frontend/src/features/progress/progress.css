@@ -1,0 +1,8 @@
+.progress-kpis .stat-value { font-size: 1.8rem; }
+.progress-grid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1024px) { .progress-grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tips li { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--color-hairline); border-left: 3px solid var(--color-accent); padding: 10px 12px; }
+.tips li[data-kind="FOCUS"] { border-left-color: #e8590c; }
+.tips li[data-kind="HABIT"] { border-left-color: #000; }
+.tips li svg { flex: none; margin-top: 3px; }

@@ -83,3 +83,14 @@ test('RESULT_INVALIDATED is recognised only as a 409', () => {
   assert.equal(m.isInvalidatedConflict(err(409, 'RESULT_INVALIDATED')), true); assert.equal(m.isInvalidatedConflict(err(409, 'STALE_RESULT_REVISION')), false)
   assert.equal(m.isInvalidatedConflict(err(500, 'RESULT_INVALIDATED')), false)
 })
+
+test('organization members become batched user ids without the caller', () => {
+  const members = [
+    { userId: 'a', status: 'ACTIVE' }, { userId: 'me', status: 'ACTIVE' }, { userId: 'b', status: 'LEFT' },
+    { userId: 'a', status: 'ACTIVE' }, { userId: 'c', status: 'ACTIVE' },
+  ]
+  assert.deepEqual(m.orgMemberIds(members, 'me'), ['a', 'c'])
+  const ids = Array.from({ length: 230 }, (_, i) => `u${i}`)
+  assert.deepEqual(m.chunk(ids).map(c => c.length), [100, 100, 30])
+  assert.deepEqual(m.chunk([]), [])
+})

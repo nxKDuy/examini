@@ -97,6 +97,9 @@ export function weekdayIndex(day: string): number {
   return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7
 }
 
+/** Display zone of the whole app: Vietnam, whatever the device is set to. Server instants stay UTC. */
+export const APP_ZONE = 'Asia/Ho_Chi_Minh'
+
 export const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 export function isValidZone(tz: string) {

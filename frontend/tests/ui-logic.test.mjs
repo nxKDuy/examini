@@ -56,7 +56,9 @@ test('unknown 4xx detail is shown verbatim; status, network and 5xx fall back sa
 test('exam schedule round-trips between local input and server UTC LocalDateTime', () => {
   const utc = fromLocalInput('2026-10-05T09:30')
   assert.match(utc, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)
-  assert.equal(new Date(`${utc}Z`).getTime(), new Date('2026-10-05T09:30').getTime())
+  // Inputs are Vietnam wall time (UTC+7) whatever the device zone is.
+  assert.equal(utc, '2026-10-05T02:30:00')
+  assert.equal(new Date(`${utc}Z`).getTime(), new Date('2026-10-05T09:30+07:00').getTime())
   assert.equal(toLocalInput(utc), '2026-10-05T09:30')
   assert.equal(parseUtc('2026-10-05T08:00:00').toISOString(), '2026-10-05T08:00:00.000Z')
   assert.equal(parseUtc('2026-10-05T08:00:00Z').toISOString(), '2026-10-05T08:00:00.000Z')
